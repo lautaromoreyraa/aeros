@@ -97,11 +97,13 @@ flowchart LR
 
 | Item | State |
 |---|---|
-| Harmonization model, continuous reference, units, validation, critical period | merged in `develop` |
-| Team context MCP server (local tests green) | merged in `develop`; deploy to Cloudflare pending |
-| Web app (intro, map, calendar, CSV) | branch `feature/immersive-burning-calendar` |
-| AWS infrastructure and daily NRT early warning | branch `feature/aws-infrastructure` |
+| Harmonization model, continuous reference, units, validation, critical period | in `develop` |
+| Web app: intro, H3 map, area selection, calendar with coverage labels and critical period, unit toggle, CSV | in `develop` (54 tests) |
+| AWS infrastructure inside the Free plan, calendar/CSV API, daily FIRMS refresh with early warning | in `develop` (29 CDK + 63 Lambda tests, `cdk synth` green); not deployed |
+| Team context MCP server | in `develop`; deploy to Cloudflare pending (needs `wrangler login`, D1, Access app, service tokens) |
+| CI | `verify` workflow runs model, web, MCP and AWS checks |
 | Real FIRMS archive for the Gran Chaco | to download: yearly country summaries (AR, PY, BO), MODIS C6.1 + VIIRS SNPP + NOAA-20 |
+| AWS deploy | pending: account, `cdk bootstrap`, FIRMS MAP_KEY in SSM; reserved concurrency may exceed a new account's limit of 10 |
 | Biome as a model feature, Theil–Sen trend | optional |
 
 ## 7. Submission checklist (Space Apps)
