@@ -9,6 +9,8 @@ JSON, so this copies those into one tree, per region and unit:
     <out>/<region>/sectors.json           dashboard sectors, when the run has them
     <out>/<unit>/<artifact>.json          the default region again, at the path
                                           the web read before regions existed
+    <out>/forecast.json                   the default region's forecast in hotspots
+                                          (or its first unit), where the web reads it
 
 Only processed views are published, never raw FIRMS rows (hackathon data
 rule), and Parquet tables stay out of the bundle: the API serves them.
@@ -73,6 +75,14 @@ def bundle(runs: Mapping[str, Path], out: Path, default_region: str = DEFAULT_RE
             src = out / default_region / unit / name
             if src.exists():
                 shutil.copyfile(src, legacy / name)
+
+    # The web reads the forecast from the root; hotspots is the unit its
+    # alerts and the brief speak in.
+    units = regions[default_region]["units"]
+    unit = "hotspots" if "hotspots" in units else units[0]
+    forecast = out / default_region / unit / "forecast.json"
+    if forecast.exists():
+        shutil.copyfile(forecast, out / "forecast.json")
 
     index = {
         "default_region": default_region,
