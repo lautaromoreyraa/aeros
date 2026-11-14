@@ -10,13 +10,14 @@ const RADIUS = 2;
  * stay face to face with the viewer while the globe never stops moving, too
  * slowly to notice at a glance.
  */
-const SWAY = THREE.MathUtils.degToRad(16);
+const SWAY = THREE.MathUtils.degToRad(5);
 const SWAY_PERIOD = 140;
-const CAMERA_DISTANCE = 7.7;
+/** Camera distance from the centre, in Earth radii: low enough for the fires to read up close. */
+const CAMERA_HEIGHT = 1.45;
 /** Tilts the southern hemisphere up until the Chaco's latitude (about 23° S) faces forward. */
 const CHACO_TILT = -0.4;
 /** A polar, sun-synchronous orbit like the VIIRS satellites', sped up to a pass every 48 s. */
-const ORBIT_RADIUS = RADIUS * 1.22;
+const ORBIT_RADIUS = RADIUS * 1.12;
 const ORBIT_PERIOD = 48;
 const ORBIT_INCLINATION = THREE.MathUtils.degToRad(98.7);
 const TRAIL = 0.9;
@@ -115,7 +116,7 @@ function Earth() {
   const material = useMemo(() => {
     for (const texture of [day!, night!]) {
       texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = 8;
+      texture.anisotropy = 16;
     }
     return earthMaterial(day!, night!);
   }, [day, night]);
@@ -155,7 +156,7 @@ const fireMaterial = () =>
         float d = length(gl_PointCoord - 0.5) * 2.0;
         float core = smoothstep(1.0, 0.0, d);
         vec3 ember = mix(vec3(0.9, 0.22, 0.03), vec3(1.0, 0.72, 0.3), core * core * vWeight);
-        gl_FragColor = vec4(ember * core * (0.35 + 0.25 * pulse), core);
+        gl_FragColor = vec4(ember * core * (0.22 + 0.18 * pulse), core);
       }`,
   });
 
@@ -174,7 +175,7 @@ function Fires({ cells, still }: { cells: { center: LngLat; weight: number }[]; 
     return { positions, weights };
   }, [cells]);
   useFrame(({ clock }) => {
-    material.uniforms.scale!.value = size.height / 90;
+    material.uniforms.scale!.value = size.height / 150;
     if (!still) material.uniforms.pulse!.value = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 1.3);
   });
   return (
@@ -267,22 +268,35 @@ function Satellite({ still, glow }: { still: boolean; glow: THREE.Texture }) {
 }
 
 /**
- * The whole planet, small enough to be seen almost entire, set beside the
- * title on wide screens and above it on narrow ones. It eases in once and
- * then only turns, too slowly to notice at a glance.
+ * The camera hangs low over the Chaco, south of it and looking north, so the
+ * fires fill the middle of the frame while the curve of the horizon and the
+ * space behind it take the top. It approaches once, then holds.
  */
+function CameraRig({ still }: { still: boolean }) {
+  const final = useMemo(() => orbitView(CAMERA_HEIGHT), []);
+  const far = useMemo(() => orbitView(CAMERA_HEIGHT * 1.6), []);
+  const target = useMemo(() => new THREE.Vector3(0, RADIUS * 0.3, RADIUS * 0.8), []);
+  useFrame(({ camera, clock, size }) => {
+    const t = still ? 1 : Math.min(1, clock.elapsedTime / 4.5);
+    const eased = 1 - (1 - t) ** 3;
+    camera.position.lerpVectors(far, final, eased);
+    camera.lookAt(target);
+    // Slide sideways so the fire lands right of the title instead of under it.
+    if (size.width > size.height) camera.translateX(-0.4);
+  });
+  return null;
+}
+
+/** A camera position `height` Earth radii from the centre, 20° south of the Chaco. */
+function orbitView(height: number): THREE.Vector3 {
+  const angle = THREE.MathUtils.degToRad(-20);
+  return new THREE.Vector3(0, Math.sin(angle), Math.cos(angle)).multiplyScalar(RADIUS * height);
+}
+
 function Planet({ cells, still }: { cells: { center: LngLat; weight: number }[]; still: boolean }) {
   const sway = useRef<THREE.Group>(null);
-  const frame = useRef<THREE.Group>(null);
-  const { size } = useThree();
   const glow = useMemo(glowTexture, []);
   const atmosphere = useMemo(atmosphereMaterial, []);
-  const wide = size.width > size.height;
-  const offset: [number, number] = wide ? [2.15, 0.1] : [0, 1.1];
-  // The globe sits off the camera's axis, so the side facing the viewer is
-  // turned towards the camera by that angle; the Chaco is centred on it.
-  const yaw = -Math.atan2(offset[0], CAMERA_DISTANCE);
-  const pitch = CHACO_TILT + Math.atan2(offset[1], CAMERA_DISTANCE);
 
   // Turn the Chaco to face the camera.
   const start = useMemo(() => {
@@ -294,30 +308,26 @@ function Planet({ cells, still }: { cells: { center: LngLat; weight: number }[];
   }, [cells]);
 
   useFrame(({ clock }) => {
-    if (sway.current) sway.current.rotation.y = yaw + (still ? 0 : SWAY * Math.sin((clock.elapsedTime / SWAY_PERIOD) * Math.PI * 2));
-    if (frame.current) {
-      const t = still ? 1 : Math.min(1, clock.elapsedTime / 3.2);
-      const eased = 1 - (1 - t) ** 3;
-      frame.current.scale.setScalar(0.9 + 0.1 * eased);
-    }
+    if (sway.current && !still) sway.current.rotation.y = SWAY * Math.sin((clock.elapsedTime / SWAY_PERIOD) * Math.PI * 2);
   });
 
   return (
-    <group ref={frame} position={[offset[0], offset[1], 0]}>
-      {/* Tilted so the southern hemisphere, where the Chaco lies, faces the viewer. */}
-      <group rotation={[pitch, 0, 0]}>
+    <>
+      {/* Tilted so the Chaco's latitude faces the camera. */}
+      <group rotation={[CHACO_TILT, 0, 0]}>
         <group ref={sway}>
           <group rotation={[0, start, 0]}>
             <Earth />
             <Fires cells={cells} still={still} />
           </group>
         </group>
-        <mesh scale={1.035} material={atmosphere}>
-          <sphereGeometry args={[RADIUS, 64, 64]} />
+        <mesh scale={1.025} material={atmosphere}>
+          <sphereGeometry args={[RADIUS, 96, 96]} />
         </mesh>
         <Satellite still={still} glow={glow} />
       </group>
-    </group>
+      <CameraRig still={still} />
+    </>
   );
 }
 
@@ -331,7 +341,7 @@ interface SceneProps {
 export default function EarthScene({ cells, still, paused = false }: SceneProps) {
   return (
     <Canvas
-      camera={{ fov: 34, near: 0.1, far: 200, position: [0, 0, CAMERA_DISTANCE] }}
+      camera={{ fov: 40, near: 0.05, far: 200, position: [0, 0, RADIUS * 3] }}
       dpr={[1, 2]}
       frameloop={still ? "demand" : paused ? "never" : "always"}
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
