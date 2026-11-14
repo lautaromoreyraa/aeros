@@ -1,13 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import DeckGL from "@deck.gl/react";
-import type { MapViewState, PickingInfo } from "@deck.gl/core";
+import { FlyToInterpolator, WebMercatorViewport, type MapViewState, type PickingInfo } from "@deck.gl/core";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
+import { cellToBoundary, cellToLatLng } from "h3-js";
 import type { Unit } from "../api/types";
 import type { CellTotal } from "../util/aggregation";
-import type { Area, LngLat } from "../util/area";
+import { boundsOf, type Area, type LngLat } from "../util/area";
 import { type Rgb, VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
 import { formatCount, unitLabel } from "../util/format";
-import { BASEMAP, areaLayers, initialView, rasterLayer } from "./mapLayers";
+import { focusPadding, leaderEnd, type Point } from "../util/mapFocus";
+import { BASEMAP, ON_TOP, areaLayers, initialView, rasterLayer } from "./mapLayers";
+
+/** Where the camera should go, and the cell a line to the panel starts from. */
+export interface MapFocus {
+  /** The camera fits these cells. */
+  cells: string[];
+  anchor: string | null;
+}
+
+/** Close enough to read a town's name next to its cell, not so close the cell fills the screen. */
+const FOCUS_MAX_ZOOM = 9.5;
+/** From this zoom, place names are drawn over the columns so a town is never hidden by its own cell. */
+const LABELS_ON_TOP_ZOOM = 6.5;
+const ELEVATION = 60000;
 
 interface Props {
   totals: CellTotal[];
@@ -25,10 +40,14 @@ interface Props {
   ramp?: Rgb[];
   /** A click outside drawing mode: the cell under the pointer, or `null` on empty ground. */
   onPick?: (cell: string | null) => void;
+  /** Flies to these cells and links the anchor to {@link panel} with a line. */
+  focus?: MapFocus | null;
+  /** The floating panel the focus belongs to; the camera leaves its part of the map free. */
+  panel?: RefObject<HTMLElement | null>;
 }
 
 export default function HexMap(props: Props) {
-  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick } = props;
+  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, focus = null, panel } = props;
   const ramp = props.ramp ?? VIRIDIS;
   const container = useRef<HTMLDivElement>(null);
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0);
@@ -57,15 +76,45 @@ export default function HexMap(props: Props) {
     if (drawing) setViewState((state) => ({ ...state, pitch: 0, bearing: 0 }));
   }, [drawing]);
 
+  // The panel is mounted in the same commit as the focus, so its size is
+  // known here; the camera fits the cells in the part of the map left free.
+  useEffect(() => {
+    const element = container.current;
+    if (!focus || !element || element.clientWidth === 0 || element.clientHeight === 0) return;
+    const points = focus.cells.flatMap((cell) => cellToBoundary(cell).map(([lat, lng]): LngLat => [lng, lat]));
+    if (points.length === 0) return;
+    const { west, south, east, north } = boundsOf(points);
+    const rect = element.getBoundingClientRect();
+    const viewport = new WebMercatorViewport({ width: rect.width, height: rect.height });
+    const { longitude, latitude, zoom } = viewport.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: focusPadding(rect, panel?.current?.getBoundingClientRect() ?? null) },
+    );
+    setViewState((state) => ({
+      ...state,
+      longitude,
+      latitude,
+      zoom: Math.min(zoom, FOCUS_MAX_ZOOM),
+      ...(reducedMotion ? {} : { transitionDuration: 1100, transitionInterpolator: new FlyToInterpolator({ curve: 1.2 }) }),
+    }));
+    // Only a new focus moves the camera; dragging afterwards is the visitor's.
+  }, [focus]);
+
   // Same scale for raw and harmonized so the toggle shows the real difference.
   const max = useMemo(() => totals.reduce((value, cell) => Math.max(value, cell.harmonized, cell.stacked), 0), [totals]);
 
+  const value = (cell: CellTotal) => (showRaw ? cell.stacked : cell.harmonized);
+  const closeUp = viewState.zoom >= LABELS_ON_TOP_ZOOM;
+
   const layers = useMemo(() => {
-    const value = (cell: CellTotal) => (showRaw ? cell.stacked : cell.harmonized);
     return [
       rasterLayer(`basemap-${theme}`, BASEMAP[theme].base),
-      // Place names sit under the columns: context, never covering the data.
-      rasterLayer(`labels-${theme}`, BASEMAP[theme].labels),
+      // Seen from afar, place names sit under the columns: context, never
+      // covering the data. Close up they go on top, so a town can be found.
+      !closeUp && rasterLayer(`labels-${theme}`, BASEMAP[theme].labels),
       new H3HexagonLayer<CellTotal>({
         id: "cells",
         data: totals,
@@ -87,8 +136,24 @@ export default function HexMap(props: Props) {
         updateTriggers: { getElevation: [showRaw, max], getFillColor: [showRaw, max, selected, ramp] },
       }),
       ...areaLayers(area, draft, theme),
+      closeUp && rasterLayer(`labels-top-${theme}`, BASEMAP[theme].labels, ON_TOP),
     ];
-  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp]);
+  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp]);
+
+  // The line follows the camera, so it is recomputed on every view change.
+  const anchorTotal = useMemo(() => totals.find((cell) => cell.cell === focus?.anchor), [totals, focus]);
+  let leader: { from: Point; to: Point } | null = null;
+  const element = container.current;
+  const panelElement = panel?.current;
+  if (focus?.anchor && element && panelElement && element.clientWidth > 0) {
+    const rect = element.getBoundingClientRect();
+    const [lat, lng] = cellToLatLng(focus.anchor);
+    const top = anchorTotal ? sqrtScale(value(anchorTotal), max) * ELEVATION : 0;
+    const viewport = new WebMercatorViewport({ ...viewState, width: rect.width, height: rect.height });
+    const [x, y] = viewport.project([lng, lat, top]);
+    const from: Point = [x ?? 0, y ?? 0];
+    leader = { from, to: leaderEnd(from, rect, panelElement.getBoundingClientRect()) };
+  }
 
   const tooltip = ({ object }: PickingInfo<CellTotal>) =>
     object && {
@@ -111,6 +176,13 @@ export default function HexMap(props: Props) {
           } else onPick?.((info.object as CellTotal | undefined)?.cell ?? null);
         }}
       />
+      {leader && (
+        <svg className="map__leader" aria-hidden="true">
+          <line x1={leader.from[0]} y1={leader.from[1]} x2={leader.to[0]} y2={leader.to[1]} />
+          <circle cx={leader.from[0]} cy={leader.from[1]} r="4" />
+          <circle cx={leader.to[0]} cy={leader.to[1]} r="2.5" />
+        </svg>
+      )}
       <div className="map__controls">
         <button
           type="button"

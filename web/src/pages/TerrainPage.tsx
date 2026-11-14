@@ -5,10 +5,11 @@ import { CalendarHeatmap, countScaleMax, type CalendarView } from "../components
 import { Legend } from "../components/Legend";
 import { MonthTimeline } from "../components/MonthTimeline";
 import { SectorOverview } from "../components/SectorOverview";
+import type { MapFocus } from "../components/HexMap";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { useSectorCalendars } from "../hooks/useSectorCalendars";
-import { cellTotals, yearlyTotals } from "../util/aggregation";
+import { cellTotals, yearlyTotals, type CellTotal } from "../util/aggregation";
 import type { Area, LngLat } from "../util/area";
 import { FIRE } from "../util/colorRamp";
 import { criticalPeriod } from "../util/criticalPeriod";
@@ -44,6 +45,13 @@ interface Props {
   onUnitChange: (unit: Unit) => void;
 }
 
+const busiestCell = (totals: CellTotal[], cells: string[]): string | null => {
+  const wanted = new Set(cells);
+  let best: CellTotal | null = null;
+  for (const cell of totals) if (wanted.has(cell.cell) && (!best || cell.harmonized > best.harmonized)) best = cell;
+  return best?.cell ?? null;
+};
+
 const percent = (change: number) => `${change >= 0 ? "+" : "−"}${Math.abs(Math.round(change * 100))} %`;
 
 /**
@@ -57,7 +65,10 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
   const reducedMotion = usePrefersReducedMotion();
   /** The zone whose dashboard is open; `null` while the map is shown alone. */
   const [sectorId, setSectorId] = useState<string | null>(null);
+  /** The tapped cell: the camera closes in on it and the line starts there. */
+  const [anchor, setAnchor] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [month, setMonth] = useState(region.lastMonth);
   const [playing, setPlaying] = useState(false);
@@ -84,13 +95,41 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
     const cells = sectorId === null ? null : cellsOfSector(sectors, sectorId);
     return cells ? new Set(cells) : null;
   }, [sectors, sectorId]);
+  const mapFocus = useMemo<MapFocus | null>(() => {
+    if (sectorId === null) return null;
+    // A tap closes in on that cell, near enough to read the towns in it; the
+    // list frames the whole zone, as it names no cell.
+    if (anchor && selected?.has(anchor)) return { cells: [anchor], anchor };
+    return { cells: [...(selected ?? new Set(region.centers.map((cell) => cell.cell)))], anchor };
+  }, [sectorId, anchor, selected, region.centers]);
   const sectorOfCell = useMemo(
     () => new Map(sectors.flatMap((sector) => sector.cells.map((cell) => [cell, sector.id] as const))),
     [sectors],
   );
 
-  const close = useCallback(() => setSectorId(null), []);
-  const pick = useCallback((cell: string | null) => setSectorId(cell ? (sectorOfCell.get(cell) ?? null) : null), [sectorOfCell]);
+  const close = useCallback(() => {
+    setSectorId(null);
+    setAnchor(null);
+  }, []);
+  const pick = useCallback(
+    (cell: string | null) => {
+      const id = cell ? sectorOfCell.get(cell) : undefined;
+      if (!cell || !id) return close();
+      setSectorId(id);
+      setAnchor(cell);
+    },
+    [sectorOfCell, close],
+  );
+  /** Picked from the list instead of the map: the zone's busiest cell stands in for the tap. */
+  const choose = useCallback(
+    (id: string | null) => {
+      const cells = id === null ? null : cellsOfSector(sectors, id);
+      if (id === null) return close();
+      setSectorId(id);
+      setAnchor(cells ? busiestCell(totals, cells) : null);
+    },
+    [sectors, totals, close],
+  );
 
   useEffect(() => {
     if (sectorId === null) return;
@@ -138,6 +177,8 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             reducedMotion={reducedMotion}
             ramp={FIRE}
             onPick={pick}
+            focus={mapFocus}
+            panel={panelRef}
           />
         </Suspense>
 
@@ -155,7 +196,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             className="terrain__zone"
             aria-label="Zone"
             value={sectorId ?? ""}
-            onChange={(event) => setSectorId(event.target.value || null)}
+            onChange={(event) => choose(event.target.value || null)}
           >
             <option value="">Tap a zone on the map</option>
             {zones.map((zone) => (
@@ -168,7 +209,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
         </div>
 
         {current && (
-          <aside className="terrain__panel" aria-labelledby="terrain-zone-title">
+          <aside ref={panelRef} className="terrain__panel" aria-labelledby="terrain-zone-title">
             <div className="terrain__head">
               <div>
                 <h2 id="terrain-zone-title" ref={headingRef} tabIndex={-1} className="panel__title">

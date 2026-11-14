@@ -29,7 +29,8 @@ export const BASEMAP = {
 export const SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 export const SATELLITE_ATTRIBUTION = "Imagery: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 
-export function rasterLayer(id: string, url: string) {
+/** `parameters` lets a layer draw over the 3D columns, as place names do close up. */
+export function rasterLayer(id: string, url: string, parameters?: typeof ON_TOP) {
   return new TileLayer<ImageBitmap>({
     id,
     data: url,
@@ -43,6 +44,7 @@ export function rasterLayer(id: string, url: string) {
         data: undefined,
         image: sub.data,
         bounds: [min[0] ?? 0, min[1] ?? 0, max[0] ?? 0, max[1] ?? 0],
+        ...(parameters && { parameters }),
       });
     },
   });
