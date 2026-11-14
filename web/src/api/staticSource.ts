@@ -6,6 +6,8 @@ import type {
   CellsMonthly,
   CriticalPeriod,
   DatasetMeta,
+  EarlyWarning,
+  Forecast,
   MorningRecord,
   RegionData,
   Unit,
@@ -14,6 +16,14 @@ import type {
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load ${url} (${response.status})`);
+  return (await response.json()) as T;
+}
+
+/** A product that is not published yet is a normal state, not an error. */
+export async function getOptionalJson<T>(url: string): Promise<T | null> {
+  const response = await fetch(url);
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Could not load ${url} (${response.status})`);
   return (await response.json()) as T;
 }
@@ -62,5 +72,13 @@ export class StaticCalendarSource implements CalendarDataSource {
     const selected = query.cells === null ? null : new Set(query.cells);
     // Anomalies use every year as reference, so the range is applied last.
     return inRange(aggregateCalendar(cells, region, selected), query.start, query.end);
+  }
+
+  earlyWarning(): Promise<EarlyWarning | null> {
+    return getOptionalJson<EarlyWarning>(`${this.baseUrl}/early_warning.json`);
+  }
+
+  forecast(): Promise<Forecast | null> {
+    return getOptionalJson<Forecast>(`${this.baseUrl}/forecast.json`);
   }
 }

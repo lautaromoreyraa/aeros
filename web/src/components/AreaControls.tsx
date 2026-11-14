@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { parseBox, type Area, type BoundingBox, type BoxErrors } from "../util/area";
 
 export type AreaMode = "region" | "draw" | "box";
@@ -26,10 +26,12 @@ const round = (value: number) => String(Math.round(value * 100) / 100);
 
 export function AreaControls(props: Props) {
   const { mode, onModeChange, draftVertices, selectedCells, totalCells } = props;
+  // Several views can show these controls at once; ids and the radio group must stay apart.
+  const id = useId();
   return (
-    <section className="panel" aria-labelledby="area-title">
+    <section className="panel" aria-labelledby={`${id}-title`}>
       <div className="panel__head">
-        <h2 id="area-title" className="panel__title">
+        <h2 id={`${id}-title`} className="panel__title">
           Area
         </h2>
         <span className="panel__meta" aria-live="polite">
@@ -41,7 +43,7 @@ export function AreaControls(props: Props) {
           <label key={option.value}>
             <input
               type="radio"
-              name="area-mode"
+              name={`${id}-mode`}
               value={option.value}
               checked={mode === option.value}
               onChange={() => onModeChange(option.value)}
@@ -82,6 +84,7 @@ function BoxForm({ initial, onApply }: { initial: BoundingBox; onApply: (box: Bo
     east: round(initial.east),
   });
   const [errors, setErrors] = useState<BoxErrors>({});
+  const id = useId();
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -100,11 +103,11 @@ function BoxForm({ initial, onApply }: { initial: BoundingBox; onApply: (box: Bo
         inputMode="decimal"
         value={fields[key]}
         aria-invalid={errors[key] ? true : undefined}
-        aria-describedby={errors[key] ? `box-${key}-error` : undefined}
+        aria-describedby={errors[key] ? `${id}-${key}-error` : undefined}
         onChange={(event) => setFields((previous) => ({ ...previous, [key]: event.target.value }))}
       />
       {errors[key] && (
-        <span id={`box-${key}-error`} className="field-error">
+        <span id={`${id}-${key}-error`} className="field-error">
           {errors[key]}
         </span>
       )}

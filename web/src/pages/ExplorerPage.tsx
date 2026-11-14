@@ -1,17 +1,18 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import type { CalendarQuery, CalendarRecord, Unit } from "../api/types";
 import { AnnualChart } from "../components/AnnualChart";
-import { AreaControls, type AreaMode } from "../components/AreaControls";
+import { AreaControls } from "../components/AreaControls";
 import { CalendarHeatmap, countScaleMax, type CalendarView } from "../components/CalendarHeatmap";
 import { CriticalPeriodNote } from "../components/CriticalPeriodNote";
 import { DateRange } from "../components/DateRange";
 import { Legend } from "../components/Legend";
 import { MonthDetail } from "../components/MonthDetail";
 import { useCalendar } from "../hooks/useCalendar";
+import type { AreaSelection } from "../hooks/useAreaSelection";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { cellTotals, inRange } from "../util/aggregation";
-import { boundsOf, cellsInArea, type Area, type BoundingBox, type LngLat } from "../util/area";
+import { areaLabel, boundsOf, cellsInArea, type BoundingBox } from "../util/area";
 import { criticalPeriod } from "../util/criticalPeriod";
 import { calendarToCsv, csvFileName } from "../util/csv";
 import { SATELLITE_NAMES, formatCount, unitLabel } from "../util/format";
@@ -26,11 +27,6 @@ const VIEWS: { value: CalendarView; label: string }[] = [
 ];
 
 const UNITS: Unit[] = ["hotspots", "cell_days"];
-
-function areaLabel(area: Area, cells: number): string {
-  if (area.kind === "region") return "Gran Chaco study region";
-  return `${area.kind === "box" ? "Lat-lon box" : "Drawn area"} (${cells} cells)`;
-}
 
 function download(text: string, fileName: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
@@ -49,13 +45,12 @@ interface Props {
   theme: "light" | "dark";
   unit: Unit;
   onUnitChange: (unit: Unit) => void;
+  selection: AreaSelection;
 }
 
-export function ExplorerPage({ region, theme, unit, onUnitChange }: Props) {
+export function ExplorerPage({ region, theme, unit, onUnitChange, selection: chosen }: Props) {
   const reducedMotion = usePrefersReducedMotion();
-  const [mode, setMode] = useState<AreaMode>("region");
-  const [area, setArea] = useState<Area>({ kind: "region" });
-  const [draft, setDraft] = useState<LngLat[]>([]);
+  const { mode, area, draft } = chosen;
   const [range, setRange] = useState({ start: region.firstMonth, end: region.lastMonth });
   const [view, setView] = useState<CalendarView>("harmonized");
   const [picked, setPicked] = useState<CalendarRecord | null>(null);
@@ -101,21 +96,6 @@ export function ExplorerPage({ region, theme, unit, onUnitChange }: Props) {
   const units = unitLabel(region.unit);
   const reference = region.meta?.reference_chain.map((name) => SATELLITE_NAMES[name] ?? name).join(", then ");
 
-  const changeMode = useCallback((next: AreaMode) => {
-    setMode(next);
-    setDraft([]);
-    if (next === "region") setArea({ kind: "region" });
-  }, []);
-
-  useEffect(() => {
-    if (mode !== "draw") return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDraft([]);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode]);
-
   const selectedCount = selection ? selection.size : region.centers.length;
 
   return (
@@ -131,7 +111,7 @@ export function ExplorerPage({ region, theme, unit, onUnitChange }: Props) {
             area={area}
             drawing={mode === "draw"}
             draft={draft}
-            onAddVertex={(point) => setDraft((previous) => [...previous, point])}
+            onAddVertex={chosen.addVertex}
             theme={theme}
             reducedMotion={reducedMotion}
           />
@@ -147,15 +127,12 @@ export function ExplorerPage({ region, theme, unit, onUnitChange }: Props) {
       <aside className="explorer__side">
         <AreaControls
           mode={mode}
-          onModeChange={changeMode}
+          onModeChange={chosen.changeMode}
           area={area}
           draftVertices={draft.length}
-          onFinishDrawing={() => {
-            setArea({ kind: "polygon", ring: draft });
-            setDraft([]);
-          }}
-          onCancelDrawing={() => setDraft([])}
-          onApplyBox={(box) => setArea({ kind: "box", box })}
+          onFinishDrawing={chosen.finishDrawing}
+          onCancelDrawing={chosen.cancelDrawing}
+          onApplyBox={chosen.applyBox}
           regionBounds={regionBounds}
           selectedCells={selectedCount}
           totalCells={region.centers.length}

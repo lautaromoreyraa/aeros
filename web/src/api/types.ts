@@ -117,12 +117,88 @@ export interface RegionData {
   morning: MorningRecord[];
 }
 
+/** Observed against expected for the early-warning window, region-wide or for one cell. */
+export interface EarlyWarningScore {
+  observed: number;
+  expected: number;
+  /** `null` when nothing was expected (the test then uses a small floor rate). */
+  ratio: number | null;
+  /** One-sided Poisson, P(X >= observed | expected). */
+  p_value: number;
+}
+
+export interface EarlyWarningDay {
+  date: string;
+  /** "gap": no VIIRS source returned a single detection for the region that day. */
+  status: "ok" | "gap" | string;
+  satellite: string | null;
+  detections: number | null;
+}
+
+/**
+ * `early_warning.json`, written by the daily FIRMS NRT refresh. Days without
+ * data are gaps left out of both sides of the comparison, never zero fire.
+ */
+export interface EarlyWarning {
+  generated_at: string;
+  /** First and last day of the window, "YYYY-MM-DD", inclusive. */
+  window: [string, string];
+  /** The data days themselves, or only how many there were. */
+  days_with_data: string[] | number;
+  gap_days?: string[];
+  days?: EarlyWarningDay[];
+  method?: { alpha?: number; past_years?: number[]; [key: string]: unknown };
+  /** `null` when there was no data day or no climatology to compare with. */
+  region: EarlyWarningScore | null;
+  /** Only the cells that passed the test. */
+  cells: (EarlyWarningScore & { cell: string })[];
+}
+
+/** One forecast week for the whole region. */
+export interface ForecastWeek {
+  /** Monday of the target week, "YYYY-MM-DD". */
+  week_start: string;
+  horizon: number;
+  expected: number;
+  /** 90 % interval. */
+  low: number;
+  high: number;
+  /** Mean of the same week of the year in earlier years. */
+  climatology: number;
+}
+
+/** Column order of {@link Forecast.cells}[].values. */
+export type ForecastCellRow = [
+  horizon: number,
+  expected: number,
+  low: number,
+  high: number,
+  ratio_to_climatology: number | null,
+];
+
+/**
+ * `forecast.json`, the 1-4 week statistical forecast. Cells whose expected
+ * value is negligible at every horizon are omitted.
+ */
+export interface Forecast {
+  generated_at?: string;
+  /** Monday of the last observed week the forecast starts from. */
+  issued_week: string;
+  unit: Unit;
+  horizons: number[];
+  region: ForecastWeek[];
+  cells: { cell: string; values: ForecastCellRow[] }[];
+}
+
 /**
  * The one seam between the UI and wherever the numbers come from. The static
  * implementation aggregates the demo artifacts in the browser; the AWS one will
  * send the same query to `POST /calendar`. Each unit is a separate dataset.
+ * The early warning and the forecast resolve to `null` when none is published.
  */
 export interface CalendarDataSource {
   loadRegion(unit: Unit): Promise<RegionData>;
   calendar(query: CalendarQuery): Promise<CalendarRecord[]>;
+  earlyWarning(): Promise<EarlyWarning | null>;
+  forecast(): Promise<Forecast | null>;
 }

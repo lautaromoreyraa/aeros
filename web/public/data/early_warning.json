@@ -1,0 +1,135 @@
+{
+ "generated_at": "2026-11-13T06:20:00Z",
+ "window": [
+  "2026-11-06",
+  "2026-11-12"
+ ],
+ "days_with_data": [
+  "2026-11-06",
+  "2026-11-07",
+  "2026-11-09",
+  "2026-11-10",
+  "2026-11-11",
+  "2026-11-12"
+ ],
+ "gap_days": [
+  "2026-11-08"
+ ],
+ "days": [
+  {
+   "date": "2026-11-06",
+   "status": "ok",
+   "satellite": "NOAA-20",
+   "detections": 178
+  },
+  {
+   "date": "2026-11-07",
+   "status": "ok",
+   "satellite": "NOAA-20",
+   "detections": 259
+  },
+  {
+   "date": "2026-11-08",
+   "status": "gap",
+   "satellite": null,
+   "detections": null
+  },
+  {
+   "date": "2026-11-09",
+   "status": "ok",
+   "satellite": "NOAA-21",
+   "detections": 150
+  },
+  {
+   "date": "2026-11-10",
+   "status": "ok",
+   "satellite": "NOAA-20",
+   "detections": 214
+  },
+  {
+   "date": "2026-11-11",
+   "status": "ok",
+   "satellite": "NOAA-20",
+   "detections": 123
+  },
+  {
+   "date": "2026-11-12",
+   "status": "ok",
+   "satellite": "NOAA-20",
+   "detections": 224
+  }
+ ],
+ "method": {
+  "unit": "VIIRS-equivalent hotspots",
+  "expected": "median over past years of the same calendar days",
+  "test": "one-sided Poisson, P(X >= observed | expected)",
+  "alpha": 0.01,
+  "expected_floor": 0.5,
+  "past_years": [
+   2012,
+   2013,
+   2014,
+   2015,
+   2016,
+   2017,
+   2018,
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025
+  ]
+ },
+ "region": {
+  "observed": 70,
+  "expected": 43.046,
+  "ratio": 1.626,
+  "p_value": 9.878e-05
+ },
+ "cells": [
+  {
+   "cell": "84b34c7ffffffff",
+   "observed": 10,
+   "expected": 1.959,
+   "ratio": 5.103,
+   "p_value": 3.928e-05
+  },
+  {
+   "cell": "84b34b7ffffffff",
+   "observed": 9,
+   "expected": 1.776,
+   "ratio": 5.068,
+   "p_value": 9.923e-05
+  },
+  {
+   "cell": "84a9695ffffffff",
+   "observed": 7,
+   "expected": 1.593,
+   "ratio": 4.395,
+   "p_value": 0.001302
+  },
+  {
+   "cell": "84a96b9ffffffff",
+   "observed": 6,
+   "expected": 1.177,
+   "ratio": 5.099,
+   "p_value": 0.00136
+  },
+  {
+   "cell": "84b34e9ffffffff",
+   "observed": 6,
+   "expected": 1.275,
+   "ratio": 4.704,
+   "p_value": 0.00203
+  },
+  {
+   "cell": "84b2649ffffffff",
+   "observed": 5,
+   "expected": 1.212,
+   "ratio": 4.127,
+   "p_value": 0.00805
+  }
+ ]
+}
