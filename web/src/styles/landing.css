@@ -59,6 +59,27 @@
   color: var(--ash);
 }
 
+.landing__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-decoration: none;
+}
+
+/* Telegram's own blue, so the channel is recognised before the label is read. */
+.landing__cta--telegram {
+  border-color: #229ed9;
+  background: #229ed9;
+  color: #fff;
+}
+
+.landing__cta--telegram:hover {
+  border-color: #229ed9;
+  background: transparent;
+  color: #8fd3f5;
+}
+
 .landing__cta--quiet {
   min-height: 40px;
   padding: 0 var(--space-5);
@@ -126,13 +147,27 @@
 }
 
 .hero__title {
-  max-width: 14ch;
+  display: grid;
+  gap: var(--space-3);
   font-family: var(--font-display);
+}
+
+/* The product name is the largest thing on the page, set wide like a mark. */
+.hero__name {
   font-stretch: 125%;
-  font-weight: 750;
-  font-size: clamp(2.6rem, 7vw, 6.5rem);
-  line-height: 0.92;
-  letter-spacing: -0.025em;
+  font-weight: 800;
+  font-size: clamp(4rem, 13vw, 11rem);
+  line-height: 0.8;
+  letter-spacing: -0.045em;
+}
+
+.hero__claim {
+  max-width: 18ch;
+  font-stretch: 118%;
+  font-weight: 650;
+  font-size: clamp(1.6rem, 3.4vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.015em;
 }
 
 .hero__lede {

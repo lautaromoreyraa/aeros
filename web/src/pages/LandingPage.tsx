@@ -9,13 +9,32 @@ import { cellTotals } from "../util/aggregation";
 import { alertMessage } from "../util/alertMessage";
 import { alertDecision, formatDay } from "../util/earlyWarning";
 import { unitLabel } from "../util/format";
-import { yearOf } from "../util/months";
 import { demoSectors } from "../util/sectors";
 
-const IntroScene = lazy(() => import("../components/IntroScene"));
+const EarthScene = lazy(() => import("../components/EarthScene"));
 const SatelliteTerrain = lazy(() => import("../components/SatelliteTerrain"));
 
 const NO_FLAGS: ReadonlySet<string> = new Set();
+
+/** Complete years of the FIRMS archive behind the record, 2000 to 2025. */
+const RECORD_YEARS = 26;
+
+/**
+ * The alert bot's t.me link, set at build time once the bot exists; until
+ * then the button leads to the sign-up section on this page.
+ */
+const TELEGRAM_BOT = import.meta.env.VITE_TELEGRAM_BOT_URL as string | undefined;
+const TELEGRAM_URL = TELEGRAM_BOT || "#alerts";
+const TELEGRAM_EXTERNAL = Boolean(TELEGRAM_BOT);
+
+const TelegramIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+    <path
+      fill="currentColor"
+      d="M21.9 4.3 18.7 19.4c-.2 1.1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.3-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.2 13 1.4 11.5c-1-.3-1-1 .2-1.5L20.5 2.8c.9-.3 1.6.2 1.4 1.5Z"
+    />
+  </svg>
+);
 
 interface Props {
   region: LoadedRegion | null;
@@ -58,7 +77,6 @@ export function LandingPage({ region, warning, onEnter }: Props) {
     [decision.cells],
   );
   const message = useMemo(() => report && alertMessage(report, decision, sectors), [report, decision, sectors]);
-  const years = region ? yearOf(region.lastMonth) - yearOf(region.firstMonth) + 1 : null;
 
   return (
     <div className="landing">
@@ -79,23 +97,28 @@ export function LandingPage({ region, warning, onEnter }: Props) {
           <Suspense fallback={<div className="hero__canvas hero__canvas--fallback" />}>
             {region && (
               <div className="hero__canvas">
-                <IntroScene cells={columns} still={still} paused={!heroVisible} />
+                <EarthScene cells={columns} still={still} paused={!heroVisible} />
               </div>
             )}
           </Suspense>
           <div className="hero__veil" />
           <div className="hero__copy">
             <h1 id="hero-title" className="hero__title">
-              Early warning for the Gran Chaco fires
+              <span className="hero__name">aeros</span>
+              <span className="hero__claim">Fire early warning for the Gran Chaco</span>
             </h1>
             <p className="hero__lede">
-              <span>An agent that reads every satellite pass over the Chaco</span>{" "}
+              <span>An agent that watches the fire satellites every day</span>{" "}
               <span>and warns you the day an area burns past its normal.</span>
             </p>
             <div className="hero__actions">
               <button type="button" className="landing__cta" onClick={onEnter}>
                 Open the dashboard
               </button>
+              <a className="landing__cta landing__cta--telegram" href={TELEGRAM_URL} {...(TELEGRAM_EXTERNAL && { target: "_blank", rel: "noopener" })}>
+                <TelegramIcon />
+                Get alerts on Telegram
+              </a>
               <a className="hero__more" href="#record">
                 See the record
               </a>
@@ -120,12 +143,14 @@ export function LandingPage({ region, warning, onEnter }: Props) {
           </div>
           <div className="record__copy">
             <h2 id="record-title" className="landing__heading">
-              {years ? `${years} years of fire` : "Every year of fire"}, on the ground it burned
+              {RECORD_YEARS} years of fire, on the ground it burned
             </h2>
             <p>
-              Each column is one H3 cell of the Gran Chaco. Its height and colour are the harmonized{" "}
-              {region ? unitLabel(region.unit) : "hotspots"} of the whole record: MODIS and VIIRS counted on one
-              scale, so 2004 and 2024 can be compared.
+              Each column is one H3 cell of the Gran Chaco; its height and colour, the harmonized{" "}
+              {region ? unitLabel(region.unit) : "hotspots"} of the whole record. MODIS and VIIRS were joined on one
+              scale to raise early warnings that help fire brigades, land managers and local governments tell a worse
+              season from a change of satellite, plan for the critical months and act where an area burns above its
+              normal.
             </p>
             {flagged.size > 0 && report && (
               <p className="record__flag">
@@ -171,7 +196,7 @@ export function LandingPage({ region, warning, onEnter }: Props) {
 
       <footer className="landing__footer">
         Hotspot counts are model outputs aggregated to H3 cells. The early warning is statistical, not an official
-        fire alert.
+        fire alert. Earth imagery: NASA Visible Earth, Blue Marble and Black Marble.
       </footer>
     </div>
   );
