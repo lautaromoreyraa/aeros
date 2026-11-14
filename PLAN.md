@@ -102,7 +102,7 @@ flowchart LR
 | AWS infrastructure inside the Free plan, calendar/CSV API, daily FIRMS refresh with early warning | in `develop` (29 CDK + 63 Lambda tests, `cdk synth` green); not deployed |
 | Team context MCP server | deployed at `mcp.aeros.lautaromoreyra.dev` (D1 migrated, `workers.dev` off); behind a Cloudflare Access application (deny by default); people and service tokens are added through Access policies |
 | CI | `verify` workflow runs model, web, MCP and AWS checks |
-| Real FIRMS archive for the Gran Chaco | to download: yearly country summaries (AR, PY, BO), MODIS C6.1 + VIIRS SNPP + NOAA-20 |
+| Real FIRMS archive for the Gran Chaco | `aeros fetch`: yearly country summaries (AR, PY, BO) to the last closed year, MODIS C6.1 + VIIRS SNPP + NOAA-20; `aeros fetch-recent` (needs `FIRMS_MAP_KEY`): current year through the area API, standard processing then NRT |
 | AWS deploy | pending: account, `cdk bootstrap`, FIRMS MAP_KEY in SSM; reserved concurrency may exceed a new account's limit of 10 |
 | Biome as a model feature, Theil–Sen trend | optional |
 

@@ -1,5 +1,6 @@
 import io
 import urllib.error
+from datetime import date, timedelta
 
 import pytest
 
@@ -54,3 +55,73 @@ def test_download_raises_on_server_errors(tmp_path):
     with pytest.raises(urllib.error.HTTPError):
         archive.download([archive.ArchiveFile("modis", 2000, "Paraguay")], tmp_path, opener)
     assert not list(tmp_path.iterdir())
+
+
+AVAILABLE = {
+    "MODIS_SP": (date(2000, 11, 1), date(2026, 8, 31)),
+    "MODIS_NRT": (date(2026, 9, 1), date(2026, 11, 14)),
+    "VIIRS_SNPP_SP": (date(2012, 1, 20), date(2026, 7, 31)),
+    "VIIRS_SNPP_NRT": (date(2026, 8, 1), date(2026, 11, 2)),
+    "VIIRS_NOAA20_SP": (date(2018, 4, 1), date(2026, 7, 31)),
+    "VIIRS_NOAA20_NRT": (date(2026, 8, 1), date(2026, 11, 14)),
+}
+
+
+def _days(requests):
+    return [r.start + timedelta(days=i) for r in requests for i in range(r.days)]
+
+
+def test_recent_plan_takes_each_day_from_one_processing_level_only():
+    requests = archive.recent_plan(
+        AVAILABLE, archive.STUDY_AREA, date(2026, 1, 1), date(2026, 11, 14)
+    )
+    assert all(r.days <= archive.MAX_DAYS for r in requests)
+    for (sp, _), (nrt, _) in archive.RECENT_SOURCES:
+        sp_days = _days([r for r in requests if r.source == sp])
+        nrt_days = _days([r for r in requests if r.source == nrt])
+        assert len(set(sp_days)) == len(sp_days)
+        assert not set(sp_days) & set(nrt_days)
+        assert min(sp_days) == date(2026, 1, 1)
+        assert max(sp_days) == AVAILABLE[sp][1]
+        assert max(nrt_days) == AVAILABLE[nrt][1]
+    snpp = [r for r in requests if r.source == "VIIRS_SNPP_NRT"]
+    assert snpp[-1].end == date(2026, 11, 2)
+
+
+def test_recent_file_names_are_the_ones_the_loader_recognizes():
+    for (_, sp_prefix), (_, nrt_prefix) in archive.RECENT_SOURCES:
+        for prefix in (sp_prefix, nrt_prefix):
+            r = archive.AreaRequest("X", prefix, archive.STUDY_AREA, date(2026, 3, 1), 5)
+            assert sensors.instrument_from_filename(r.name) in {"MODIS", "VIIRS"}
+
+
+def test_recent_plan_rejects_a_malformed_area():
+    with pytest.raises(ValueError):
+        archive.recent_plan(AVAILABLE, "south america", date(2026, 1, 1), date(2026, 1, 5))
+
+
+def test_download_recent_refreshes_unsettled_chunks_and_hides_the_key(tmp_path):
+    today = date(2026, 11, 14)
+    old = archive.AreaRequest("MODIS_SP", "fire_archive_m-c61", "1,2,3,4", date(2026, 1, 1), 5)
+    fresh = archive.AreaRequest("MODIS_NRT", "fire_nrt_m-c61", "1,2,3,4", date(2026, 11, 13), 2)
+    (tmp_path / old.name).write_text("kept")
+    (tmp_path / fresh.name).write_text("stale")
+    requested = []
+
+    def opener(url):
+        requested.append(url)
+        return io.BytesIO(b"latitude,longitude,acq_date\n-27,-58,2026-11-13\n")
+
+    report = archive.download_recent([old, fresh], tmp_path, "SECRET", today, opener)
+    assert report == {"downloaded": [fresh.name], "present": [old.name]}
+    assert (tmp_path / fresh.name).read_text().startswith("latitude")
+    assert requested == [f"{archive.API_URL}/area/csv/SECRET/MODIS_NRT/1,2,3,4/2/2026-11-13"]
+
+    def refusing(url):
+        return io.BytesIO(b"Invalid MAP_KEY.")
+
+    bad = archive.AreaRequest("MODIS_NRT", "fire_nrt_m-c61", "1,2,3,4", date(2026, 11, 1), 5)
+    with pytest.raises(archive.FirmsApiError) as error:
+        archive.download_recent([bad], tmp_path, "SECRET", today, refusing)
+    assert "SECRET" not in str(error.value)
+    assert not (tmp_path / bad.name).exists()
