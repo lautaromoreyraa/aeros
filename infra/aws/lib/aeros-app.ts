@@ -37,6 +37,9 @@ export function buildAeros(app: App, account?: string): AerosStacks {
     firmsMapKeyParameter: config.firmsMapKeyParameter,
     firmsArea: config.firmsArea,
     reservedConcurrency: config.refreshReservedConcurrency,
+    webUrl: config.webUrl,
+    alertRegionName: config.alertRegionName,
+    alertEmailIdentity: config.alertEmailIdentity,
   });
   const budget = new BudgetStack(app, "AerosBudget", {
     env,

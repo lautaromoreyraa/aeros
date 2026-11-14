@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -17,6 +18,19 @@ export const REFRESH_LAMBDA_DIR = path.join(here, "..", "lambdas", "refresh");
 /** Suomi NPP stopped on 2026-11-02; NOAA-20 and NOAA-21 carry VIIRS now. */
 export const FIRMS_SOURCES = ["MODIS_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT"];
 
+/**
+ * Alert channel settings, created by hand in Parameter Store (standard tier):
+ * e-mail sender and comma-separated recipients as String, Telegram bot token
+ * and chat id as SecureString. A channel whose parameters are missing is
+ * skipped at run time, so none of them has to exist for the stack to deploy.
+ */
+export const ALERT_PARAMETERS = {
+  emailFrom: "/aeros/alerts/email-from",
+  emailTo: "/aeros/alerts/email-to",
+  telegramToken: "/aeros/alerts/telegram-token",
+  telegramChatId: "/aeros/alerts/telegram-chat-id",
+} as const;
+
 export interface RefreshStackProps extends StackProps {
   readonly dataBucket: s3.IBucket;
   /**
@@ -28,6 +42,11 @@ export interface RefreshStackProps extends StackProps {
   readonly firmsArea: string;
   /** 0 leaves the function unreserved. */
   readonly reservedConcurrency: number;
+  /** Linked from every alert message. */
+  readonly webUrl: string;
+  readonly alertRegionName: string;
+  /** Verified SES identity alerts are sent from; no SES permission without it. */
+  readonly alertEmailIdentity?: string;
 }
 
 /**
@@ -52,13 +71,13 @@ export class RefreshStack extends Stack {
     });
 
     this.handler = new lambda.Function(this, "RefreshHandler", {
-      description: "Daily FIRMS NRT download and early warning",
+      description: "Daily FIRMS NRT download, early warning and fire alerts",
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: "refresh.handler",
       // Allow-list: tests, caches and tooling config never reach the function.
       code: lambda.Code.fromAsset(REFRESH_LAMBDA_DIR, {
-        exclude: ["*", ".*", "!refresh.py", "!early_warning.py"],
+        exclude: ["*", ".*", "!refresh.py", "!early_warning.py", "!alerts.py"],
       }),
       layers: [new PythonDepsLayer(this, "PythonDeps")],
       memorySize: 512,
@@ -78,6 +97,13 @@ export class RefreshStack extends Stack {
         CELLS_KEY: DATA_LAYOUT.cellsKey,
         HOTSPOTS_KEY: DATA_LAYOUT.hotspotsKey,
         DUCKDB_HTTPFS: "/opt/duckdb/httpfs.duckdb_extension",
+        ALERT_STATE_KEY: DATA_LAYOUT.alertStateKey,
+        ALERT_WEB_URL: props.webUrl,
+        ALERT_REGION_NAME: props.alertRegionName,
+        ALERT_EMAIL_FROM_PARAMETER: ALERT_PARAMETERS.emailFrom,
+        ALERT_EMAIL_TO_PARAMETER: ALERT_PARAMETERS.emailTo,
+        ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
+        ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
       },
     });
     // The parameter uses the AWS-managed aws/ssm key, whose key policy lets
@@ -86,6 +112,36 @@ export class RefreshStack extends Stack {
     props.dataBucket.grantPut(this.handler, `${DATA_LAYOUT.rawFirmsPrefix}*`);
     props.dataBucket.grantPut(this.handler, DATA_LAYOUT.earlyWarningKey);
     props.dataBucket.grantRead(this.handler, `${DATA_LAYOUT.harmonizedPrefix}*`);
+    props.dataBucket.grantRead(this.handler, DATA_LAYOUT.alertStateKey);
+    props.dataBucket.grantPut(this.handler, DATA_LAYOUT.alertStateKey);
+
+    // Exactly the four alert parameters, read with GetParameter only. Like the
+    // MAP_KEY they use the AWS-managed aws/ssm key, so no KMS grant is needed.
+    this.handler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter"],
+        resources: Object.values(ALERT_PARAMETERS).map((name) =>
+          this.formatArn({ service: "ssm", resource: "parameter", resourceName: name.slice(1) }),
+        ),
+      }),
+    );
+    // SES sending is part of the Free plan. The grant names only the sender
+    // identity, so the function cannot send as anyone else. In sandbox mode
+    // every recipient must be a verified identity too (see alerts.py).
+    if (props.alertEmailIdentity) {
+      this.handler.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["ses:SendEmail"],
+          resources: [
+            this.formatArn({
+              service: "ses",
+              resource: "identity",
+              resourceName: props.alertEmailIdentity,
+            }),
+          ],
+        }),
+      );
+    }
 
     // 06:00 UTC: after the night passes over South America are in the NRT feed.
     new events.Rule(this, "DailyRefresh", {
