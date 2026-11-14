@@ -20,6 +20,21 @@ export const VIRIDIS: Rgb[] = [
   [253, 231, 37],
 ];
 
+/**
+ * Near-black to violet, red, orange and pale yellow: the ramp of the terrain
+ * design. It reads as heat on a dark map; on a light background viridis is
+ * the safer choice, so it is opt-in per map.
+ */
+export const FIRE: Rgb[] = [
+  [26, 16, 48],
+  [50, 10, 94],
+  [120, 28, 109],
+  [188, 55, 84],
+  [237, 105, 37],
+  [251, 182, 26],
+  [252, 255, 164],
+];
+
 /** Blue to orange through a neutral grey (PuOr-like, colour-blind safe). */
 export const DIVERGING: Rgb[] = [
   [33, 102, 172],

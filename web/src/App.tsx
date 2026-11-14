@@ -10,6 +10,7 @@ import { EarlyWarningPage } from "./pages/EarlyWarningPage";
 import { ExplorerPage } from "./pages/ExplorerPage";
 import { ForecastPage } from "./pages/ForecastPage";
 import { IntroPage } from "./pages/IntroPage";
+import { TerrainPage } from "./pages/TerrainPage";
 import { alertDecision } from "./util/earlyWarning";
 
 const INTRO_KEY = "aeros-intro-seen";
@@ -87,6 +88,9 @@ export default function App() {
                   selection={selection}
                 />
               </div>
+            )}
+            {state.data && section === "terrain" && (
+              <TerrainPage region={state.data} unit={unit} onUnitChange={setUnit} />
             )}
             {state.data && section === "warning" && (
               <EarlyWarningPage state={warning.state} onRetry={warning.retry} region={state.data} theme={resolved} />

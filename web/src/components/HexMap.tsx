@@ -5,7 +5,7 @@ import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import type { Unit } from "../api/types";
 import type { CellTotal } from "../util/aggregation";
 import type { Area, LngLat } from "../util/area";
-import { VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
+import { type Rgb, VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
 import { formatCount, unitLabel } from "../util/format";
 import { BASEMAP, areaLayers, initialView, rasterLayer } from "./mapLayers";
 
@@ -21,10 +21,13 @@ interface Props {
   onAddVertex: (point: LngLat) => void;
   theme: "light" | "dark";
   reducedMotion: boolean;
+  /** Colour ramp of the columns; viridis unless a view asks for another. */
+  ramp?: Rgb[];
 }
 
 export default function HexMap(props: Props) {
   const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion } = props;
+  const ramp = props.ramp ?? VIRIDIS;
   const container = useRef<HTMLDivElement>(null);
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0);
   const [viewState, setViewState] = useState<MapViewState>(() => initialView(centers, 0, 0));
@@ -69,7 +72,7 @@ export default function HexMap(props: Props) {
         elevationScale: 1,
         getElevation: (cell) => sqrtScale(value(cell), max) * 60000,
         getFillColor: (cell) => {
-          const [r, g, b] = sampleRamp(VIRIDIS, sqrtScale(value(cell), max));
+          const [r, g, b] = sampleRamp(ramp, sqrtScale(value(cell), max));
           const dimmed = selected !== null && !selected.has(cell.cell);
           return [r, g, b, dimmed ? 50 : 235];
         },
@@ -79,11 +82,11 @@ export default function HexMap(props: Props) {
         highlightColor: [255, 255, 255, 90],
         coverage: 0.92,
         transitions: reducedMotion ? undefined : { getElevation: 600, getFillColor: 300 },
-        updateTriggers: { getElevation: [showRaw, max], getFillColor: [showRaw, max, selected] },
+        updateTriggers: { getElevation: [showRaw, max], getFillColor: [showRaw, max, selected, ramp] },
       }),
       ...areaLayers(area, draft, theme),
     ];
-  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion]);
+  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp]);
 
   const tooltip = ({ object }: PickingInfo<CellTotal>) =>
     object && {

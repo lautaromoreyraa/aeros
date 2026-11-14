@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 
-export type Section = "calendar" | "warning" | "forecast";
+export type Section = "calendar" | "terrain" | "warning" | "forecast";
 
 const SECTIONS: { value: Section; label: string }[] = [
   { value: "calendar", label: "Calendar" },
+  { value: "terrain", label: "Terrain" },
   { value: "warning", label: "Early warning" },
   { value: "forecast", label: "Forecast" },
 ];

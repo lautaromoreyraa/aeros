@@ -6,6 +6,7 @@ import "./styles/base.css";
 import "./styles/explorer.css";
 import "./styles/outlook.css";
 import "./styles/intro.css";
+import "./styles/terrain.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
