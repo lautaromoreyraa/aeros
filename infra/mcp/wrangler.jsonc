@@ -5,12 +5,15 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // Only reachable through the custom domain, which Cloudflare Access fronts.
+  "workers_dev": false,
+  "preview_urls": false,
   "routes": [{ "pattern": "mcp.aeros.lautaromoreyra.dev", "custom_domain": true }],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "aeros-team-context",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "41b1085d-448e-4029-b5d7-2515baf575d7",
       "migrations_dir": "migrations"
     }
   ],
