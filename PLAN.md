@@ -73,6 +73,7 @@ flowchart LR
 |---|---|
 | `model/` | Python package `aeros`: FIRMS ingestion, grid, reference chain, translators, validation, calendar, synthetic archive, CLI |
 | `web/` | React + Vite + TypeScript client: cinematic intro, H3 map, area selection, calendar, anomalies, CSV export |
+| `web/design/` | Design reference for the next UI iteration (3D terrain and sector dashboards): the page to open in a browser and the extracted logic and copy. Not part of the build; its numbers are synthetic |
 | `infra/aws/` | AWS CDK app (TypeScript) and Lambda handlers (Python) |
 | `infra/mcp/` | MCP server on Cloudflare Workers + D1: shared status, tasks, decisions, conventions and the log of steering prompts for every assistant on the team |
 | `.github/workflows/` | Verification: lint, types, tests, build, `cdk synth` |
