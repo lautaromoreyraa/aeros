@@ -1,0 +1,117 @@
+/* The intro is always dark: it is a night view of the planet in both themes. */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  color: #f1ede6;
+  background: #05070a;
+  overflow: hidden;
+}
+
+.intro__canvas {
+  position: absolute !important;
+  inset: 0;
+}
+
+.intro__canvas--fallback {
+  background: radial-gradient(circle at 60% 55%, #142030 0%, #05070a 60%);
+}
+
+.intro__veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(5 7 10 / 0.85) 0%, rgb(5 7 10 / 0.35) 45%, transparent 70%);
+  pointer-events: none;
+}
+
+.intro__copy {
+  position: absolute;
+  left: var(--gutter);
+  bottom: clamp(96px, 18vh, 200px);
+  max-width: min(560px, calc(100% - 2 * var(--gutter)));
+  display: grid;
+  gap: var(--space-4);
+}
+
+.intro__eyebrow {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #f9a03f;
+}
+
+.intro__title {
+  font-size: var(--text-hero);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.intro__lines {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: clamp(1rem, 2.2vw, 1.375rem);
+  line-height: 1.35;
+}
+
+.intro__lines li {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 900ms var(--ease-out), transform 900ms var(--ease-out);
+}
+
+.intro__lines li.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.intro__actions {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: var(--space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.intro__progress {
+  flex: 1;
+  max-width: 240px;
+  height: 2px;
+  background: rgb(255 255 255 / 0.15);
+}
+
+.intro__progress span {
+  display: block;
+  height: 100%;
+  background: #f9a03f;
+  transform-origin: left;
+}
+
+.intro__skip {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 0 var(--space-5);
+  border: 1px solid rgb(255 255 255 / 0.35);
+  border-radius: 999px;
+  background: rgb(5 7 10 / 0.4);
+  color: #f1ede6;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+}
+
+.intro__skip:hover {
+  border-color: #f1ede6;
+}
+
+.intro .button--primary {
+  background: #f9a03f;
+  border-color: #f9a03f;
+  color: #14100a;
+}

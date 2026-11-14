@@ -4,6 +4,7 @@ import App from "./App";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/explorer.css";
+import "./styles/intro.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

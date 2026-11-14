@@ -3,10 +3,11 @@ import type { ReactNode } from "react";
 interface Props {
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  onReplayIntro: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ theme, onToggleTheme, children }: Props) {
+export function AppShell({ theme, onToggleTheme, onReplayIntro, children }: Props) {
   return (
     <div className="shell">
       <header className="shell__header">
@@ -18,6 +19,9 @@ export function AppShell({ theme, onToggleTheme, children }: Props) {
         </a>
         <p className="shell__tagline">Harmonized MODIS × VIIRS burning calendar</p>
         <nav className="shell__actions" aria-label="Display">
+          <button type="button" className="button button--ghost" onClick={onReplayIntro}>
+            Replay intro
+          </button>
           <button
             type="button"
             className="button button--ghost"
