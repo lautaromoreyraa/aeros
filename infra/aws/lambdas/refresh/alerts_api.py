@@ -1,0 +1,303 @@
+"""HTTP entry points of the alert subscriptions: the API and the Telegram webhook.
+
+Two Lambda handlers share this module because they share the rules:
+
+* `api_handler` sits behind CloudFront (origin access control) under `/api/alerts/`:
+
+    POST   /api/alerts/subscriptions                    {channel, address?, cells, zone_id?}
+    GET    /api/alerts/subscriptions/{id}/confirm?token=      e-mail link
+    GET    /api/alerts/subscriptions/{id}/unsubscribe?token=  e-mail link, one click
+    DELETE /api/alerts/subscriptions/{id}?token=
+
+  CloudFront signs requests to the function URL, and for a POST or DELETE with
+  a body it needs the browser to send `x-amz-content-sha256` (the SHA-256 of
+  the body) itself; the web client does, as it does for the calendar.
+
+* `webhook_handler` is Telegram's webhook, on its own public function URL.
+  CloudFront cannot front it (Telegram cannot sign requests), so the secret
+  Telegram sends in a header on every call is the only door, and without a
+  configured secret everything is refused.
+
+Answers never echo what the client sent and never tell an unknown id from a
+wrong token. Nothing here reads the Telegram token or the e-mail sender
+before a request needs it.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import logging
+import os
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from urllib.parse import quote
+
+import alerts
+import telegram_bot
+from subscriptions import (
+    InvalidSubscription,
+    NotFound,
+    Subscription,
+    Subscriptions,
+)
+
+logger = logging.getLogger()
+
+PREFIX = "/api/alerts/subscriptions"
+MAX_BODY_BYTES = 8 * 1024
+#: Pending sign-ups across everyone: a floor against somebody filling the table
+#: or using the confirmation e-mail to write to strangers.
+MAX_PENDING = 200
+
+Reply = Callable[[int, str], None]
+SendMail = Callable[[str, str, str], None]  # address, subject, text
+
+
+@dataclass
+class Dependencies:
+    subscriptions: Subscriptions
+    web_url: str = ""
+    #: Without it the Telegram sign-up returns no deep link (the bot is not set up yet).
+    bot_username: str | None = None
+    send_mail: SendMail | None = None
+    reply: Reply | None = None
+    webhook_secret: str | None = None
+
+
+def unsubscribe_url(web_url: str, subscription: Subscription) -> str:
+    """The one-click link at the end of every e-mail alert."""
+    return (
+        f"{web_url.rstrip('/')}{PREFIX}/{quote(subscription.id)}/unsubscribe"
+        f"?token={quote(subscription.token)}"
+    )
+
+
+# ---------- responses ----------
+
+
+def _json(status: int, payload: dict) -> dict:
+    return {
+        "statusCode": status,
+        "headers": {"content-type": "application/json", "cache-control": "no-store"},
+        "body": json.dumps(payload),
+    }
+
+
+def _page(status: int, title: str, message: str) -> dict:
+    """A tiny fixed page for the links in e-mails; nothing from the request is echoed."""
+    body = (
+        '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+        f"<title>{title}</title>"
+        '<body style="font:16px system-ui;max-width:32rem;margin:15vh auto;padding:0 1rem">'
+        f"<h1>{title}</h1><p>{message}</p>"
+    )
+    return {
+        "statusCode": status,
+        "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+            "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'",
+            "referrer-policy": "no-referrer",
+        },
+        "body": body,
+    }
+
+
+def _body(event: Mapping) -> bytes:
+    raw = event.get("body") or ""
+    if event.get("isBase64Encoded"):
+        return base64.b64decode(raw)
+    return raw.encode()
+
+
+# ---------- the subscriptions API ----------
+
+
+def api_handler(event: Mapping, context=None, *, deps: Dependencies | None = None) -> dict:
+    deps = deps or _api_dependencies()
+    method = event.get("requestContext", {}).get("http", {}).get("method", "")
+    path = (event.get("rawPath") or "").rstrip("/")
+    query = event.get("queryStringParameters") or {}
+
+    if path == PREFIX and method == "POST":
+        return _create(event, deps)
+    if path.startswith(PREFIX + "/"):
+        parts = path[len(PREFIX) + 1 :].split("/")
+        subscription_id, action = parts[0], parts[1] if len(parts) == 2 else ""
+        token = str(query.get("token", ""))
+        if len(parts) == 2 and method == "GET" and action == "confirm":
+            return _confirm(deps, subscription_id, token)
+        if len(parts) == 2 and method == "GET" and action == "unsubscribe":
+            return _unsubscribe(deps, subscription_id, token, html=True)
+        if len(parts) == 1 and method == "DELETE":
+            return _unsubscribe(deps, subscription_id, token, html=False)
+    return _json(404, {"error": "not found"})
+
+
+def _create(event: Mapping, deps: Dependencies) -> dict:
+    body = _body(event)
+    if len(body) > MAX_BODY_BYTES:
+        return _json(413, {"error": "request too large"})
+    try:
+        request = json.loads(body or b"{}")
+        if not isinstance(request, dict):
+            raise ValueError
+    except ValueError:
+        return _json(400, {"error": "the body must be a JSON object"})
+
+    pending = sum(1 for s in deps.subscriptions.store.all() if s.status == "pending")
+    if pending >= MAX_PENDING:
+        return _json(429, {"error": "too many pending sign-ups; try again later"})
+    channel = request.get("channel")
+    if channel == "email" and deps.send_mail is None:
+        return _json(503, {"error": "e-mail alerts are not available yet"})
+
+    try:
+        subscription = deps.subscriptions.create(
+            str(channel),
+            request.get("address") if isinstance(request.get("address"), str) else None,
+            request.get("cells") if isinstance(request.get("cells"), list) else [],
+            request.get("zone_id") if isinstance(request.get("zone_id"), str) else None,
+        )
+    except InvalidSubscription as exc:
+        return _json(400, {"error": str(exc)})
+
+    answer: dict = {"id": subscription.id, "status": "pending_confirmation"}
+    if subscription.channel == "telegram":
+        if deps.bot_username:
+            answer["confirm_url"] = f"https://t.me/{deps.bot_username}?start={subscription.id}"
+        return _json(202, answer)
+
+    try:
+        assert deps.send_mail is not None and subscription.address
+        subject, text = _confirmation_message(deps.web_url, subscription)
+        deps.send_mail(subscription.address, subject, text)
+    except Exception as exc:
+        # The person never got the link, so the pending sign-up is of no use.
+        deps.subscriptions.store.delete(subscription.id)
+        logger.error("confirmation e-mail failed: %s", type(exc).__name__)
+        return _json(503, {"error": "could not send the confirmation e-mail"})
+    return _json(202, answer)
+
+
+def _confirmation_message(web_url: str, subscription: Subscription) -> tuple[str, str]:
+    link = (
+        f"{web_url.rstrip('/')}{PREFIX}/{quote(subscription.id)}/confirm"
+        f"?token={quote(subscription.token)}"
+    )
+    where = f" on {web_url}" if web_url else ""
+    return (
+        "Confirm your aeros fire alerts",
+        "Someone asked for aeros fire alerts to be sent to this address"
+        f"{where}. If it was you, confirm here (the link works for 24 hours):\n\n{link}\n\n"
+        "If it was not you, ignore this message: nothing is sent until you confirm.",
+    )
+
+
+def _confirm(deps: Dependencies, subscription_id: str, token: str) -> dict:
+    try:
+        deps.subscriptions.confirm_with_token(subscription_id, token)
+    except NotFound:
+        return _page(404, "Link not valid", "This link is not valid or has expired.")
+    return _page(
+        200,
+        "You are subscribed",
+        "You will get an e-mail when a fire above its normal burns near your area. "
+        "Every message has a link to stop them.",
+    )
+
+
+def _unsubscribe(deps: Dependencies, subscription_id: str, token: str, *, html: bool) -> dict:
+    gone = deps.subscriptions.unsubscribe(subscription_id, token)
+    if html:
+        if gone:
+            return _page(200, "Alerts stopped", "You will not get more alerts at this address.")
+        return _page(404, "Link not valid", "This link is not valid or the alerts already stopped.")
+    return _json(204 if gone else 404, {} if gone else {"error": "not found"})
+
+
+# ---------- the Telegram webhook ----------
+
+
+def webhook_handler(event: Mapping, context=None, *, deps: Dependencies | None = None) -> dict:
+    deps = deps or _webhook_dependencies()
+    headers = event.get("headers") or {}
+    if not telegram_bot.secret_is_valid(headers, deps.webhook_secret):
+        return _json(403, {"error": "forbidden"})
+    try:
+        update = json.loads(_body(event) or b"{}")
+    except ValueError:
+        return _json(200, {})  # a retry would not make it parse
+    if not isinstance(update, dict) or deps.reply is None:
+        return _json(200, {})
+    # A storage failure raises: Telegram retries a non-200 later, which is what we want.
+    telegram_bot.handle(update, deps.subscriptions, deps.reply, web_url=deps.web_url)
+    return _json(200, {})
+
+
+# ---------- wiring from the environment ----------
+
+_cache: dict[str, Dependencies] = {}
+
+
+def _subscriptions() -> Subscriptions:
+    from dynamo_store import DynamoStore
+
+    area = tuple(float(v) for v in os.environ["FIRMS_AREA"].split(","))
+    return Subscriptions(DynamoStore.from_environment(), area=area)  # type: ignore[arg-type]
+
+
+def _parameter(ssm, variable: str) -> str | None:
+    name = os.environ.get(variable)
+    return alerts.read_optional_parameter(ssm, name) if name else None
+
+
+def _api_dependencies() -> Dependencies:
+    if "api" not in _cache:
+        import boto3
+
+        ssm, ses = boto3.client("ssm"), boto3.client("sesv2")
+        sender = _parameter(ssm, "ALERT_EMAIL_FROM_PARAMETER")
+
+        def send_mail(address: str, subject: str, text: str) -> None:
+            assert sender
+            alerts.send_email(ses, sender, [address], subject, text)
+
+        _cache["api"] = Dependencies(
+            _subscriptions(),
+            web_url=os.environ.get("ALERT_WEB_URL", ""),
+            bot_username=_parameter(ssm, "ALERT_TELEGRAM_BOT_PARAMETER"),
+            send_mail=send_mail if sender else None,
+        )
+    return _cache["api"]
+
+
+def _webhook_dependencies() -> Dependencies:
+    if "webhook" not in _cache:
+        import boto3
+
+        ssm = boto3.client("ssm")
+        token = _parameter(ssm, "ALERT_TELEGRAM_TOKEN_PARAMETER")
+
+        def reply(chat_id: int, text: str) -> None:
+            assert token
+            alerts.send_telegram(alerts._http_post, token, str(chat_id), text)
+
+        _cache["webhook"] = Dependencies(
+            _subscriptions(),
+            web_url=os.environ.get("ALERT_WEB_URL", ""),
+            reply=reply if token else None,
+            webhook_secret=_parameter(ssm, "ALERT_TELEGRAM_WEBHOOK_SECRET_PARAMETER"),
+        )
+    return _cache["webhook"]
+
+
+def handler(event, context):
+    """Function URL entry of the subscriptions API."""
+    return api_handler(event, context)
+
+
+def webhook(event, context):
+    """Function URL entry of the Telegram webhook."""
+    return webhook_handler(event, context)
