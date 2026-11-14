@@ -80,6 +80,12 @@ flowchart LR
   GL --> API
   NRT --> ALERT[Mail + Telegram alerts]
   FAST --> ALERT
+  WEB --> SUB[Lambda: /api/alerts/subscriptions]
+  BOT[Telegram bot webhook] --> DDB[(DynamoDB: subscriptions)]
+  SUB --> DDB
+  NRT --> NOTIFY[Notifier: who a fire can reach]
+  DDB --> NOTIFY
+  NOTIFY --> ALERT
   JSON --> MCP[infra/mcp: team context server on Cloudflare Workers]
 ```
 
@@ -99,6 +105,10 @@ flowchart LR
 - No NAT gateways, load balancers, EC2 or customer-managed KMS keys.
 - A budget alert at USD 1.
 - A CDK test fails on any forbidden resource type.
+- Subscriptions live in one provisioned DynamoDB table (5 of the 25 always-free read and write units, no autoscaling, no backups billed).
+- Lambda concurrency is not reserved: a new account keeps 100 executions unreserved and starts with a quota of 10.
+- `infra/aws/test/free-tier.test.ts` checks, on the synthesized templates, that no billed or unavailable service appears, DynamoDB stays inside its allowance, alarms stay under ten, every function is arm64 and at most 512 MB, and that the scheduled functions, even if every run lasted its whole timeout, use at most three quarters of the monthly Lambda GB-seconds (GOES watch 4,320 runs at 2 minutes and 0.5 GB is 259,200 of 400,000).
+- The Free plan ends after six months or when its credits are spent; the account must then be upgraded, and the USD 1 alert is the early sign.
 
 ## 5. Team workflow
 
@@ -120,7 +130,8 @@ flowchart LR
 | Team context MCP server | deployed at `mcp.aeros.lautaromoreyra.dev` (D1 migrated, `workers.dev` off); behind a Cloudflare Access application (deny by default); people and service tokens are added through Access policies |
 | Steering prompt log (`record_steering_prompt`, `steering_study`) | implemented and tested in the MCP server; not deployed |
 | CI | `verify` workflow runs model, web, MCP and AWS checks |
-| Targeted alerts, risk-zone logic | `infra/aws/lambdas/refresh/targeting.py`: the risk zone of a flagged cell (its ring of neighbors plus the cells downwind, +-30 degrees up to min(80 km, wind km/h x 12 h x 0.1)), which subscribers it reaches, one message per subscriber per window and a resend only when it escalates (more cells, the highest ratio up by half, or the fire weather reaching high or extreme where it had not), and the message text with the fields of the interface's alert plus where the wind is going and how unusual the air is. Pure logic with tests; the subscriptions API, the Telegram bot and the sending wait for the AWS account |
+| Targeted alerts, subscriptions and Telegram bot | in review on `feature/subscribe-and-notify-by-telegram` (171 Lambda + 49 CDK tests). `subscriptions.py`: double opt-in, a pending sign-up expires after a day, the Telegram chat id is set only by the bot from `/start <id>`, never by the browser. `alerts_api.py`: `POST /api/alerts/subscriptions` (answers 202 with the `https://t.me/<bot>?start=<id>` link for Telegram, e-mails a confirmation link for e-mail), `GET .../{id}/confirm?token=`, `GET .../{id}/unsubscribe?token=` and `DELETE .../{id}?token=`, behind CloudFront; the Telegram webhook is its own public function URL guarded by Telegram's secret header. `notifier.py` runs after the daily early warning and sends each confirmed subscriber the alert for the flagged cells that reach their cells, remembering what was sent only after it went out. A POST or DELETE through CloudFront needs the `x-amz-content-sha256` header (the SHA-256 of the body). Needs the AWS account to run |
+| Targeted alerts, risk-zone logic | `infra/aws/lambdas/refresh/targeting.py`: the risk zone of a flagged cell (its ring of neighbors plus the cells downwind, +-30 degrees up to min(80 km, wind km/h x 12 h x 0.1)), which subscribers it reaches, one message per subscriber per window and a resend only when it escalates (more cells, the highest ratio up by half, or the fire weather reaching high or extreme where it had not), and the message text with the fields of the interface's alert plus where the wind is going and how unusual the air is. Pure logic with tests |
 | Study regions (MVP): Gran Chaco (RESOLVE Dry + Humid Chaco), Corrientes, Paraguay | `aeros run --regions all`: one translator fitted on the three, outputs per region in `<out>/<region>/` |
 | Dashboard sectors: Gran Chaco by country x ecoregion (Bolivian Chaco, Chaco Boreal, Dry Chaco, Humid Chaco) | `sectors.json` in `<out>/gran-chaco/` (also `aeros sectors --out`): each sector a set of H3 cells, no cell counted twice, 99.7 % of the Gran Chaco cells assigned; replaces the web's demo sectors |
 | Static web bundle | `aeros publish --run hotspots=<run> [--run cell_days=<run>]`: JSON only, `public/data/<region>/<unit>/`, `<region>/sectors.json`, index `regions.json`, default region also at the old `public/data/<unit>/` path; 8.8 MB for the baseline real run |
@@ -129,7 +140,7 @@ flowchart LR
 | GOES-19 fast fire layer | in `develop`: `aeros goes-latest` writes a snapshot, a Lambda every 10 minutes publishes `derived/goes_latest.json` (served at `/api/active-fires`, 2-minute cache) and alerts through the daily alert's channels when a study cell keeps a confident fire in 2 of the last 3 scans (once per cell, again after 12 hours); not deployed |
 | Wind grid | `aeros wind` writes `wind.json`: hourly 10 m wind for the next 48 hours on a 12 x 12 grid over the study box, as the two components `u` (eastward) and `v` (northward) in m/s, from the Open-Meteo forecast API (no key, CC BY 4.0). The interface draws its wind layer from it and the alert's risk zone will read the downwind direction from it; a forecast, never part of the harmonized record. Publishing it hourly from AWS waits for the account |
 | Fire weather | `aeros fire-weather` writes `fire_weather.json`: the surface Hot-Dry-Windy index (vapour pressure deficit in hPa times 10 m wind in m/s, highest hour of the day) for the next 4 days on an 8 x 8 grid over the study box, with each node's percentile against the same season of the past 10 years of ERA5, and a level (normal, elevated, high, extreme). Open-Meteo forecast and archive, no key, CC BY 4.0, so the submission credits it. A forecast model is ranked against a reanalysis: read a high rank as unusually dry and windy, not as a measured percentile |
-| AWS deploy | pending: account, `cdk bootstrap`, FIRMS MAP_KEY in SSM; reserved concurrency may exceed a new account's limit of 10 |
+| AWS deploy | ready, waiting for the account: `cdk bootstrap`, `cdk deploy`, the FIRMS MAP_KEY and the Telegram parameters in Parameter Store, the Telegram `setWebhook`, and the model outputs uploaded to the data bucket. Reserved concurrency is off by default so the deploy works on a new account |
 | Biome as a model feature, Theil–Sen trend | optional |
 
 ## 7. Submission checklist (Space Apps)
