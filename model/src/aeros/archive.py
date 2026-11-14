@@ -14,6 +14,7 @@ import re
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -62,30 +63,39 @@ def _open(url: str) -> BinaryIO:
 
 
 def download(
-    files: Iterable[ArchiveFile], out: Path, opener: Opener = _open
+    files: Iterable[ArchiveFile], out: Path, opener: Opener = _open, workers: int = 4
 ) -> dict[str, list[str]]:
-    """Fetch every file not already in `out`; a file is only kept once complete."""
-    report: dict[str, list[str]] = {"downloaded": [], "present": [], "missing": []}
+    """Fetch every file not already in `out`; a file is only kept once complete.
+
+    FIRMS throttles each connection to a few dozen KB/s, so a sequential run
+    over the whole archive takes hours; a few files are fetched at once.
+    """
     out.mkdir(parents=True, exist_ok=True)
-    for f in files:
-        target = out / f.name
-        if target.exists():
-            report["present"].append(f.name)
-            continue
-        partial = target.with_suffix(".part")
-        try:
-            with opener(f.url) as response, partial.open("wb") as sink:
-                while chunk := response.read(1 << 20):
-                    sink.write(chunk)
-        except urllib.error.HTTPError as error:
-            partial.unlink(missing_ok=True)
-            if error.code != 404:
-                raise
-            report["missing"].append(f.name)
-            continue
-        partial.rename(target)
-        report["downloaded"].append(f.name)
+    files = list(files)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        outcomes = list(pool.map(lambda f: _fetch(f, out, opener), files))
+    report: dict[str, list[str]] = {"downloaded": [], "present": [], "missing": []}
+    for f, outcome in zip(files, outcomes, strict=True):
+        report[outcome].append(f.name)
     return report
+
+
+def _fetch(f: ArchiveFile, out: Path, opener: Opener) -> str:
+    target = out / f.name
+    if target.exists():
+        return "present"
+    partial = target.with_suffix(".part")
+    try:
+        with opener(f.url) as response, partial.open("wb") as sink:
+            while chunk := response.read(1 << 20):
+                sink.write(chunk)
+    except urllib.error.HTTPError as error:
+        partial.unlink(missing_ok=True)
+        if error.code != 404:
+            raise
+        return "missing"
+    partial.rename(target)
+    return "downloaded"
 
 
 # The three MVP study regions (Gran Chaco, Corrientes, Paraguay) with one

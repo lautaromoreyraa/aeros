@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--out", type=Path, default=Path("data/raw/firms"))
     fetch.add_argument("--countries", default=",".join(archive.GRAN_CHACO_COUNTRIES))
     fetch.add_argument("--last-year", type=int, default=date.today().year - 1)
+    fetch.add_argument("--workers", type=int, default=4, help="files downloaded at once")
 
     recent = sub.add_parser(
         "fetch-recent",
@@ -54,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         return _demo(args.out, args.seed, args.unit)
     if args.command == "fetch":
         files = archive.plan(args.countries.split(","), args.last_year)
-        print(json.dumps(archive.download(files, args.out), indent=2))
+        print(json.dumps(archive.download(files, args.out, workers=args.workers), indent=2))
         return 0
     if args.command == "fetch-recent":
         map_key = os.environ.get("FIRMS_MAP_KEY")

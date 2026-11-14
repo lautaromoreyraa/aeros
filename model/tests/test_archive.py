@@ -1,4 +1,5 @@
 import io
+import threading
 import urllib.error
 from datetime import date, timedelta
 
@@ -55,6 +56,19 @@ def test_download_raises_on_server_errors(tmp_path):
     with pytest.raises(urllib.error.HTTPError):
         archive.download([archive.ArchiveFile("modis", 2000, "Paraguay")], tmp_path, opener)
     assert not list(tmp_path.iterdir())
+
+
+def test_download_fetches_several_files_at_once(tmp_path):
+    # Fails with BrokenBarrierError if the files are requested one after another.
+    barrier = threading.Barrier(3, timeout=5)
+
+    def opener(url):
+        barrier.wait()
+        return io.BytesIO(b"latitude,longitude\n")
+
+    files = archive.plan(["Paraguay"], last_year=2002, products=["modis"])
+    report = archive.download(files, tmp_path, opener, workers=3)
+    assert sorted(report["downloaded"]) == sorted(f.name for f in files)
 
 
 AVAILABLE = {
