@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Unit } from "./api/types";
 import { AlertBanner } from "./components/AlertBanner";
 import { useAreaSelection } from "./hooks/useAreaSelection";
@@ -13,15 +13,12 @@ import { LandingPage } from "./pages/LandingPage";
 import { TerrainPage } from "./pages/TerrainPage";
 import { alertDecision } from "./util/earlyWarning";
 
-const ENTERED_KEY = "aeros-dashboard-entered";
-
-function enteredBefore(): boolean {
-  try {
-    return sessionStorage.getItem(ENTERED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+/**
+ * The dashboard lives at #dashboard and the presentation at the bare URL, so
+ * the browser's back button, a reload and a shared link all land where expected.
+ */
+const DASHBOARD_HASH = "#dashboard";
+const onDashboardUrl = () => window.location.hash === DASHBOARD_HASH;
 
 export default function App() {
   const [unit, setUnit] = useState<Unit>("hotspots");
@@ -33,26 +30,44 @@ export default function App() {
   const forecast = useForecast();
   const report = warning.state.status === "ready" ? warning.state.data : null;
   const decision = useMemo(() => alertDecision(report), [report]);
-  const [onLanding, setOnLanding] = useState(() => !enteredBefore());
+  const [onLanding, setOnLanding] = useState(() => !onDashboardUrl());
   // The dashboard first mounts when the visitor leaves the landing: its
   // deck.gl maps would compile their shaders on the same thread as the globe.
   // Once mounted it stays, so a visit to the landing keeps the chosen area.
-  const [dashboardMounted, setDashboardMounted] = useState(enteredBefore);
+  const [dashboardMounted, setDashboardMounted] = useState(onDashboardUrl);
+
+  // In-page links such as #record also fire popstate; only a change of view
+  // resets the scroll.
+  const landingRef = useRef(onLanding);
+  landingRef.current = onLanding;
+  useEffect(() => {
+    const onPop = () => {
+      const dashboard = onDashboardUrl();
+      if (landingRef.current === !dashboard) return;
+      setOnLanding(!dashboard);
+      if (dashboard) setDashboardMounted(true);
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const enterDashboard = useCallback(() => {
+    window.history.pushState({ fromLanding: true }, "", DASHBOARD_HASH);
     setOnLanding(false);
     setDashboardMounted(true);
     window.scrollTo(0, 0);
-    try {
-      sessionStorage.setItem(ENTERED_KEY, "1");
-    } catch {
-      // Without storage the landing simply shows again on reload.
-    }
   }, []);
 
+  // Back to the presentation is a step back in history when the visitor came
+  // from it, so the browser's forward button returns to the dashboard.
   const showLanding = useCallback(() => {
-    setOnLanding(true);
-    window.scrollTo(0, 0);
+    if (window.history.state?.fromLanding) window.history.back();
+    else {
+      window.history.pushState(null, "", window.location.pathname + window.location.search);
+      setOnLanding(true);
+      window.scrollTo(0, 0);
+    }
   }, []);
 
   return (
