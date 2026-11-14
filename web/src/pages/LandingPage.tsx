@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useRef } from "react";
+import { type CSSProperties, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EarlyWarning } from "../api/types";
 import { AlertPreview } from "../components/AlertPreview";
 import { AlertSignup } from "../components/AlertSignup";
@@ -16,6 +16,27 @@ const EarthScene = lazy(() => import("../components/EarthScene"));
 const SatelliteTerrain = lazy(() => import("../components/SatelliteTerrain"));
 
 const NO_FLAGS: ReadonlySet<string> = new Set();
+
+/**
+ * The hero's waterfall, in order: when each piece starts after the scan, how
+ * long it travels and how far. Heavy pieces go further and longer, light ones
+ * snap; each starts a frame before the previous one settles.
+ */
+const CASCADE = {
+  name: [0, 0.2, 80],
+  claim: [0.17, 0.16, 56],
+  lede1: [0.3, 0.14, 44],
+  lede2: [0.4, 0.13, 44],
+  primary: [0.49, 0.13, 40],
+  telegram: [0.57, 0.12, 40],
+  more: [0.64, 0.11, 32],
+} as const;
+const wf = (key: keyof typeof CASCADE) => {
+  const [at, duration, travel] = CASCADE[key];
+  return { "--wf-at": `${at}s`, "--wf-for": `${duration}s`, "--wf-y": `${travel}px` } as CSSProperties;
+};
+/** If the scene cannot cue the title (no WebGL, no data), it arrives on its own after this long. */
+const CUE_FALLBACK_MS = 4200;
 
 /** Complete years of the FIRMS archive behind the record, 2000 to 2025. */
 const RECORD_YEARS = 26;
@@ -53,6 +74,12 @@ export function LandingPage({ region, warning, onEnter }: Props) {
   const heroRef = useRef<HTMLElement>(null);
   const terrainRef = useRef<HTMLElement>(null);
   const heroVisible = useInView(heroRef);
+  const [lit, setLit] = useState(false);
+  const light = useCallback(() => setLit(true), []);
+  useEffect(() => {
+    const timer = window.setTimeout(light, CUE_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [light]);
   // deck.gl compiles its shaders on the main thread, which would stall the
   // globe; the map starts only as the visitor scrolls towards it.
   const mapMounted = useInView(terrainRef, { rootMargin: "0px 0px 60% 0px", once: true });
@@ -94,33 +121,50 @@ export function LandingPage({ region, warning, onEnter }: Props) {
       </header>
 
       <main>
-        <section ref={heroRef} className={still ? "hero hero--still" : "hero"} aria-labelledby="hero-title">
+        <section
+          ref={heroRef}
+          className={["hero", still && "hero--still", lit && "is-lit"].filter(Boolean).join(" ")}
+          aria-labelledby="hero-title"
+        >
           <Suspense fallback={<div className="hero__canvas hero__canvas--fallback" />}>
             {region && (
               <div className="hero__canvas">
-                <EarthScene cells={columns} still={still} paused={!heroVisible} />
+                <EarthScene cells={columns} still={still} paused={!heroVisible} onFirstScan={light} />
               </div>
             )}
           </Suspense>
           <div className="hero__veil" />
           <div className="hero__copy">
             <h1 id="hero-title" className="hero__title">
-              <span className="hero__name">aeros</span>
-              <span className="hero__claim">Fire early warning for the Gran Chaco</span>
+              <span className="hero__name wf" style={wf("name")}>
+                aeros
+              </span>
+              <span className="hero__claim wf" style={wf("claim")}>
+                Fire early warning for the Gran Chaco
+              </span>
             </h1>
             <p className="hero__lede">
-              <span>An agent that watches the fire satellites every day</span>{" "}
-              <span>and warns you the day an area burns past its normal.</span>
+              <span className="wf" style={wf("lede1")}>
+                An agent that watches the fire satellites every day
+              </span>{" "}
+              <span className="wf" style={wf("lede2")}>
+                and warns you the day an area burns past its normal.
+              </span>
             </p>
             <div className="hero__actions">
-              <button type="button" className="landing__cta" onClick={onEnter}>
+              <button type="button" className="landing__cta wf" style={wf("primary")} onClick={onEnter}>
                 Open the dashboard
               </button>
-              <a className="landing__cta landing__cta--telegram" href={TELEGRAM_URL} {...(TELEGRAM_EXTERNAL && { target: "_blank", rel: "noopener" })}>
+              <a
+                className="landing__cta landing__cta--telegram wf"
+                style={wf("telegram")}
+                href={TELEGRAM_URL}
+                {...(TELEGRAM_EXTERNAL && { target: "_blank", rel: "noopener" })}
+              >
                 <TelegramIcon />
                 Get alerts on Telegram
               </a>
-              <a className="hero__more" href="#record">
+              <a className="hero__more wf" style={wf("more")} href="#record">
                 See the record
               </a>
             </div>

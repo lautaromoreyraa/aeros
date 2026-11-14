@@ -205,38 +205,48 @@
   color: #fff;
 }
 
-/* The one orchestrated moment: while the camera settles over the Chaco the
-   words arrive, title first. */
-@media (prefers-reduced-motion: no-preference) {
-  .hero:not(.hero--still) .hero__title,
-  .hero:not(.hero--still) .hero__lede,
-  .hero:not(.hero--still) .hero__actions {
-    animation: hero-in 1400ms var(--ease-out) both;
-  }
+/* Waterfall entry, cued by the scene: the moment the satellite's scan lights
+   the fires, the words whip in from below, each starting as the one before
+   settles. Opacity is binary, the travel decelerates hard, heavy words travel
+   further than light ones, and the gaps shrink towards the end. */
+/* Transforms need a box; on wide screens each lede line is its own row. */
+.hero__lede .wf {
+  display: inline-block;
+}
 
-  .hero:not(.hero--still) .hero__title {
-    animation-delay: 1.6s;
-  }
-
-  .hero:not(.hero--still) .hero__lede {
-    animation-delay: 2.6s;
-  }
-
-  .hero:not(.hero--still) .hero__actions {
-    animation-delay: 3.4s;
+@media (min-width: 720px) {
+  .hero__lede .wf {
+    display: block;
   }
 }
 
-@keyframes hero-in {
+@media (prefers-reduced-motion: no-preference) {
+  .hero:not(.hero--still) .wf {
+    opacity: 0;
+  }
+
+  .hero.is-lit .wf {
+    animation:
+      wf-show 1ms linear var(--wf-at) both,
+      wf-rise var(--wf-for) cubic-bezier(0.16, 1, 0.3, 1) var(--wf-at) both;
+  }
+}
+
+@keyframes wf-show {
   from {
     opacity: 0;
-    transform: translateY(18px);
-    filter: blur(6px);
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes wf-rise {
+  from {
+    transform: translateY(var(--wf-y));
+  }
+  to {
     transform: none;
-    filter: none;
   }
 }
 
