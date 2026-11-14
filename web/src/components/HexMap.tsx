@@ -23,10 +23,12 @@ interface Props {
   reducedMotion: boolean;
   /** Colour ramp of the columns; viridis unless a view asks for another. */
   ramp?: Rgb[];
+  /** A click outside drawing mode: the cell under the pointer, or `null` on empty ground. */
+  onPick?: (cell: string | null) => void;
 }
 
 export default function HexMap(props: Props) {
-  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion } = props;
+  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick } = props;
   const ramp = props.ramp ?? VIRIDIS;
   const container = useRef<HTMLDivElement>(null);
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0);
@@ -104,7 +106,9 @@ export default function HexMap(props: Props) {
         getTooltip={tooltip as never}
         getCursor={({ isDragging }) => (drawing ? "crosshair" : isDragging ? "grabbing" : "grab")}
         onClick={(info) => {
-          if (drawing && info.coordinate) onAddVertex([info.coordinate[0]!, info.coordinate[1]!]);
+          if (drawing) {
+            if (info.coordinate) onAddVertex([info.coordinate[0]!, info.coordinate[1]!]);
+          } else onPick?.((info.object as CellTotal | undefined)?.cell ?? null);
         }}
       />
       <div className="map__controls">
