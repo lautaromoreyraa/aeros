@@ -13,7 +13,17 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from aeros import archive, database, firms, grid, pipeline, regions, sectors, synthetic
+from aeros import (
+    archive,
+    database,
+    firms,
+    grid,
+    pipeline,
+    publish,
+    regions,
+    sectors,
+    synthetic,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -72,6 +82,20 @@ def main(argv: list[str] | None = None) -> int:
     sec.add_argument("--out", type=Path, required=True, help="sectors.json to write")
     sec.add_argument("--resolution", type=int, default=4)
 
+    pub = sub.add_parser(
+        "publish",
+        help="copy the JSON outputs of model runs into the static tree the web serves",
+    )
+    pub.add_argument(
+        "--run",
+        action="append",
+        required=True,
+        metavar="UNIT=FOLDER",
+        help="a run folder and its unit, e.g. hotspots=data/run; repeat for each unit",
+    )
+    pub.add_argument("--out", type=Path, default=Path("../web/public/data"))
+    pub.add_argument("--default-region", default=publish.DEFAULT_REGION)
+
     check = sub.add_parser(
         "verify-archive",
         help="check every yearly country file on disk against the size FIRMS serves;"
@@ -102,6 +126,16 @@ def main(argv: list[str] | None = None) -> int:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(payload, separators=(",", ":")))
         print(json.dumps({s["id"]: len(s["cells"]) for s in payload}))
+        return 0
+    if args.command == "publish":
+        runs = {}
+        for item in args.run:
+            unit, _, folder = item.partition("=")
+            if unit not in ("hotspots", "cell_days") or not folder:
+                parser.error(f"--run expects hotspots=FOLDER or cell_days=FOLDER, got {item!r}")
+            runs[unit] = Path(folder)
+        index = publish.bundle(runs, args.out, args.default_region)
+        print(json.dumps(index, indent=2))
         return 0
     if args.command == "verify-archive":
         report = archive.verify(args.folders)
