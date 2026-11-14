@@ -93,12 +93,47 @@ def test_the_channel_the_address_and_the_zone_are_validated(service):
         service.create("telegram", None, [ORIGIN], zone_id="a b; drop")
 
 
-def test_a_new_request_for_the_same_address_replaces_its_pending_one(service):
+def test_a_later_request_for_the_same_address_replaces_its_pending_one(service, clock):
     first = service.create("email", "ana@example.com", [ORIGIN])
+    clock.advance(minutes=11)
     second = service.create("email", "ana@example.com", [NEIGHBOR])
     assert service.store.get(first.id) is None and service.store.get(second.id) is not None
     other = service.create("email", "luis@example.com", [ORIGIN])
     assert service.store.get(other.id) is not None
+
+
+def test_an_address_cannot_be_mailed_again_within_the_cooldown(service, clock):
+    first = service.create("email", "ana@example.com", [ORIGIN])
+    with pytest.raises(s.Cooldown):
+        service.create("email", "Ana@Example.com", [ORIGIN])
+    assert service.store.get(first.id) is not None and len(service.store.all()) == 1
+    clock.advance(minutes=10)
+    assert service.create("email", "ana@example.com", [ORIGIN])
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["Foo<victim@example.com>", '"a b"@example.com', "a,b@example.com", "a;b@example.com", "a@b"],
+)
+def test_addresses_that_ses_would_read_as_a_name_plus_an_address_are_refused(service, address):
+    with pytest.raises(s.InvalidSubscription):
+        service.create("email", address, [ORIGIN])
+
+
+def test_confirming_a_new_subscription_replaces_the_old_one_of_the_same_chat(service):
+    for _ in range(2):
+        sub = service.create("telegram", None, [ORIGIN])
+        service.confirm_telegram(sub.id, 42)
+    assert [x.id for x in service.confirmed()] == [sub.id]
+
+
+def test_confirming_a_new_subscription_replaces_the_old_one_of_the_same_address(service, clock):
+    old = service.create("email", "ana@example.com", [ORIGIN])
+    service.confirm_with_token(old.id, old.token)
+    clock.advance(minutes=11)
+    new = service.create("email", "ana@example.com", [NEIGHBOR])
+    service.confirm_with_token(new.id, new.token)
+    assert [x.id for x in service.confirmed()] == [new.id]
 
 
 def test_ids_and_tokens_are_long_unguessable_and_different():
@@ -166,12 +201,11 @@ def test_unsubscribing_needs_the_token_and_does_not_say_why_it_failed(service):
 
 
 def test_stop_in_the_bot_removes_every_subscription_of_that_chat(service):
-    for cells in ([ORIGIN], [NEIGHBOR]):
-        sub = service.create("telegram", None, cells)
-        service.confirm_telegram(sub.id, 42)
+    sub = service.create("telegram", None, [ORIGIN])
+    service.confirm_telegram(sub.id, 42)
     other = service.create("telegram", None, [ORIGIN])
     service.confirm_telegram(other.id, 43)
-    assert service.unsubscribe_chat(42) == 2
+    assert service.unsubscribe_chat(42) == 1
     assert [x.address for x in service.confirmed()] == ["43"]
     assert service.unsubscribe_chat(42) == 0
 

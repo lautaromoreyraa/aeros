@@ -108,11 +108,10 @@ def test_start_without_a_link_welcomes_and_any_other_command_helps(service, outb
 
 
 def test_stop_ends_the_subscriptions_of_that_chat_and_counts_them(service, outbox):
-    for cells in ([ORIGIN], [NEIGHBOR]):
-        sub = service.create("telegram", None, cells)
-        service.confirm_telegram(sub.id, 42)
+    sub = service.create("telegram", None, [ORIGIN])
+    service.confirm_telegram(sub.id, 42)
     assert bot.handle(update("/stop"), service, outbox) == "stopped"
-    assert service.confirmed() == [] and "2 alerts ended" in outbox.sent[-1][1]
+    assert service.confirmed() == [] and "1 alert ended" in outbox.sent[-1][1]
     bot.handle(update("/stop"), service, outbox)
     assert "no active alerts" in outbox.sent[-1][1]
 

@@ -29,6 +29,7 @@ import base64
 import json
 import logging
 import os
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -36,6 +37,7 @@ from urllib.parse import quote
 import alerts
 import telegram_bot
 from subscriptions import (
+    Cooldown,
     InvalidSubscription,
     NotFound,
     Subscription,
@@ -45,6 +47,8 @@ from subscriptions import (
 logger = logging.getLogger()
 
 PREFIX = "/api/alerts/subscriptions"
+#: What ids look like; anything else is a 404 before it reaches the table.
+_ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 MAX_BODY_BYTES = 8 * 1024
 #: Pending sign-ups across everyone: a floor against somebody filling the table
 #: or using the confirmation e-mail to write to strangers.
@@ -126,6 +130,8 @@ def api_handler(event: Mapping, context=None, *, deps: Dependencies | None = Non
         parts = path[len(PREFIX) + 1 :].split("/")
         subscription_id, action = parts[0], parts[1] if len(parts) == 2 else ""
         token = str(query.get("token", ""))
+        if not _ID.match(subscription_id):
+            return _json(404, {"error": "not found"})
         if len(parts) == 2 and method == "GET" and action == "confirm":
             return _confirm(deps, subscription_id, token)
         if len(parts) == 2 and method == "GET" and action == "unsubscribe":
@@ -160,6 +166,8 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
             request.get("cells") if isinstance(request.get("cells"), list) else [],
             request.get("zone_id") if isinstance(request.get("zone_id"), str) else None,
         )
+    except Cooldown:
+        return _json(429, {"error": "a confirmation e-mail was just sent; wait a few minutes"})
     except InvalidSubscription as exc:
         return _json(400, {"error": str(exc)})
 

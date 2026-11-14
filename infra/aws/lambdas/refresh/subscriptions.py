@@ -32,13 +32,21 @@ RESOLUTION = 4
 #: A zone is a cell and its ring (7 cells); this leaves room for a few of them.
 MAX_CELLS = 60
 PENDING_TTL = timedelta(hours=24)
-_EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,24}$")
+#: Least time between two confirmation e-mails to the same address.
+RESEND_COOLDOWN = timedelta(minutes=10)
+# Plain characters only: SES reads "Name <address>" as a display name plus an address,
+# so brackets, quotes and commas must not get through.
+_EMAIL = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$")
 _CHAT_ID = re.compile(r"^-?\d{1,20}$")
 _ZONE = re.compile(r"^[A-Za-z0-9_-]{1,60}$")
 
 
 class InvalidSubscription(ValueError):
     """The request is wrong in a way the client can fix; the message is safe to return."""
+
+
+class Cooldown(Exception):
+    """A confirmation e-mail already went to this address a moment ago."""
 
 
 class NotFound(LookupError):
@@ -138,9 +146,13 @@ class Subscriptions:
             address = (address or "").strip().lower()
             if len(address) > 254 or not _EMAIL.match(address):
                 raise InvalidSubscription("a valid e-mail address is needed")
-            # A new request for the same address replaces its older pending ones.
+            # A new request for the same address replaces its older pending ones, but not
+            # within minutes of the last: nobody may use this to flood a mailbox.
+            now = self._now()
             for old in self.store.all():
                 if old.channel == "email" and old.address == address and old.status == "pending":
+                    if now - datetime.fromisoformat(old.created_at) < RESEND_COOLDOWN:
+                        raise Cooldown
                     self.store.delete(old.id)
         else:
             address = None  # set by the bot, never by the browser
@@ -206,7 +218,15 @@ class Subscriptions:
             expires_at=None,
         )
         self.store.put(confirmed)
+        self._drop_others(confirmed)
         return confirmed
+
+    def _drop_others(self, kept: Subscription) -> None:
+        """One subscription per address or chat: confirming a new one replaces the old."""
+        for other in self.store.all():
+            same = other.channel == kept.channel and other.address == kept.address
+            if same and other.id != kept.id and other.status == "confirmed":
+                self.store.delete(other.id)
 
     def confirm_telegram(self, subscription_id: str, chat_id: int | str) -> Subscription | None:
         """The bot saw `/start <id>` from `chat_id`: that chat is the subscriber."""
@@ -227,6 +247,7 @@ class Subscriptions:
             expires_at=None,
         )
         self.store.put(confirmed)
+        self._drop_others(confirmed)
         return confirmed
 
     # ---------- leaving ----------

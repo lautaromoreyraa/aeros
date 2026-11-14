@@ -187,6 +187,26 @@ def test_the_link_in_the_email_confirms_the_subscription(deps):
     assert "no-store" in response["headers"]["cache-control"]
 
 
+def test_a_second_sign_up_for_the_same_address_within_minutes_is_a_429_and_sends_nothing(
+    deps, mailbox
+):
+    assert create(deps)["statusCode"] == 202
+    response = create(deps)
+    assert response["statusCode"] == 429 and len(mailbox.sent) == 1
+
+
+def test_ids_that_cannot_exist_are_a_404_before_they_reach_the_store(deps):
+    class Strict:
+        def get(self, subscription_id):
+            raise AssertionError("must not be asked")
+
+    deps.subscriptions.store = Strict()
+    for bad in ["", "x" * 33, "a b", "a%00b"]:
+        path = f"{a.PREFIX}/{bad}/confirm"
+        assert call(deps, "GET", path, query={"token": "t"})["statusCode"] == 404
+    assert call(deps, "DELETE", f"{a.PREFIX}/{'y' * 40}", query={"token": "t"})["statusCode"] == 404
+
+
 def test_a_wrong_token_or_unknown_id_look_the_same(deps):
     created = deps.subscriptions.store.get(answer(create(deps))["id"])
     wrong = call(deps, "GET", f"{a.PREFIX}/{created.id}/confirm", query={"token": "nope"})
