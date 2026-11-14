@@ -112,6 +112,10 @@ def main(argv: list[str] | None = None) -> int:
     recent.add_argument("--area", default=archive.STUDY_AREA, help="west,south,east,north")
     recent.add_argument("--start", type=date.fromisoformat, default=date(date.today().year, 1, 1))
     recent.add_argument("--end", type=date.fromisoformat, default=date.today())
+    recent.add_argument(
+        "--platforms",
+        help="comma-separated subset of MODIS,SNPP,NOAA20,NOAA21 (default: all)",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "demo":
@@ -156,8 +160,9 @@ def main(argv: list[str] | None = None) -> int:
         map_key = os.environ.get("FIRMS_MAP_KEY")
         if not map_key:
             parser.error("set FIRMS_MAP_KEY to a FIRMS MAP_KEY")
+        platforms = tuple(args.platforms.split(",")) if args.platforms else None
         requests = archive.recent_plan(
-            archive.availability(map_key), args.area, args.start, args.end
+            archive.availability(map_key), args.area, args.start, args.end, platforms
         )
         report = archive.download_recent(requests, args.out, map_key, date.today())
         print(json.dumps(report, indent=2))

@@ -223,3 +223,23 @@ def test_verify_reports_unknown_when_the_server_gives_no_size(tmp_path):
     (tmp_path / "modis_2010_Bolivia.csv").write_bytes(b"x")
     report = archive.verify([tmp_path], lambda url: None)
     assert len(report["unknown"]) == 1 and not report["ok"]
+
+
+def test_recent_plan_can_be_limited_to_one_platform():
+    available = {
+        "VIIRS_NOAA20_NRT": (date(2025, 1, 1), date(2026, 11, 12)),
+        "VIIRS_NOAA21_SP": (date(2023, 3, 1), date(2026, 7, 31)),
+        "VIIRS_NOAA21_NRT": (date(2025, 1, 1), date(2026, 11, 12)),
+    }
+
+    requests = archive.recent_plan(
+        available, archive.STUDY_AREA, date(2026, 7, 28), date(2026, 8, 3), ("NOAA21",)
+    )
+
+    assert {r.source for r in requests} == {"VIIRS_NOAA21_SP", "VIIRS_NOAA21_NRT"}
+    assert requests[0].start == date(2026, 7, 28) and requests[-1].end == date(2026, 8, 3)
+
+
+def test_recent_plan_rejects_an_unknown_platform():
+    with pytest.raises(ValueError):
+        archive.recent_plan({}, archive.STUDY_AREA, date(2026, 1, 1), date(2026, 1, 2), ("GOES",))
