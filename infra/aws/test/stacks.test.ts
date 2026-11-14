@@ -13,7 +13,7 @@ const CONTEXT = {
   "aeros:githubRepository": "lautaromoreyraa/aeros",
   "aeros:deployBranch": "main",
   "aeros:firmsMapKeyParameter": "/aeros/firms/map-key",
-  "aeros:firmsArea": "-74,-56,-53,-21",
+  "aeros:firmsArea": "-69,-35,-53,-16",
   "aeros:createGithubOidcProvider": true,
   "aeros:webUrl": "https://aeros.example.org",
   "aeros:alertRegionName": "Test region",
@@ -322,7 +322,7 @@ describe("FIRMS refresh and early warning", () => {
       Environment: {
         Variables: Match.objectLike({
           FIRMS_MAP_KEY_PARAMETER: "/aeros/firms/map-key",
-          FIRMS_AREA: "-74,-56,-53,-21",
+          FIRMS_AREA: "-69,-35,-53,-16",
           FIRMS_SOURCES: "MODIS_NRT,VIIRS_NOAA20_NRT,VIIRS_NOAA21_NRT",
           FIRMS_DAYS_BACK: "7",
           EARLY_WARNING_KEY: "derived/early_warning.json",

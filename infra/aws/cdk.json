@@ -18,7 +18,7 @@
     "aeros:githubRepository": "lautaromoreyraa/aeros",
     "aeros:deployBranch": "main",
     "aeros:firmsMapKeyParameter": "/aeros/firms/map-key",
-    "aeros:firmsArea": "-74,-56,-53,-21",
+    "aeros:firmsArea": "-69,-35,-53,-16",
     "aeros:webUrl": "https://aeros.lautaromoreyra.dev",
     "aeros:alertRegionName": "Southern Cone of South America",
     "aeros:createGithubOidcProvider": true,
