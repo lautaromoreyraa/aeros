@@ -41,6 +41,8 @@ def test_bundle_lays_out_regions_units_sectors_and_the_legacy_path(tmp_path):
     # Parquet tables never reach the static site
     assert not list(out.rglob("*.parquet"))
     assert json.loads((out / "regions.json").read_text()) == index
+    root_forecast = json.loads((out / "forecast.json").read_text())
+    assert root_forecast == {"region": "gran-chaco", "unit": "hotspots", "file": "forecast.json"}
 
 
 def test_bundle_refuses_a_region_without_its_calendar(tmp_path):
