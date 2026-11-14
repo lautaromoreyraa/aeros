@@ -11,7 +11,7 @@ import { formatCount, unitLabel } from "../util/format";
 import { focusPadding, leaderEnd, type Point } from "../util/mapFocus";
 import type { WindField } from "../util/wind";
 import { WindParticles } from "./WindParticles";
-import { BASEMAP, ON_TOP, areaLayers, initialView, rasterLayer } from "./mapLayers";
+import { BASEMAP, ON_TOP, areaLayers, initialView, rasterLayer, type Basemap } from "./mapLayers";
 
 /** Where the camera should go, and the cell a line to the panel starts from. */
 export interface MapFocus {
@@ -46,12 +46,16 @@ interface Props {
   focus?: MapFocus | null;
   /** The floating panel the focus belongs to; the camera leaves its part of the map free. */
   panel?: RefObject<HTMLElement | null>;
+  /** The ground under the columns; the theme's grey canvas unless a view asks for another. */
+  basemap?: Basemap;
   /** Animated wind over the columns, at one hour of the field. */
   wind?: { field: WindField; hour: number } | null;
 }
 
 export default function HexMap(props: Props) {
   const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, focus = null, panel, wind = null } = props;
+  const ground = BASEMAP[props.basemap ?? theme];
+  const groundId = props.basemap ?? theme;
   const ramp = props.ramp ?? VIRIDIS;
   const container = useRef<HTMLDivElement>(null);
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0);
@@ -127,10 +131,10 @@ export default function HexMap(props: Props) {
 
   const layers = useMemo(() => {
     return [
-      rasterLayer(`basemap-${theme}`, BASEMAP[theme].base),
+      rasterLayer(`basemap-${groundId}`, ground.base, undefined, ground.maxZoom),
       // Seen from afar, place names sit under the columns: context, never
       // covering the data. Close up they go on top, so a town can be found.
-      !closeUp && rasterLayer(`labels-${theme}`, BASEMAP[theme].labels),
+      !closeUp && rasterLayer(`labels-${groundId}`, ground.labels),
       new H3HexagonLayer<CellTotal>({
         id: "cells",
         data: totals,
@@ -152,9 +156,9 @@ export default function HexMap(props: Props) {
         updateTriggers: { getElevation: [showRaw, max], getFillColor: [showRaw, max, selected, ramp] },
       }),
       ...areaLayers(area, draft, theme),
-      closeUp && rasterLayer(`labels-top-${theme}`, BASEMAP[theme].labels, ON_TOP),
+      closeUp && rasterLayer(`labels-top-${groundId}`, ground.labels, ON_TOP),
     ];
-  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp]);
+  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp, ground, groundId]);
 
   // The line follows the camera, so it is recomputed on every view change.
   const anchorTotal = useMemo(() => totals.find((cell) => cell.cell === focus?.anchor), [totals, focus]);
@@ -193,7 +197,14 @@ export default function HexMap(props: Props) {
         }}
       />
       {wind && (
-        <WindParticles field={wind.field} hour={wind.hour} viewport={projection} cameraKey={cameraKey} reducedMotion={reducedMotion} />
+        <WindParticles
+          field={wind.field}
+          hour={wind.hour}
+          viewport={projection}
+          cameraKey={cameraKey}
+          reducedMotion={reducedMotion}
+          ink={groundId === "dark" ? "light" : "dark"}
+        />
       )}
       {leader && (
         <svg className="map__leader" aria-hidden="true">
@@ -219,7 +230,7 @@ export default function HexMap(props: Props) {
           {viewState.pitch ? "Flat" : "3D"}
         </button>
       </div>
-      <p className="map__attribution">Basemap: Esri, HERE, Garmin, © OpenStreetMap contributors</p>
+      <p className="map__attribution">{ground.attribution}</p>
     </div>
   );
 }

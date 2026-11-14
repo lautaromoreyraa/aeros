@@ -100,7 +100,7 @@ export const STRONG_WIND = 12;
 export function windStroke(speed: number): { alpha: number; width: number; pixels: number } {
   const t = Math.min(Math.max(speed, 0) / STRONG_WIND, 1);
   return {
-    alpha: 0.1 + 0.8 * t ** 0.7,
+    alpha: 0.15 + 0.75 * t ** 0.7,
     width: 1 + 0.6 * t,
     // Pixels per frame: proportional to the speed and stretched at the top,
     // so a gale visibly outruns a breeze.

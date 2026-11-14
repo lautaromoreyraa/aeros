@@ -70,7 +70,7 @@ describe("windStroke", () => {
   });
 
   it("stops at calm and caps the brightness above a strong wind", () => {
-    expect(windStroke(0)).toMatchObject({ pixels: 0, alpha: 0.1 });
+    expect(windStroke(0)).toMatchObject({ pixels: 0, alpha: 0.15 });
     expect(windStroke(40).alpha).toBeCloseTo(0.9);
   });
 });

@@ -188,6 +188,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             focus={mapFocus}
             panel={panelRef}
             wind={wind}
+            basemap="physical"
           />
         </Suspense>
 

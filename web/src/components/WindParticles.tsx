@@ -10,6 +10,8 @@ interface Props {
   /** A value that changes whenever the camera moves, so old trails are wiped instead of smeared. */
   cameraKey: string;
   reducedMotion: boolean;
+  /** Light streaks for a dark ground, dark ones for a light ground. */
+  ink: "light" | "dark";
 }
 
 /** Particles per 10 000 px² of map. */
@@ -29,7 +31,7 @@ interface Particle {
  * leave fading trails whose brightness and pace both follow the speed. Positions
  * live in lon/lat, so the streaks stay on the ground while the map moves.
  */
-export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion }: Props) {
+export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion, ink }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const particles = useRef<Particle[]>([]);
   const cleared = useRef(cameraKey);
@@ -93,7 +95,7 @@ export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion 
           particle.lng = lng;
           particle.lat = lat;
           if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
-          context.strokeStyle = `rgba(255, 255, 255, ${stroke.alpha})`;
+          context.strokeStyle = `rgba(${ink === "light" ? "255, 255, 255" : "18, 28, 40"}, ${stroke.alpha})`;
           context.lineWidth = stroke.width;
           context.beginPath();
           context.moveTo(x, y);
@@ -109,7 +111,7 @@ export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion 
       for (let index = 0; index < 40; index++) step();
     } else frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [field, hour, viewport, reducedMotion]);
+  }, [field, hour, viewport, reducedMotion, ink]);
 
   return <canvas ref={canvas} className="map__wind" aria-hidden="true" />;
 }
