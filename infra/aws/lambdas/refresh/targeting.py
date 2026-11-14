@@ -229,11 +229,16 @@ class Match:
 def reach(
     subscribers: Iterable[Subscriber], report: Mapping, zones: Mapping[str, set[str]]
 ) -> list[Match]:
-    """Subscribers a flagged cell can reach, each with the cells that reach them."""
+    """Subscribers a flagged cell can reach, each with the cells that reach them.
+
+    A subscriber is anything with a `cells` sequence (a `Subscriber` here, or a
+    stored `Subscription`), and comes back in the match as it was given.
+    """
     matches = []
     for subscriber in subscribers:
+        chosen = set(subscriber.cells)
         flagged = tuple(
-            c for c in report.get("cells") or [] if zones.get(c["cell"], set()) & subscriber.cells
+            c for c in report.get("cells") or [] if zones.get(c["cell"], set()) & chosen
         )
         if flagged:
             matches.append(Match(subscriber, flagged))
