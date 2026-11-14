@@ -65,6 +65,13 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--last-year", type=int, default=date.today().year - 1)
     fetch.add_argument("--workers", type=int, default=4, help="files downloaded at once")
 
+    check = sub.add_parser(
+        "verify-archive",
+        help="check every yearly country file on disk against the size FIRMS serves;"
+        " exits 1 when any file is short or longer",
+    )
+    check.add_argument("folders", nargs="+", type=Path)
+
     recent = sub.add_parser(
         "fetch-recent",
         help="download the months after the last yearly archive through the FIRMS area API;"
@@ -82,6 +89,21 @@ def main(argv: list[str] | None = None) -> int:
         files = archive.plan(args.countries.split(","), args.last_year)
         print(json.dumps(archive.download(files, args.out, workers=args.workers), indent=2))
         return 0
+    if args.command == "verify-archive":
+        report = archive.verify(args.folders)
+        summary = {k: len(v) for k, v in report.items()}
+        print(
+            json.dumps(
+                {
+                    "summary": summary,
+                    "short": report["short"],
+                    "longer": report["longer"],
+                    "unknown": report["unknown"],
+                },
+                indent=2,
+            )
+        )
+        return 1 if report["short"] or report["longer"] else 0
     if args.command == "fetch-recent":
         map_key = os.environ.get("FIRMS_MAP_KEY")
         if not map_key:
