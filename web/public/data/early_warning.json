@@ -1,62 +1,61 @@
 {
- "generated_at": "2026-11-13T06:20:00Z",
+ "generated_at": "2026-11-14T21:12:37Z",
  "window": [
-  "2026-11-06",
-  "2026-11-12"
+  "2026-11-07",
+  "2026-11-13"
  ],
  "days_with_data": [
-  "2026-11-06",
   "2026-11-07",
+  "2026-11-08",
   "2026-11-09",
   "2026-11-10",
   "2026-11-11",
-  "2026-11-12"
+  "2026-11-12",
+  "2026-11-13"
  ],
- "gap_days": [
-  "2026-11-08"
- ],
+ "gap_days": [],
  "days": [
-  {
-   "date": "2026-11-06",
-   "status": "ok",
-   "satellite": "NOAA-20",
-   "detections": 178
-  },
   {
    "date": "2026-11-07",
    "status": "ok",
-   "satellite": "NOAA-20",
-   "detections": 259
+   "satellite": "NOAA-21",
+   "detections": 1226
   },
   {
    "date": "2026-11-08",
-   "status": "gap",
-   "satellite": null,
-   "detections": null
+   "status": "ok",
+   "satellite": "NOAA-21",
+   "detections": 498
   },
   {
    "date": "2026-11-09",
    "status": "ok",
    "satellite": "NOAA-21",
-   "detections": 150
+   "detections": 1331
   },
   {
    "date": "2026-11-10",
    "status": "ok",
-   "satellite": "NOAA-20",
-   "detections": 214
+   "satellite": "NOAA-21",
+   "detections": 2872
   },
   {
    "date": "2026-11-11",
    "status": "ok",
-   "satellite": "NOAA-20",
-   "detections": 123
+   "satellite": "NOAA-21",
+   "detections": 1613
   },
   {
    "date": "2026-11-12",
    "status": "ok",
-   "satellite": "NOAA-20",
-   "detections": 224
+   "satellite": "NOAA-21",
+   "detections": 1748
+  },
+  {
+   "date": "2026-11-13",
+   "status": "ok",
+   "satellite": "NOAA-21",
+   "detections": 2239
   }
  ],
  "method": {
@@ -66,70 +65,453 @@
   "alpha": 0.01,
   "expected_floor": 0.5,
   "past_years": [
-   2012,
-   2013,
-   2014,
-   2015,
-   2016,
-   2017,
-   2018,
-   2019,
-   2020,
-   2021,
-   2022,
-   2023,
-   2024,
-   2025
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26
   ]
  },
  "region": {
-  "observed": 70,
-  "expected": 43.046,
-  "ratio": 1.626,
-  "p_value": 9.878e-05
+  "observed": 2679,
+  "expected": 1975.574,
+  "ratio": 1.356,
+  "p_value": 3.832e-51
  },
  "cells": [
   {
-   "cell": "84b34c7ffffffff",
-   "observed": 10,
-   "expected": 1.959,
-   "ratio": 5.103,
-   "p_value": 3.928e-05
+   "cell": "84b361bffffffff",
+   "observed": 203,
+   "expected": 0.598,
+   "ratio": 339.671,
+   "p_value": 0.0
   },
   {
-   "cell": "84b34b7ffffffff",
-   "observed": 9,
-   "expected": 1.776,
-   "ratio": 5.068,
-   "p_value": 9.923e-05
+   "cell": "84b34d1ffffffff",
+   "observed": 169,
+   "expected": 3.75,
+   "ratio": 45.067,
+   "p_value": 5.771e-210
   },
   {
-   "cell": "84a9695ffffffff",
-   "observed": 7,
-   "expected": 1.593,
-   "ratio": 4.395,
-   "p_value": 0.001302
+   "cell": "84b3495ffffffff",
+   "observed": 122,
+   "expected": 2.403,
+   "ratio": 50.763,
+   "p_value": 2.687e-158
   },
   {
-   "cell": "84a96b9ffffffff",
-   "observed": 6,
-   "expected": 1.177,
-   "ratio": 5.099,
-   "p_value": 0.00136
-  },
-  {
-   "cell": "84b34e9ffffffff",
-   "observed": 6,
-   "expected": 1.275,
-   "ratio": 4.704,
-   "p_value": 0.00203
+   "cell": "84a9697ffffffff",
+   "observed": 128,
+   "expected": 2.941,
+   "ratio": 43.529,
+   "p_value": 1.278e-157
   },
   {
    "cell": "84b2649ffffffff",
+   "observed": 83,
+   "expected": 1.17,
+   "ratio": 70.916,
+   "p_value": 3.743e-120
+  },
+  {
+   "cell": "84a86e3ffffffff",
+   "observed": 148,
+   "expected": 10.214,
+   "ratio": 14.49,
+   "p_value": 3.548e-114
+  },
+  {
+   "cell": "84b36e5ffffffff",
+   "observed": 76,
+   "expected": 1.099,
+   "ratio": 69.156,
+   "p_value": 2.335e-109
+  },
+  {
+   "cell": "84a94b7ffffffff",
+   "observed": 135,
+   "expected": 9.714,
+   "ratio": 13.897,
+   "p_value": 4.83e-102
+  },
+  {
+   "cell": "84b3633ffffffff",
+   "observed": 69,
+   "expected": 1.076,
+   "ratio": 64.115,
+   "p_value": 3.209e-97
+  },
+  {
+   "cell": "84b348bffffffff",
+   "observed": 51,
+   "expected": 0.368,
+   "ratio": 138.441,
+   "p_value": 1.753e-82
+  },
+  {
+   "cell": "84b34cbffffffff",
+   "observed": 66,
+   "expected": 1.855,
+   "ratio": 35.582,
+   "p_value": 1.511e-76
+  },
+  {
+   "cell": "848b35dffffffff",
+   "observed": 69,
+   "expected": 3.904,
+   "ratio": 17.675,
+   "p_value": 8.099e-60
+  },
+  {
+   "cell": "84a9497ffffffff",
+   "observed": 61,
+   "expected": 4.143,
+   "ratio": 14.724,
+   "p_value": 1.516e-48
+  },
+  {
+   "cell": "84a94d7ffffffff",
+   "observed": 34,
+   "expected": 1.407,
+   "ratio": 24.167,
+   "p_value": 9.49e-35
+  },
+  {
+   "cell": "84a86dbffffffff",
+   "observed": 21,
+   "expected": 0.316,
+   "ratio": 66.447,
+   "p_value": 5.792e-27
+  },
+  {
+   "cell": "84a8613ffffffff",
+   "observed": 59,
+   "expected": 11.731,
+   "ratio": 5.029,
+   "p_value": 8.881e-23
+  },
+  {
+   "cell": "84a8683ffffffff",
+   "observed": 24,
+   "expected": 1.629,
+   "ratio": 14.731,
+   "p_value": 4.133e-20
+  },
+  {
+   "cell": "84a94d3ffffffff",
+   "observed": 23,
+   "expected": 1.444,
+   "ratio": 15.931,
+   "p_value": 4.521e-20
+  },
+  {
+   "cell": "84b36edffffffff",
+   "observed": 32,
+   "expected": 3.857,
+   "ratio": 8.296,
+   "p_value": 5.235e-19
+  },
+  {
+   "cell": "84b265bffffffff",
+   "observed": 34,
+   "expected": 5.439,
+   "ratio": 6.252,
+   "p_value": 1.767e-16
+  },
+  {
+   "cell": "84b26edffffffff",
+   "observed": 19,
+   "expected": 1.379,
+   "ratio": 13.774,
+   "p_value": 1.002e-15
+  },
+  {
+   "cell": "84b3617ffffffff",
+   "observed": 21,
+   "expected": 2.3,
+   "ratio": 9.132,
+   "p_value": 8.619e-14
+  },
+  {
+   "cell": "84a9693ffffffff",
+   "observed": 31,
+   "expected": 6.17,
+   "ratio": 5.024,
+   "p_value": 9.916e-13
+  },
+  {
+   "cell": "84a94b3ffffffff",
+   "observed": 43,
+   "expected": 12.06,
+   "ratio": 3.565,
+   "p_value": 4.141e-12
+  },
+  {
+   "cell": "84b26e1ffffffff",
+   "observed": 18,
+   "expected": 1.975,
+   "ratio": 9.112,
+   "p_value": 5.07e-12
+  },
+  {
+   "cell": "84b2753ffffffff",
+   "observed": 17,
+   "expected": 1.857,
+   "ratio": 9.154,
+   "p_value": 1.819e-11
+  },
+  {
+   "cell": "84b26c9ffffffff",
+   "observed": 33,
+   "expected": 8.311,
+   "ratio": 3.971,
+   "p_value": 8.338e-11
+  },
+  {
+   "cell": "848b355ffffffff",
+   "observed": 46,
+   "expected": 15.486,
+   "ratio": 2.97,
+   "p_value": 2.774e-10
+  },
+  {
+   "cell": "84b3687ffffffff",
+   "observed": 27,
+   "expected": 6.214,
+   "ratio": 4.345,
+   "p_value": 6.217e-10
+  },
+  {
+   "cell": "84b3611ffffffff",
+   "observed": 10,
+   "expected": 0.59,
+   "ratio": 16.95,
+   "p_value": 8.243e-10
+  },
+  {
+   "cell": "84a86b9ffffffff",
+   "observed": 9,
+   "expected": 0.399,
+   "ratio": 22.552,
+   "p_value": 3.435e-09
+  },
+  {
+   "cell": "84b36e1ffffffff",
+   "observed": 18,
+   "expected": 3.183,
+   "ratio": 5.656,
+   "p_value": 8.715e-09
+  },
+  {
+   "cell": "84b36a3ffffffff",
+   "observed": 17,
+   "expected": 3.918,
+   "ratio": 4.339,
+   "p_value": 8.591e-07
+  },
+  {
+   "cell": "84b2751ffffffff",
+   "observed": 12,
+   "expected": 2.079,
+   "ratio": 5.772,
+   "p_value": 2.023e-06
+  },
+  {
+   "cell": "84b3691ffffffff",
+   "observed": 21,
+   "expected": 6.857,
+   "ratio": 3.062,
+   "p_value": 1.075e-05
+  },
+  {
+   "cell": "84a86a1ffffffff",
+   "observed": 7,
+   "expected": 0.797,
+   "ratio": 8.778,
+   "p_value": 2.033e-05
+  },
+  {
+   "cell": "84b34bbffffffff",
+   "observed": 29,
+   "expected": 11.929,
+   "ratio": 2.431,
+   "p_value": 2.035e-05
+  },
+  {
+   "cell": "84a94b1ffffffff",
+   "observed": 18,
+   "expected": 5.571,
+   "ratio": 3.231,
+   "p_value": 2.232e-05
+  },
+  {
+   "cell": "84b36e7ffffffff",
+   "observed": 14,
+   "expected": 3.643,
+   "ratio": 3.843,
+   "p_value": 2.857e-05
+  },
+  {
+   "cell": "84b2665ffffffff",
+   "observed": 12,
+   "expected": 3.119,
+   "ratio": 3.847,
+   "p_value": 0.0001023
+  },
+  {
+   "cell": "84a96b9ffffffff",
+   "observed": 7,
+   "expected": 1.055,
+   "ratio": 6.635,
+   "p_value": 0.0001155
+  },
+  {
+   "cell": "84b3605ffffffff",
+   "observed": 6,
+   "expected": 0.738,
+   "ratio": 8.131,
+   "p_value": 0.0001196
+  },
+  {
+   "cell": "84b26c7ffffffff",
+   "observed": 14,
+   "expected": 4.286,
+   "ratio": 3.267,
+   "p_value": 0.0001545
+  },
+  {
+   "cell": "84a960dffffffff",
    "observed": 5,
-   "expected": 1.212,
-   "ratio": 4.127,
-   "p_value": 0.00805
+   "expected": 0.406,
+   "ratio": 12.316,
+   "p_value": 0.0001721
+  },
+  {
+   "cell": "84b34a9ffffffff",
+   "observed": 5,
+   "expected": 0.436,
+   "ratio": 11.472,
+   "p_value": 0.0001721
+  },
+  {
+   "cell": "84b36abffffffff",
+   "observed": 9,
+   "expected": 2.026,
+   "ratio": 4.443,
+   "p_value": 0.0002603
+  },
+  {
+   "cell": "84b36e3ffffffff",
+   "observed": 14,
+   "expected": 4.743,
+   "ratio": 2.952,
+   "p_value": 0.0004212
+  },
+  {
+   "cell": "84b2757ffffffff",
+   "observed": 9,
+   "expected": 2.265,
+   "ratio": 3.974,
+   "p_value": 0.0005756
+  },
+  {
+   "cell": "84a96c5ffffffff",
+   "observed": 6,
+   "expected": 1.17,
+   "ratio": 5.126,
+   "p_value": 0.001324
+  },
+  {
+   "cell": "84b2699ffffffff",
+   "observed": 6,
+   "expected": 1.259,
+   "ratio": 4.766,
+   "p_value": 0.001905
+  },
+  {
+   "cell": "84b3459ffffffff",
+   "observed": 5,
+   "expected": 0.861,
+   "ratio": 5.808,
+   "p_value": 0.001937
+  },
+  {
+   "cell": "84a864bffffffff",
+   "observed": 16,
+   "expected": 7.532,
+   "ratio": 2.124,
+   "p_value": 0.004795
+  },
+  {
+   "cell": "84a8611ffffffff",
+   "observed": 23,
+   "expected": 12.476,
+   "ratio": 1.844,
+   "p_value": 0.0048
+  },
+  {
+   "cell": "84a968dffffffff",
+   "observed": 5,
+   "expected": 1.086,
+   "ratio": 4.603,
+   "p_value": 0.005162
+  },
+  {
+   "cell": "84a95e7ffffffff",
+   "observed": 6,
+   "expected": 1.55,
+   "ratio": 3.872,
+   "p_value": 0.0052
+  },
+  {
+   "cell": "84b2457ffffffff",
+   "observed": 21,
+   "expected": 11.286,
+   "ratio": 1.861,
+   "p_value": 0.006154
+  },
+  {
+   "cell": "84a96bbffffffff",
+   "observed": 8,
+   "expected": 2.685,
+   "ratio": 2.98,
+   "p_value": 0.006414
+  },
+  {
+   "cell": "84a868dffffffff",
+   "observed": 19,
+   "expected": 10.143,
+   "ratio": 1.873,
+   "p_value": 0.008259
+  },
+  {
+   "cell": "84b3683ffffffff",
+   "observed": 13,
+   "expected": 5.991,
+   "ratio": 2.17,
+   "p_value": 0.00873
   }
  ]
 }
