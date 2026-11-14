@@ -10,8 +10,7 @@ import { type Rgb, VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
 import { formatCount, unitLabel } from "../util/format";
 import { focusPadding, leaderEnd, type Point } from "../util/mapFocus";
 import type { WindField } from "../util/wind";
-import { BitmapLayer } from "@deck.gl/layers";
-import { WindParticles, windSpeedImage } from "./WindParticles";
+import { WindParticles } from "./WindParticles";
 import { BASEMAP, ON_TOP, areaLayers, initialView, rasterLayer } from "./mapLayers";
 
 /** Where the camera should go, and the cell a line to the panel starts from. */
@@ -126,20 +125,9 @@ export default function HexMap(props: Props) {
   const value = (cell: CellTotal) => (showRaw ? cell.stacked : cell.harmonized);
   const closeUp = viewState.zoom >= LABELS_ON_TOP_ZOOM;
 
-  const windImage = useMemo(() => wind && windSpeedImage(wind.field, wind.hour), [wind]);
-
   const layers = useMemo(() => {
-    const grid = wind?.field.grid;
     return [
       rasterLayer(`basemap-${theme}`, BASEMAP[theme].base),
-      windImage &&
-        grid &&
-        new BitmapLayer({
-          id: "wind-speed",
-          image: windImage,
-          bounds: [grid.west, grid.south, grid.east, grid.north],
-          opacity: 0.38,
-        }),
       // Seen from afar, place names sit under the columns: context, never
       // covering the data. Close up they go on top, so a town can be found.
       !closeUp && rasterLayer(`labels-${theme}`, BASEMAP[theme].labels),
@@ -166,7 +154,7 @@ export default function HexMap(props: Props) {
       ...areaLayers(area, draft, theme),
       closeUp && rasterLayer(`labels-top-${theme}`, BASEMAP[theme].labels, ON_TOP),
     ];
-  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp, windImage, wind]);
+  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp]);
 
   // The line follows the camera, so it is recomputed on every view change.
   const anchorTotal = useMemo(() => totals.find((cell) => cell.cell === focus?.anchor), [totals, focus]);

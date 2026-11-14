@@ -1,6 +1,3 @@
-import type { Rgb } from "./colorRamp";
-import { sampleRamp } from "./colorRamp";
-
 /** A regular lon/lat grid; rows run north to south, columns west to east. */
 export interface WindGrid {
   west: number;
@@ -93,18 +90,20 @@ export function hourIndexAt(field: WindField, now: number): number {
   return best;
 }
 
-/** Calm blue through green and yellow to the red of a gale, in m/s, like a weather map. */
-export const WIND_RAMP: Rgb[] = [
-  [36, 104, 180],
-  [44, 160, 170],
-  [80, 190, 90],
-  [230, 210, 60],
-  [235, 120, 40],
-  [200, 40, 60],
-];
-/** Speed at the top of {@link WIND_RAMP}. */
-export const WIND_MAX = 15;
+/** From this speed on, in m/s, a streak is as bright and as fast as it gets. */
+export const STRONG_WIND = 12;
 
-export function windColor(speed: number): Rgb {
-  return sampleRamp(WIND_RAMP, Math.min(speed / WIND_MAX, 1));
+/**
+ * How a streak shows its wind speed, twice over: light wind draws a faint,
+ * slow line; strong wind a bright, fast one. No colour is needed on top.
+ */
+export function windStroke(speed: number): { alpha: number; width: number; pixels: number } {
+  const t = Math.min(Math.max(speed, 0) / STRONG_WIND, 1);
+  return {
+    alpha: 0.1 + 0.8 * t ** 0.7,
+    width: 1 + 0.6 * t,
+    // Pixels per frame: proportional to the speed and stretched at the top,
+    // so a gale visibly outruns a breeze.
+    pixels: Math.max(speed, 0) * 0.22 * (0.6 + 0.8 * t),
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromOpenMeteo, gridNodes, hourIndexAt, sampleWind, toComponents, type WindField, type WindGrid } from "../../util/wind";
+import { STRONG_WIND, fromOpenMeteo, gridNodes, hourIndexAt, sampleWind, toComponents, windStroke, type WindField, type WindGrid } from "../../util/wind";
 
 const grid: WindGrid = { west: -62, south: -26, east: -60, north: -24, nx: 2, ny: 2 };
 
@@ -57,5 +57,20 @@ describe("sampleWind", () => {
 describe("hourIndexAt", () => {
   it("picks the closest hour", () => {
     expect(hourIndexAt(field([0, 0, 0, 0], [0, 0, 0, 0]), Date.parse("2026-11-14T18:50:00Z"))).toBe(1);
+  });
+});
+
+describe("windStroke", () => {
+  it("draws light wind faint and slow, strong wind bright and fast", () => {
+    const breeze = windStroke(2);
+    const gale = windStroke(STRONG_WIND);
+    expect(breeze.alpha).toBeLessThan(0.4);
+    expect(gale.alpha).toBeCloseTo(0.9);
+    expect(gale.pixels / breeze.pixels).toBeGreaterThan(STRONG_WIND / 2);
+  });
+
+  it("stops at calm and caps the brightness above a strong wind", () => {
+    expect(windStroke(0)).toMatchObject({ pixels: 0, alpha: 0.1 });
+    expect(windStroke(40).alpha).toBeCloseTo(0.9);
   });
 });

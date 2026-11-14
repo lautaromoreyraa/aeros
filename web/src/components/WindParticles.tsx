@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { WebMercatorViewport } from "@deck.gl/core";
-import { sampleWind, windColor, type WindField } from "../util/wind";
+import { sampleWind, windStroke, type WindField } from "../util/wind";
 
 interface Props {
   field: WindField;
@@ -13,12 +13,10 @@ interface Props {
 }
 
 /** Particles per 10 000 px² of map. */
-const DENSITY = 4.5;
+const DENSITY = 3;
 const MAX_AGE = 110;
 /** Trails keep this share every frame: long, soft tails. */
 const FADE = 0.955;
-/** On-screen pixels a particle moves per frame for each m/s of wind. */
-const PIXELS_PER_MS = 0.32;
 
 interface Particle {
   lng: number;
@@ -27,8 +25,8 @@ interface Particle {
 }
 
 /**
- * Wind as moving streaks, the way weather maps draw it: particles are carried
- * across the u/v field and leave short trails coloured by speed. Positions
+ * Wind as moving streaks: particles are carried across the u/v field and
+ * leave fading trails whose brightness and pace both follow the speed. Positions
  * live in lon/lat, so the streaks stay on the ground while the map moves.
  */
 export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion }: Props) {
@@ -75,7 +73,6 @@ export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion 
       context.fillRect(0, 0, width, height);
       cleared.current = cameraKeyRef.current;
       context.globalCompositeOperation = "source-over";
-      context.lineWidth = 1.3;
       context.lineCap = "round";
 
       if (view) {
@@ -86,15 +83,18 @@ export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion 
             continue;
           }
           const [u, v] = wind;
+          const speed = Math.hypot(u, v);
+          const stroke = windStroke(speed);
           const [x, y] = view.project([particle.lng, particle.lat]) as [number, number];
-          const nx = x + u * PIXELS_PER_MS;
-          const ny = y - v * PIXELS_PER_MS;
+          const scale = speed > 0 ? stroke.pixels / speed : 0;
+          const nx = x + u * scale;
+          const ny = y - v * scale;
           const [lng, lat] = view.unproject([nx, ny]) as [number, number];
           particle.lng = lng;
           particle.lat = lat;
           if (x < -20 || y < -20 || x > width + 20 || y > height + 20) continue;
-          // Light streaks over the coloured speed field, as weather maps draw them.
-          context.strokeStyle = `rgba(255, 255, 255, ${0.35 + 0.5 * Math.min(Math.hypot(u, v) / 8, 1)})`;
+          context.strokeStyle = `rgba(255, 255, 255, ${stroke.alpha})`;
+          context.lineWidth = stroke.width;
           context.beginPath();
           context.moveTo(x, y);
           context.lineTo(nx, ny);
@@ -114,31 +114,3 @@ export function WindParticles({ field, hour, viewport, cameraKey, reducedMotion 
   return <canvas ref={canvas} className="map__wind" aria-hidden="true" />;
 }
 
-/**
- * The wind speed of one hour as a smooth picture of the grid, to lay under
- * the streaks: each node is one pixel, and the browser's smoothing blends
- * them when the picture is scaled up.
- */
-export function windSpeedImage(field: WindField, hour: number): HTMLCanvasElement {
-  const { nx, ny } = field.grid;
-  const small = document.createElement("canvas");
-  small.width = nx;
-  small.height = ny;
-  const context = small.getContext("2d")!;
-  const image = context.createImageData(nx, ny);
-  const u = field.u[hour] ?? [];
-  const v = field.v[hour] ?? [];
-  for (let node = 0; node < nx * ny; node++) {
-    const [r, g, b] = windColor(Math.hypot(u[node] ?? 0, v[node] ?? 0));
-    image.data.set([r, g, b, 255], node * 4);
-  }
-  context.putImageData(image, 0, 0);
-  const large = document.createElement("canvas");
-  large.width = nx * 24;
-  large.height = ny * 24;
-  const out = large.getContext("2d")!;
-  out.imageSmoothingEnabled = true;
-  out.imageSmoothingQuality = "high";
-  out.drawImage(small, 0, 0, large.width, large.height);
-  return large;
-}

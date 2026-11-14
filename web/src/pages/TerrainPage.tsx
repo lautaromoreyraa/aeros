@@ -18,8 +18,7 @@ import { unitLabel } from "../util/format";
 import { monthKey, monthOfYear, yearOf } from "../util/months";
 import { eraComparison, recordAt } from "../util/sectorKpis";
 import { WHOLE_REGION, cellsOfSector, demoSectors } from "../util/sectors";
-import { WIND_MAX, WIND_RAMP, hourIndexAt } from "../util/wind";
-import { toCss } from "../util/colorRamp";
+import { hourIndexAt } from "../util/wind";
 
 const HexMap = lazy(() => import("../components/HexMap"));
 
@@ -72,12 +71,12 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
   const [anchor, setAnchor] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const panelRef = useRef<HTMLElement>(null);
-  const [windOn, setWindOn] = useState(false);
-  const windState = useWind(windOn);
-  const wind = useMemo(() => {
-    if (!windOn || windState?.status !== "ready") return null;
-    return { field: windState.data, hour: hourIndexAt(windState.data, Date.now()) };
-  }, [windOn, windState]);
+  // Wind is one more layer of the terrain, always on.
+  const windState = useWind();
+  const wind = useMemo(
+    () => (windState?.status === "ready" ? { field: windState.data, hour: hourIndexAt(windState.data, Date.now()) } : null),
+    [windState],
+  );
   const [tab, setTab] = useState<Tab>("overview");
   const [month, setMonth] = useState(region.lastMonth);
   const [playing, setPlaying] = useState(false);
@@ -215,37 +214,17 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
               </option>
             ))}
           </select>
-          <button type="button" className="terrain__toggle" aria-pressed={windOn} onClick={() => setWindOn((on) => !on)}>
-            <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
-              <path
-                d="M2 7h10a2.5 2.5 0 1 0-2.5-2.5M2 11h14a2.5 2.5 0 1 1-2.5 2.5M2 15h6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-            Wind
-          </button>
           <p className="terrain__legend">Column height and colour: mean harmonized {units} over the whole record.</p>
-          {windOn && (
-            <div className="wind-legend" role="status">
-              {windState?.status === "loading" && <span>Loading the wind forecast…</span>}
-              {windState?.status === "error" && <span>The wind could not be loaded: {windState.message}</span>}
-              {wind && (
-                <>
-                  <span
-                    className="wind-legend__ramp"
-                    style={{ background: `linear-gradient(90deg, ${WIND_RAMP.map((color) => toCss(color)).join(", ")})` }}
-                    aria-hidden="true"
-                  />
-                  <span>0–{WIND_MAX} m/s</span>
-                  <span>
-                    Wind at 10 m, {wind.field.hours[wind.hour]?.slice(11, 16)} UTC. Data: {wind.field.source}
-                  </span>
-                </>
-              )}
-            </div>
+          {windState?.status === "error" && (
+            <p className="terrain__legend" role="status">
+              The wind could not be loaded: {windState.message}
+            </p>
+          )}
+          {wind && (
+            <p className="terrain__legend">
+              Wind at 10 m, {wind.field.hours[wind.hour]?.slice(11, 16)} UTC: faint, slow streaks are a light breeze;
+              bright, fast ones a strong wind. Data: {wind.field.source}.
+            </p>
           )}
         </div>
 

@@ -22,14 +22,12 @@ async function fetchOpenMeteo(): Promise<WindField> {
 }
 
 /**
- * The wind field for the map, loaded only once the layer is switched on.
- * The pipeline's `wind.json` wins when it is published; until then the
+ * The wind field for the map, loaded once when the terrain opens. The pipeline's `wind.json` wins when it is published; until then the
  * forecast comes from Open-Meteo for the same grid.
  */
-export function useWind(enabled: boolean): Loadable<WindField> | null {
+export function useWind(): Loadable<WindField> | null {
   const [state, setState] = useState<Loadable<WindField> | null>(null);
   useEffect(() => {
-    if (!enabled || state?.status === "ready" || state?.status === "loading") return;
     let active = true;
     setState({ status: "loading" });
     fetch(`${import.meta.env.BASE_URL}data/wind.json`)
@@ -44,7 +42,6 @@ export function useWind(enabled: boolean): Loadable<WindField> | null {
     return () => {
       active = false;
     };
-    // Loads once; the state guard keeps a second toggle from fetching again.
-  }, [enabled]);
+  }, []);
   return state;
 }
