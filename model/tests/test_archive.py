@@ -139,3 +139,33 @@ def test_download_recent_refreshes_unsettled_chunks_and_hides_the_key(tmp_path):
         archive.download_recent([bad], tmp_path, "SECRET", today, refusing)
     assert "SECRET" not in str(error.value)
     assert not (tmp_path / bad.name).exists()
+
+
+class _Response(io.BytesIO):
+    """A response whose server announced more bytes than arrived."""
+
+    def __init__(self, body: bytes, declared: int):
+        super().__init__(body)
+        self.headers = {"Content-Length": str(declared)}
+
+
+def test_download_rejects_a_transfer_that_ends_early_and_keeps_nothing(tmp_path):
+    f = archive.ArchiveFile("modis", 2001, "Bolivia")
+
+    def opener(url):
+        return _Response(b"latitude,longitude\n-18.8,-6", declared=1000)
+
+    with pytest.raises(archive.IncompleteDownload):
+        archive.download([f], tmp_path, opener)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_accepts_a_transfer_that_matches_its_declared_size(tmp_path):
+    f = archive.ArchiveFile("modis", 2001, "Bolivia")
+    body = b"latitude,longitude\n-18.8,-60.1\n"
+
+    report = archive.download([f], tmp_path, lambda url: _Response(body, declared=len(body)))
+
+    assert report["downloaded"] == [f.name]
+    assert (tmp_path / f.name).read_bytes() == body

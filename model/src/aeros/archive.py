@@ -87,15 +87,36 @@ def _fetch(f: ArchiveFile, out: Path, opener: Opener) -> str:
     partial = target.with_suffix(".part")
     try:
         with opener(f.url) as response, partial.open("wb") as sink:
+            expected = _declared_length(response)
+            written = 0
             while chunk := response.read(1 << 20):
                 sink.write(chunk)
+                written += len(chunk)
+        # A dropped connection ends the read loop like a finished file would,
+        # so the size the server declared is the only proof it is complete.
+        if expected is not None and written != expected:
+            raise IncompleteDownload(f"{f.name}: got {written} of {expected} bytes")
     except urllib.error.HTTPError as error:
         partial.unlink(missing_ok=True)
         if error.code != 404:
             raise
         return "missing"
-    partial.rename(target)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    partial.replace(target)
     return "downloaded"
+
+
+class IncompleteDownload(OSError):
+    pass
+
+
+def _declared_length(response: BinaryIO) -> int | None:
+    """The Content-Length the server announced, when the response carries headers."""
+    headers = getattr(response, "headers", None)
+    value = headers.get("Content-Length") if headers is not None else None
+    return int(value) if value is not None and str(value).isdigit() else None
 
 
 # The three MVP study regions (Gran Chaco, Corrientes, Paraguay) with one
@@ -222,6 +243,6 @@ def download_recent(
             raise FirmsApiError(f"{r.source} {r.start}: FIRMS answered {line!r}")
         partial = target.with_suffix(".part")
         partial.write_bytes(body)
-        partial.rename(target)
+        partial.replace(target)
         report["downloaded"].append(r.name)
     return report
