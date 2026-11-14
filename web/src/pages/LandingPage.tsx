@@ -1,6 +1,7 @@
 import { Suspense, lazy, useMemo, useRef } from "react";
 import type { EarlyWarning } from "../api/types";
 import { AlertPreview } from "../components/AlertPreview";
+import { AlertSignup } from "../components/AlertSignup";
 import { useInView } from "../hooks/useInView";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { Loadable } from "../hooks/useOutlook";
@@ -168,8 +169,9 @@ export function LandingPage({ region, warning, onEnter }: Props) {
             </h2>
             <p>
               Every morning aeros compares the last seven days of VIIRS detections with the same days of earlier
-              years. When an area burns well above that, the warning goes out by WhatsApp and email: where, how much
-              more than usual, and how many of those days the satellites actually saw.
+              years. When an area burns well above that, the warning goes out by Telegram, WhatsApp or email to the
+              people who signed up for that area and the ones next to it: where, how much more than usual, and how
+              many of those days the satellites actually saw.
             </p>
           </div>
           {message && report ? (
@@ -181,6 +183,25 @@ export function LandingPage({ region, warning, onEnter }: Props) {
             <p className="warn__note">
               {warning.status === "loading" ? "Loading this week's report…" : "No early-warning report has been published yet."}
             </p>
+          )}
+        </section>
+
+        <section id="alerts" className="alerts" aria-labelledby="alerts-title">
+          <div className="warn__copy">
+            <h2 id="alerts-title" className="landing__heading">
+              Get the warning for your area
+            </h2>
+            <p>
+              Choose a zone or share your location, and the channel to be told on. You get a confirmation first and
+              an alert only when your area, or the one next to it, burns well above its normal.
+            </p>
+          </div>
+          {region && (
+            <AlertSignup
+              sectors={sectors}
+              regionCells={region.cells.cells.map((cell) => cell.cell)}
+              resolution={region.cells.resolution}
+            />
           )}
         </section>
 

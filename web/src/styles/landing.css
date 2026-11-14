@@ -486,6 +486,149 @@
   color: #5d6167;
 }
 
+/* ---------- Sign-up ---------- */
+
+.alerts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-7);
+  padding: clamp(72px, 14vh, 160px) var(--gutter);
+  border-top: 1px solid var(--hairline);
+  scroll-margin-top: var(--space-5);
+}
+
+@media (min-width: 1040px) {
+  .alerts {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: start;
+  }
+}
+
+.signup {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 560px;
+  justify-items: start;
+}
+
+.signup__group {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.signup__group legend,
+.signup__label {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ash);
+}
+
+.signup__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.signup select,
+.signup input[type="text"],
+.signup input[type="tel"],
+.signup input[type="email"] {
+  flex: 1 1 220px;
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.04);
+  color: var(--ash);
+  font-size: var(--text-md);
+}
+
+.signup input[aria-invalid="true"] {
+  border-color: #ff8a7a;
+}
+
+.signup__locate {
+  min-height: 48px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ash);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.signup__locate:hover {
+  border-color: var(--ash);
+}
+
+.signup__channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.signup__channel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.signup__channel input {
+  accent-color: var(--ash);
+}
+
+/* Each channel shows its own colour once chosen. */
+.signup__channel--telegram:has(input:checked) {
+  border-color: #229ed9;
+  background: rgb(34 158 217 / 0.16);
+}
+
+.signup__channel--whatsapp:has(input:checked) {
+  border-color: #25d366;
+  background: rgb(37 211 102 / 0.14);
+}
+
+.signup__channel--email:has(input:checked) {
+  border-color: var(--ash);
+  background: rgb(255 255 255 / 0.08);
+}
+
+.signup__hint {
+  font-size: var(--text-sm);
+  color: var(--smoke);
+}
+
+.signup__error {
+  font-size: var(--text-sm);
+  color: #ff8a7a;
+}
+
+.signup .landing__cta:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.signup--done .signup__title {
+  font-family: var(--font-display);
+  font-stretch: 118%;
+  font-weight: 650;
+  font-size: var(--text-xl);
+}
+
 /* ---------- End ---------- */
 
 .landing__end {
