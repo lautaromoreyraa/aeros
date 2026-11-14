@@ -58,6 +58,11 @@ class Climatology:
     # over the same calendar days as the observed data days.
     years: tuple[int, ...]
     by_cell: Mapping[str, Mapping[int, float]]
+    # Every cell the harmonized panel covers (the study regions). The FIRMS
+    # request is a box around the regions, so detections in Brazil, Chile or
+    # the rest of Argentina come back too; only these cells have an expected
+    # value, so only these may count as observed. None keeps every cell.
+    domain: frozenset[str] | None = None
 
 
 def window(today: date, days: int = WINDOW_DAYS) -> list[date]:
@@ -147,6 +152,8 @@ def build_report(days: list[Day], clim: Climatology | None, generated_at: dateti
     )
     for cell in clim.static_cells:
         observed.pop(cell, None)
+    if clim.domain is not None:
+        observed = Counter({c: n for c, n in observed.items() if c in clim.domain})
 
     region_by_year = [
         math.fsum(per_year.get(year, 0.0) for per_year in clim.by_cell.values())
@@ -195,8 +202,12 @@ def load_climatology(con, cells_uri: str, hotspots_uri: str, data_days: list[dat
             "SELECT DISTINCT cell FROM read_parquet(?) WHERE type <> 0", [hotspots_uri]
         ).fetchall()
     )
+    domain = frozenset(
+        r[0]
+        for r in con.execute("SELECT DISTINCT cell FROM read_parquet(?)", [cells_uri]).fetchall()
+    )
     if not data_days:
-        return Climatology(resolution, static, (), {})
+        return Climatology(resolution, static, (), {}, domain)
 
     oldest = con.execute(
         "SELECT min(week) FROM read_parquet(?) WHERE harmonized_n IS NOT NULL", [cells_uri]
@@ -242,7 +253,7 @@ def load_climatology(con, cells_uri: str, hotspots_uri: str, data_days: list[dat
         ).fetchall():
             if cell not in static:
                 by_cell.setdefault(cell, {})[int(back)] = float(value)
-    return Climatology(resolution, static, years, by_cell)
+    return Climatology(resolution, static, years, by_cell, domain)
 
 
 def open_connection():

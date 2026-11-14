@@ -141,21 +141,33 @@ def test_report(parquet):
     assert gap["detections"] is None  # a gap is not a zero
 
     region = report["region"]
-    assert region["observed"] == 36  # S's 100 detections are masked
+    # S's 100 detections are masked, and D's 5 fall outside the harmonized panel
+    # (the FIRMS box is wider than the study regions): neither counts as observed.
+    assert region["observed"] == 31
     assert region["expected"] == 9.0
-    assert region["ratio"] == 4.0
-    assert region["p_value"] == pytest.approx(ew.poisson_sf(36, 9.0), rel=1e-3)
+    assert region["ratio"] == pytest.approx(3.444)
+    assert region["p_value"] == pytest.approx(ew.poisson_sf(31, 9.0), rel=1e-3)
     assert region["p_value"] < 0.01
 
     cells = {c["cell"]: c for c in report["cells"]}
-    assert set(cells) == {CELL_A, CELL_D}  # B's single detection is not unusual
+    assert set(cells) == {CELL_A}  # B's single detection is not unusual; D is out of scope
     assert cells[CELL_A]["observed"] == 30
     assert cells[CELL_A]["expected"] == 9.0
     assert cells[CELL_A]["ratio"] == pytest.approx(3.333)
-    assert cells[CELL_D]["expected"] == 0.0
-    assert cells[CELL_D]["ratio"] is None  # no history: no ratio, floor in the test
-    assert cells[CELL_D]["p_value"] == pytest.approx(ew.poisson_sf(5, ew.EXPECTED_FLOOR), rel=1e-3)
     assert report["cells"][0]["cell"] == CELL_A  # most significant first
+
+
+def test_cells_outside_the_panel_are_never_observed(parquet):
+    clim = ew.load_climatology(duckdb.connect(), *parquet, [DAYS[0]])
+    assert CELL_A in clim.domain and CELL_B in clim.domain
+    assert CELL_D not in clim.domain
+
+
+def test_without_a_domain_every_cell_counts():
+    picked = [ew.Day(DAYS[0], "ok", "VIIRS_NOAA20_NRT", (center(CELL_D),) * 5)]
+    clim = ew.Climatology(RES, frozenset(), (1,), {})
+    report = ew.build_report(picked, clim, NOW)
+    assert report["region"]["observed"] == 5
 
 
 def test_all_gaps_give_no_scores(parquet):
