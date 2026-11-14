@@ -174,3 +174,43 @@ def test_cell_day_unit_counts_days_not_pixels():
     days = features.build_panel(det, unit="cell_days").frame
     assert hotspots["snpp_ref_n"].sum() == 4
     assert days["snpp_ref_n"].sum() == 2
+
+
+def _weekly(
+    cells=("84c2a01ffffffff",), years=range(2010, 2014), value=lambda y, w: float(w % 5 + y - 2010)
+):
+    rows = []
+    for cell in cells:
+        for week in pd.date_range(f"{years[0]}-01-04", f"{years[-1]}-12-27", freq="7D"):
+            rows.append(
+                {
+                    "cell": cell,
+                    "week": week,
+                    "harmonized_n": value(week.year, week.isocalendar().week),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_forecast_climatology_only_looks_at_earlier_years():
+    from aeros import forecast
+
+    table = forecast.weekly_series(_weekly())
+    clim = forecast._climatology(table)
+    first = clim[clim["year"] == 2010]
+    assert first["climatology"].isna().all()
+    # in 2013 the climatology of a week is the mean of 2010-2012 for that week
+    row = clim[(clim["year"] == 2013) & (clim["woy"] == 10)].iloc[0]
+    assert row["climatology"] == pytest.approx(float(10 % 5) + 1.0)
+
+
+def test_forecast_builds_every_horizon_with_target_h_weeks_later():
+    from aeros import forecast
+
+    table = forecast.weekly_series(_weekly())
+    examples = forecast.build_examples(table)
+    assert set(examples["horizon"]) == set(forecast.HORIZONS)
+    row = examples[(examples["horizon"] == 3)].dropna(subset=["target"]).iloc[0]
+    expected = table.set_index("week").loc[row["target_week"], "y"]
+    assert row["target"] == pytest.approx(expected)
+    assert row["target_week"] - row["issue_week"] == pd.Timedelta(weeks=3)

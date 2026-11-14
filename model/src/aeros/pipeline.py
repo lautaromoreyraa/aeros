@@ -9,6 +9,7 @@ Outputs (all in `out_dir`):
 * `validation.json`           out-of-sample scores, dispersion and the winner
 * `morning.json`              Terra-only share and Terra overpass drift
 * `critical_period.json`      shortest run of months holding 80 % of activity
+* `forecast.json`             1-4 week activity forecast with its validation
 * `meta.json`                 unit, reference chain, grid resolution, chosen model
 """
 
@@ -21,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from aeros import burn_calendar, features, harmonize, morning, validation
+from aeros import burn_calendar, features, forecast, harmonize, morning, validation
 
 
 @dataclass
@@ -56,6 +57,14 @@ def run(
     _write_json(out_dir / "calendar_region.json", _calendar_records(region))
     _write_json(out_dir / "cells_monthly.json", _cells_monthly(harmonized, resolution))
     _write_json(out_dir / "critical_period.json", burn_calendar.critical_period(region))
+    examples = forecast.build_examples(forecast.weekly_series(harmonized))
+    years = sorted(examples["year"].unique())
+    test_from = years[-3] if len(years) > 4 else years[-1]
+    _, forecaster = forecast.evaluate(examples, test_from_year=int(test_from))
+    _write_json(
+        out_dir / "forecast.json",
+        forecast.to_json(forecast.latest(examples, forecaster), forecaster, unit),
+    )
     _write_json(out_dir / "validation.json", report.as_dict())
     _write_json(
         out_dir / "morning.json",
