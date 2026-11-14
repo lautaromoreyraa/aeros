@@ -20,7 +20,12 @@ export interface AerosConfig {
   readonly firmsArea: string;
   /** Days raw FIRMS downloads are kept before S3 expires them. */
   readonly rawRetentionDays: number;
-  /** Concurrency reserved for the API function: caps how much it can ever run. 0 = none. */
+  /**
+   * Concurrency reserved for the API function: caps how much it can ever run.
+   * 0 = none, the default: Lambda always keeps 100 executions unreserved and a
+   * new account starts with a quota of 10, so any reservation fails to deploy
+   * until the quota is raised.
+   */
   readonly apiReservedConcurrency: number;
   /** Same for the daily refresh. 0 = none. */
   readonly refreshReservedConcurrency: number;
@@ -109,8 +114,8 @@ export function loadConfig(scope: Construct): AerosConfig {
     firmsMapKeyParameter: parameter,
     firmsArea: area,
     rawRetentionDays: integer(scope, PREFIX + "rawRetentionDays", 90, 7, 3650),
-    apiReservedConcurrency: integer(scope, PREFIX + "apiReservedConcurrency", 2, 0, 100),
-    refreshReservedConcurrency: integer(scope, PREFIX + "refreshReservedConcurrency", 1, 0, 10),
+    apiReservedConcurrency: integer(scope, PREFIX + "apiReservedConcurrency", 0, 0, 100),
+    refreshReservedConcurrency: integer(scope, PREFIX + "refreshReservedConcurrency", 0, 0, 10),
     budgetLimitUsd: integer(scope, PREFIX + "budgetLimitUsd", 1, 1, 1000),
     budgetEmail: email || undefined,
     createGithubOidcProvider: createProvider !== false && createProvider !== "false",

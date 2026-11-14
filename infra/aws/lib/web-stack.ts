@@ -4,12 +4,22 @@ import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
+import type * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 import { DATA_LAYOUT } from "./data-stack.js";
 import { PythonDepsLayer } from "./python-deps-layer.js";
+import {
+  ALERT_PARAMETERS,
+  REFRESH_CODE_EXCLUDE,
+  REFRESH_LAMBDA_DIR,
+  SUBSCRIPTION_PARAMETERS,
+  grantParameters,
+  grantSubscriptionsTable,
+} from "./refresh-stack.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const API_LAMBDA_DIR = path.join(here, "..", "lambdas", "api");
@@ -18,6 +28,14 @@ export interface WebStackProps extends StackProps {
   readonly dataBucket: s3.IBucket;
   /** Concurrency reserved for the API function; 0 leaves it unreserved. */
   readonly apiReservedConcurrency: number;
+  /** Where alert subscriptions are stored. */
+  readonly subscriptionsTable: dynamodb.ITable;
+  /** FIRMS area as "west,south,east,north": cells outside it cannot be subscribed. */
+  readonly firmsArea: string;
+  /** Public URL of the web app; the e-mail links point at it. */
+  readonly webUrl: string;
+  /** Verified SES identity the confirmation e-mails come from; none, no e-mail. */
+  readonly alertEmailIdentity?: string;
   /** Custom domain (Cloudflare points it at CloudFront). */
   readonly domainName?: string;
   /** ACM certificate in us-east-1 covering domainName (a CloudFront requirement). */
@@ -44,7 +62,8 @@ function handler(event) {
  *
  * - `/*`     the static app, from a private bucket through Origin Access Control;
  * - `/api/*` the API Lambda through its function URL, also behind OAC, so the
- *   URL (auth type AWS_IAM) rejects anything CloudFront did not sign.
+ *   URL (auth type AWS_IAM) rejects anything CloudFront did not sign;
+ * - `/api/alerts/*` the alert subscriptions Lambda, the same way.
  *
  * Function URLs and CloudFront replace API Gateway: both fall under the
  * always-free allowances, and one origin for app and API removes CORS.
@@ -53,6 +72,8 @@ export class WebStack extends Stack {
   readonly bucket: s3.Bucket;
   readonly distribution: cloudfront.Distribution;
   readonly apiHandler: lambda.Function;
+  readonly alertsHandler: lambda.Function;
+  private layer!: PythonDepsLayer;
 
   constructor(scope: Construct, id: string, props: WebStackProps) {
     super(scope, id, props);
@@ -68,9 +89,18 @@ export class WebStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
+    this.layer = new PythonDepsLayer(this, "PythonDeps");
     this.apiHandler = this.apiFunction(props);
     const apiUrl = this.apiHandler.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
     const apiOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(apiUrl, {
+      readTimeout: Duration.seconds(30),
+    });
+
+    this.alertsHandler = this.alertsFunction(props);
+    const alertsUrl = this.alertsHandler.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.AWS_IAM,
+    });
+    const alertsOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(alertsUrl, {
       readTimeout: Duration.seconds(30),
     });
 
@@ -144,6 +174,17 @@ export class WebStack extends Stack {
           responseHeadersPolicy: headers,
           compress: true,
         },
+        // Sign-ups, confirmations and unsubscribes: never cached, and the query
+        // string (the e-mail token) and viewer headers reach the function. Listed
+        // before /api/* because CloudFront takes the first pattern that matches.
+        "/api/alerts/*": {
+          origin: alertsOrigin,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          responseHeadersPolicy: headers,
+        },
         // Queries depend on the body, so nothing is cached. Viewer headers go
         // through: POSTs carry x-amz-content-sha256, which CloudFront needs to
         // sign the request for Lambda.
@@ -178,7 +219,7 @@ export class WebStack extends Stack {
       code: lambda.Code.fromAsset(API_LAMBDA_DIR, {
         exclude: ["*", ".*", "!aeros_api", "!aeros_api/*.py"],
       }),
-      layers: [new PythonDepsLayer(this, "PythonDeps")],
+      layers: [this.layer],
       // 512 MB keeps a busy month inside the always-free GB-seconds; DuckDB
       // gets 60 % of it and spills to /tmp beyond that.
       memorySize: 512,
@@ -200,6 +241,54 @@ export class WebStack extends Stack {
     props.dataBucket.grantRead(fn, `${DATA_LAYOUT.harmonizedPrefix}*`);
     props.dataBucket.grantRead(fn, DATA_LAYOUT.earlyWarningKey);
     props.dataBucket.grantRead(fn, DATA_LAYOUT.goesLatestKey);
+    return fn;
+  }
+
+  /**
+   * Alert subscriptions API. It reuses the refresh code directory (the rules
+   * live next to the notifier that uses them) and the same layer, and gets
+   * only what it does: the table, the sender and bot-name parameters, and
+   * sending from the one SES identity.
+   */
+  private alertsFunction(props: WebStackProps): lambda.Function {
+    const logGroup = new logs.LogGroup(this, "AlertsHandlerLogs", {
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    const fn = new lambda.Function(this, "AlertsHandler", {
+      description: "aeros alert subscriptions: sign up, confirm, unsubscribe",
+      runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.ARM_64,
+      handler: "alerts_api.handler",
+      code: lambda.Code.fromAsset(REFRESH_LAMBDA_DIR, { exclude: REFRESH_CODE_EXCLUDE }),
+      layers: [this.layer],
+      memorySize: 256,
+      timeout: Duration.seconds(25),
+      logGroup,
+      environment: {
+        SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
+        FIRMS_AREA: props.firmsArea,
+        ALERT_WEB_URL: props.webUrl,
+        ALERT_EMAIL_FROM_PARAMETER: ALERT_PARAMETERS.emailFrom,
+        ALERT_TELEGRAM_BOT_PARAMETER: SUBSCRIPTION_PARAMETERS.telegramBot,
+      },
+    });
+    grantSubscriptionsTable(fn, props.subscriptionsTable);
+    grantParameters(this, fn, [ALERT_PARAMETERS.emailFrom, SUBSCRIPTION_PARAMETERS.telegramBot]);
+    if (props.alertEmailIdentity) {
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["ses:SendEmail"],
+          resources: [
+            this.formatArn({
+              service: "ses",
+              resource: "identity",
+              resourceName: props.alertEmailIdentity,
+            }),
+          ],
+        }),
+      );
+    }
     return fn;
   }
 

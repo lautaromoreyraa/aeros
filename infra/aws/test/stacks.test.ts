@@ -93,18 +93,34 @@ describe("AWS Free plan", () => {
         expect(r.Properties.MemorySize ?? 128, id).toBeLessThanOrEqual(512);
       }
     }
-    expect(count).toBe(3); // API, daily refresh and GOES watch: no custom-resource functions
+    // API, alert subscriptions, daily refresh, GOES watch and Telegram webhook:
+    // no custom-resource functions.
+    expect(count).toBe(5);
   });
 
-  it("reserves low concurrency to cap usage", () => {
-    web.hasResourceProperties("AWS::Lambda::Function", { ReservedConcurrentExecutions: 2 });
-    refresh.hasResourceProperties("AWS::Lambda::Function", { ReservedConcurrentExecutions: 1 });
-    const none = Template.fromStack(
-      build({ "aeros:apiReservedConcurrency": "0" }).web,
-    ).findResources("AWS::Lambda::Function");
-    for (const fn of Object.values(none)) {
-      expect((fn as any).Properties.ReservedConcurrentExecutions).toBeUndefined();
+  it("reserves no concurrency by default, because a new account cannot", () => {
+    // Lambda always keeps 100 executions unreserved and a new account's quota
+    // starts at 10: any reservation makes the deploy fail there.
+    for (const [, template] of all) {
+      for (const fn of Object.values(template.findResources("AWS::Lambda::Function"))) {
+        expect((fn as any).Properties.ReservedConcurrentExecutions).toBeUndefined();
+      }
     }
+  });
+
+  it("can reserve low concurrency once the account's quota allows it", () => {
+    const raised = build({
+      "aeros:apiReservedConcurrency": "2",
+      "aeros:refreshReservedConcurrency": "1",
+    });
+    Template.fromStack(raised.web).hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "aeros_api.handler.handler",
+      ReservedConcurrentExecutions: 2,
+    });
+    Template.fromStack(raised.refresh).hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "refresh.handler",
+      ReservedConcurrentExecutions: 1,
+    });
   });
 
   it("keeps every log group for 7 days", () => {
@@ -116,7 +132,7 @@ describe("AWS Free plan", () => {
         expect(r.Properties.RetentionInDays, id).toBe(7);
       }
     }
-    expect(count).toBe(3);
+    expect(count).toBe(5);
   });
 
   it("puts every stack in the context Region and never names us-east-1", () => {
@@ -213,8 +229,11 @@ describe("web and API", () => {
     const permissions = Object.values(web.findResources("AWS::Lambda::Permission")).map(
       (p) => (p as any).Properties,
     );
+    // Two IAM function URLs (API and alerts), each with both permissions.
     expect(permissions.map((p) => p.Action).sort()).toEqual([
       "lambda:InvokeFunction",
+      "lambda:InvokeFunction",
+      "lambda:InvokeFunctionUrl",
       "lambda:InvokeFunctionUrl",
     ]);
     for (const p of permissions) {
@@ -230,9 +249,10 @@ describe("web and API", () => {
     expect(behaviors.map((b: any) => b.PathPattern)).toEqual([
       "/api/early-warning",
       "/api/active-fires",
+      "/api/alerts/*",
       "/api/*",
     ]);
-    const api = behaviors[2];
+    const api = behaviors[3];
     expect(api.AllowedMethods).toContain("POST");
     expect(api.CachePolicyId).toBe("4135ea2d-6df8-44a3-9df3-4b5a84be39ad"); // CachingDisabled
     expect(api.OriginRequestPolicyId).toBe("b689b0a8-53d0-40ab-baf2-68738e2966ac"); // AllViewerExceptHostHeader
@@ -355,7 +375,7 @@ describe("FIRMS refresh and early warning", () => {
         );
       } else {
         expect(json).toMatch(
-          /\/harmonized\/\*|\/harmonized\/harmonized_cells\.parquet|\/state\/(goes_)?alerts\.json/,
+          /\/harmonized\/\*|\/harmonized\/harmonized_cells\.parquet|\/state\/(goes_)?alerts\.json|\/derived\/(wind|fire_weather)\.json/,
         );
       }
     }
@@ -374,10 +394,11 @@ describe("FIRMS refresh and early warning", () => {
         }),
       },
     });
+    // The daily refresh and the GOES watch read the four; the webhook reads its own two.
     const alertReads = statements(refresh).filter((s) =>
-      JSON.stringify(s.Resource).includes("parameter/aeros/alerts/"),
+      JSON.stringify(s.Resource).includes("parameter/aeros/alerts/email-to"),
     );
-    expect(alertReads).toHaveLength(2); // the daily refresh and the GOES watch
+    expect(alertReads).toHaveLength(2);
     for (const read of alertReads) {
       expect(actionsOf(read)).toEqual(["ssm:GetParameter"]);
       const json = JSON.stringify(read.Resource);
