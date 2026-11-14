@@ -13,6 +13,7 @@ NASA FIRMS has tracked active-fire hotspots since 2000, but the record is split 
 | Aqua | MODIS | 1 km | 2002– | orbit drifting; shutdown planned ~Sep 2027 |
 | Suomi NPP | VIIRS | 375 m | 2012-01 – 2026-11-02 | data delivery ceased |
 | NOAA-20 / NOAA-21 | VIIRS | 375 m | 2018– / 2023– | active (gaps reported from 2026-11-05) |
+| GOES-19 (GOES-East) | ABI | ~2 km | 2025– | active, one full-disk scan every 10 minutes; used only by the fast fire layer, never in the harmonized record |
 
 VIIRS detects small fires that MODIS misses, so stacking the files makes fire activity "jump" when the fleet changes, not when the fire does. Fire managers cannot tell whether a season was worse or the satellite changed.
 
@@ -26,7 +27,7 @@ VIIRS detects small fires that MODIS misses, so stacking the files makes fire ac
 | 4 | Anomalies against multi-year history; current month vs historical median | `burn_calendar.py`, `web/` |
 | 5 | Downloadable CSV of hotspots and analytics | `web/`, `infra/aws` API |
 
-Only official resource: NASA FIRMS. Raw NASA rows are never shown in the UI, only processed views.
+Only official resource: NASA FIRMS. Raw NASA rows are never shown in the UI, only processed views. GOES-19, a public NOAA/NASA GOES-R product, adds a fast layer between polar passes and never enters the harmonized record.
 
 ## 3. Approach
 
@@ -74,6 +75,11 @@ flowchart LR
   CF --> WEB[web/ React + Vite + deck.gl + three.js]
   NRT[Daily Lambda: FIRMS NRT] --> EW[(early_warning.json)]
   EW --> CF
+  GOES[NOAA GOES-19 fire scans, every 10 min] --> FAST[Lambda: fast fire watch]
+  FAST --> GL[(goes_latest.json)]
+  GL --> API
+  NRT --> ALERT[Mail + Telegram alerts]
+  FAST --> ALERT
   JSON --> MCP[infra/mcp: team context server on Cloudflare Workers]
 ```
 
@@ -117,6 +123,7 @@ flowchart LR
 | Static web bundle | `aeros publish --run hotspots=<run> [--run cell_days=<run>]`: JSON only, `public/data/<region>/<unit>/`, `<region>/sectors.json`, index `regions.json`, default region also at the old `public/data/<unit>/` path; 8.8 MB for the baseline real run |
 | Detection database | `aeros build-db`: every FIRMS download in one Parquet store by platform and year, time-sorted, deduplicated (standard processing over NRT), with brightness temperatures, unified confidence, cell and region flags; `cell_days` table for ML features; `inventory`, `coverage` (missing days, silent runs) and day-by-day `comparison` reports; `aeros run --db` reads it |
 | Real FIRMS archive for the Gran Chaco | `aeros fetch`: yearly country summaries (AR, PY, BO) to the last closed year, MODIS C6.1 + VIIRS SNPP + NOAA-20; `aeros fetch-recent` (needs `FIRMS_MAP_KEY`): the current year through the area API, standard processing then NRT, and the whole NOAA-21 record, which the yearly archive does not publish |
+| GOES-19 fast fire layer | in `develop`: `aeros goes` writes a snapshot, a Lambda every 10 minutes publishes `derived/goes_latest.json` (served at `/api/active-fires`, 2-minute cache) and alerts through the daily alert's channels when a study cell keeps a confident fire in 2 of the last 3 scans (once per cell, again after 12 hours); not deployed |
 | AWS deploy | pending: account, `cdk bootstrap`, FIRMS MAP_KEY in SSM; reserved concurrency may exceed a new account's limit of 10 |
 | Biome as a model feature, Theil–Sen trend | optional |
 
@@ -126,5 +133,5 @@ flowchart LR
 - [ ] Link to the deployed app and to this repository
 - [ ] Project page: summary, how it works, future vision, tools used
 - [ ] Explicit declaration of how AI was used (code assistants, research, translation)
-- [ ] List of NASA resources used: FIRMS MODIS C6.1, VIIRS S-NPP, NOAA-20 and NOAA-21 375 m, NRT
+- [ ] List of NASA resources used: FIRMS MODIS C6.1, VIIRS S-NPP, NOAA-20 and NOAA-21 375 m, NRT; GOES-19 ABI fire product (ABI-L2-FDCF, AWS Open Data) for the fast layer
 - [ ] All objectives in section 2 verified one by one before submitting
