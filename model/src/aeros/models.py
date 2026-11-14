@@ -31,36 +31,64 @@ Z90 = 1.6448536269514722
 
 
 class RatioBaseline:
-    """VIIRS = factor(month) x MODIS, plus a floor(month) for weeks MODIS saw nothing.
+    """VIIRS = factor(month) x MODIS where MODIS saw fire in the cell-week.
 
-    The floor matters: VIIRS detects small fires in cell-weeks where MODIS is
-    blank, and a pure ratio would predict exactly zero there.
+    Where MODIS saw nothing, VIIRS still finds small fires, and how many depends
+    on how active the surroundings are that week. A constant monthly floor
+    would add the same fire to quiet and busy years alike, inflating quiet
+    years; instead the floor scales with MODIS activity in the six neighboring
+    cells, with a small constant only where the neighborhood is silent too.
     """
 
     def __init__(self, modis_columns: tuple[str, ...]):
         self.modis_columns = modis_columns
+        self.neighbor_columns = tuple(c.replace("_n", "_neighbors_n") for c in modis_columns)
         self.factors: pd.Series | None = None
+        self.neighbor_factors: pd.Series | None = None
         self.floors: pd.Series | None = None
         self.global_factor = 1.0
 
-    def _modis(self, frame: pd.DataFrame) -> pd.Series:
-        return frame[list(self.modis_columns)].sum(axis=1)
+    def _sum(self, frame: pd.DataFrame, columns: tuple[str, ...]) -> pd.Series:
+        present = [c for c in columns if c in frame]
+        if not present:
+            return pd.Series(0.0, index=frame.index)
+        return frame[present].sum(axis=1)
+
+    @staticmethod
+    def _ratio(table: pd.DataFrame, fallback: float) -> pd.Series:
+        sums = table.groupby("m")[["x", "y"]].sum()
+        return (sums["y"] / sums["x"]).reindex(range(1, 13)).fillna(fallback)
 
     def fit(self, frame: pd.DataFrame, target: pd.Series) -> RatioBaseline:
-        modis = self._modis(frame)
-        table = pd.DataFrame({"m": frame["week"].dt.month, "x": modis, "y": target})
-        seen = table[table["x"] > 0].groupby("m")[["x", "y"]].sum()
+        table = pd.DataFrame(
+            {
+                "m": frame["week"].dt.month,
+                "x": self._sum(frame, self.modis_columns),
+                "nb": self._sum(frame, self.neighbor_columns),
+                "y": target,
+            }
+        )
+        seen = table[table["x"] > 0]
         self.global_factor = float(seen["y"].sum() / max(seen["x"].sum(), 1.0))
-        self.factors = (seen["y"] / seen["x"]).reindex(range(1, 13)).fillna(self.global_factor)
-        self.floors = table[table["x"] == 0].groupby("m")["y"].mean().reindex(range(1, 13))
-        self.floors = self.floors.fillna(0.0)
+        self.factors = self._ratio(seen, self.global_factor)
+        blank = table[table["x"] == 0]
+        near = blank[blank["nb"] > 0].rename(columns={"x": "_", "nb": "x"})
+        near_global = float(near["y"].sum() / max(near["x"].sum(), 1.0)) if len(near) else 0.0
+        self.neighbor_factors = self._ratio(near, near_global)
+        silent = blank[blank["nb"] == 0]
+        self.floors = silent.groupby("m")["y"].mean().reindex(range(1, 13)).fillna(0.0)
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
-        assert self.factors is not None and self.floors is not None, "fit first"
+        assert self.factors is not None, "fit first"
         month = frame["week"].dt.month
-        modis = self._modis(frame)
-        pred = np.where(modis > 0, month.map(self.factors) * modis, month.map(self.floors))
+        modis = self._sum(frame, self.modis_columns)
+        nb = self._sum(frame, self.neighbor_columns)
+        pred = np.select(
+            [modis > 0, nb > 0],
+            [month.map(self.factors) * modis, month.map(self.neighbor_factors) * nb],
+            default=month.map(self.floors),
+        )
         return np.asarray(pred, dtype=float)
 
 

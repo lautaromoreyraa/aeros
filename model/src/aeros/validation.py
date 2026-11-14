@@ -1,8 +1,13 @@
 """Out-of-sample evaluation of the translators.
 
-Two splits, both on the MODIS/VIIRS overlap:
+Three schemes, all on the MODIS/VIIRS overlap:
 
-* temporal: train on early years, score on later years the models never saw.
+* leave-one-year-out over the calibration window: each year is predicted by
+  a model fitted without it. Every year gets scored once, so a single unusual
+  season cannot decide the winner; this is the score the winner is picked on;
+
+* out-of-window: train on the calibration window, score the later years the
+  models never saw (it also sets the dispersion terms of the intervals).
   Random row splits would leak: adjacent weeks of the same fire land on both
   sides and the score measures memory, not translation.
 * spatial: whole coarse H3 regions are held out in turn, to check the
@@ -23,7 +28,7 @@ from aeros import grid, models
 
 
 def overlap(frame: pd.DataFrame) -> pd.DataFrame:
-    return frame[frame["reference_on"] & frame["terra_on"] & frame["aqua_on"]]
+    return frame[frame["reference_primary"] & frame["terra_on"] & frame["aqua_on"]]
 
 
 def scores(frame: pd.DataFrame, y: np.ndarray, pred: np.ndarray) -> dict[str, float]:
@@ -43,6 +48,7 @@ def scores(frame: pd.DataFrame, y: np.ndarray, pred: np.ndarray) -> dict[str, fl
 
 @dataclass
 class Report:
+    leave_one_year_out: dict[str, dict[str, float]]
     temporal: dict[str, dict[str, float]]
     spatial: dict[str, dict[str, float]]
     dispersion: dict[str, float]
@@ -53,6 +59,7 @@ class Report:
         return {
             "split_year": self.split_year,
             "winner": self.winner,
+            "leave_one_year_out": self.leave_one_year_out,
             "temporal": self.temporal,
             "spatial": self.spatial,
             "dispersion": self.dispersion,
@@ -87,10 +94,11 @@ def evaluate(frame: pd.DataFrame, split_year: int) -> tuple[Report, dict[str, mo
         dispersion[f"{kind}_terra_only_systematic"] = models.systematic(test, y, p_terra)
 
     spatial = _spatial(data)
+    loyo = leave_one_year_out(train)
 
     # A learned model is used only if it beats the yardstick at the level the
     # calendar is read at (cell-year); otherwise the ratio rule stays.
-    winner = min(models.FAMILIES, key=lambda k: temporal[k]["mae_cell_year"])
+    winner = min(models.FAMILIES, key=lambda k: loyo[k]["mae_cell_year"])
 
     fitted: dict[str, models.Translator] = {}
     for kind in models.FAMILIES:
@@ -105,8 +113,30 @@ def evaluate(frame: pd.DataFrame, split_year: int) -> tuple[Report, dict[str, mo
             systematic_terra=dispersion[f"{kind}_terra_only_systematic"],
             metrics=temporal[kind],
         )
-    report = Report(temporal, spatial, dispersion, split_year, winner)
+    report = Report(loyo, temporal, spatial, dispersion, split_year, winner)
     return report, fitted
+
+
+def leave_one_year_out(data: pd.DataFrame) -> dict[str, dict[str, float]]:
+    """Each calibration year predicted by a model fitted on the other years.
+
+    Predictions of all held-out years are pooled and scored together, so the
+    metrics read exactly like the out-of-window ones.
+    """
+    years = np.sort(data["year"].unique())
+    if len(years) < 3:
+        return {kind: {} for kind in models.FAMILIES}
+    out = {}
+    for kind in models.FAMILIES:
+        parts = []
+        for year in years:
+            train, test = data[data["year"] != year], data[data["year"] == year]
+            model, _ = models.FAMILIES[kind]()
+            model.fit(train, train["viirs_n"])
+            parts.append(test.assign(pred=model.predict(test)))
+        pooled = pd.concat(parts)
+        out[kind] = scores(pooled, pooled["viirs_n"].to_numpy(), pooled["pred"].to_numpy())
+    return out
 
 
 def _spatial(data: pd.DataFrame, region_resolution: int = 2, folds: int = 4) -> dict:
