@@ -3,16 +3,18 @@ import DeckGL from "@deck.gl/react";
 import { WebMercatorViewport, type MapViewState, type PickingInfo } from "@deck.gl/core";
 import { BitmapLayer, PathLayer, PolygonLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { H3HexagonLayer, TileLayer } from "@deck.gl/geo-layers";
+import type { Unit } from "../api/types";
 import type { CellTotal } from "../util/aggregation";
 import { boundsOf, boxToRing, type Area, type LngLat } from "../util/area";
 import { VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
-import { formatCount } from "../util/format";
+import { formatCount, unitLabel } from "../util/format";
 
 interface Props {
   totals: CellTotal[];
   selected: ReadonlySet<string> | null;
   centers: LngLat[];
   showRaw: boolean;
+  unit: Unit;
   area: Area;
   drawing: boolean;
   draft: LngLat[];
@@ -73,7 +75,7 @@ function initialView(centers: LngLat[], width: number, height: number): MapViewS
 }
 
 export default function HexMap(props: Props) {
-  const { totals, selected, centers, showRaw, area, drawing, draft, onAddVertex, theme, reducedMotion } = props;
+  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion } = props;
   const container = useRef<HTMLDivElement>(null);
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0);
   const [viewState, setViewState] = useState<MapViewState>(() => initialView(centers, 0, 0));
@@ -169,7 +171,7 @@ export default function HexMap(props: Props) {
 
   const tooltip = ({ object }: PickingInfo<CellTotal>) =>
     object && {
-      html: `<strong>${formatCount(object.harmonized)}</strong> harmonized hotspots<br/>${formatCount(object.stacked)} raw stacked`,
+      html: `<strong>${formatCount(object.harmonized)}</strong> harmonized ${unitLabel(unit)}<br/>${formatCount(object.stacked)} raw stacked`,
       className: "map-tooltip",
     };
 

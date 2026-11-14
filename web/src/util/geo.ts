@@ -19,4 +19,5 @@ export const FLEET_EVENTS = [
   { year: 2000, month: 11, label: "Terra only" },
   { year: 2002, month: 7, label: "Aqua joins" },
   { year: 2012, month: 1, label: "VIIRS era" },
+  { year: 2026, month: 11, label: "NOAA-20 bridge" },
 ] as const;

@@ -1,5 +1,5 @@
 import { formatMonth } from "../util/months";
-import type { CalendarDataSource, CalendarQuery, CalendarRecord, RegionData } from "./types";
+import type { CalendarDataSource, CalendarQuery, CalendarRecord, RegionData, Unit } from "./types";
 
 /**
  * The AWS backend: the region artifacts still come from static files (they are
@@ -12,15 +12,20 @@ export class HttpCalendarSource implements CalendarDataSource {
     private readonly regionSource: Pick<CalendarDataSource, "loadRegion">,
   ) {}
 
-  loadRegion(): Promise<RegionData> {
-    return this.regionSource.loadRegion();
+  loadRegion(unit: Unit): Promise<RegionData> {
+    return this.regionSource.loadRegion(unit);
   }
 
   async calendar(query: CalendarQuery): Promise<CalendarRecord[]> {
     const response = await fetch(`${this.apiUrl}/calendar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cells: query.cells, start: formatMonth(query.start), end: formatMonth(query.end) }),
+      body: JSON.stringify({
+        unit: query.unit,
+        cells: query.cells,
+        start: formatMonth(query.start),
+        end: formatMonth(query.end),
+      }),
     });
     if (!response.ok) throw new Error(`The calendar service answered ${response.status}`);
     return (await response.json()) as CalendarRecord[];

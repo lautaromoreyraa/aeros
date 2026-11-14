@@ -36,7 +36,7 @@ export function useCalendar(query: CalendarQuery | null): State {
     };
     // The cell list is compared by content, not identity, so a new array with
     // the same cells does not trigger a new request.
-  },[cellsKey, query?.start, query?.end, query !== null]);
+  }, [query?.unit, cellsKey, query?.start, query?.end, query !== null]);
 
   return state;
 }

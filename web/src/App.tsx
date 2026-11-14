@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import type { Unit } from "./api/types";
 import { useRegion } from "./hooks/useRegion";
 import { useTheme } from "./hooks/useTheme";
 import { AppShell } from "./layout/AppShell";
@@ -16,7 +17,8 @@ function introAlreadySeen(): boolean {
 }
 
 export default function App() {
-  const { state, retry } = useRegion();
+  const [unit, setUnit] = useState<Unit>("hotspots");
+  const { state, retry } = useRegion(unit);
   const { resolved, toggle } = useTheme();
   const [showIntro, setShowIntro] = useState(() => !introAlreadySeen());
   // The explorer first mounts after the intro: starting deck.gl behind the 3D
@@ -36,11 +38,11 @@ export default function App() {
 
   return (
     <>
-      {showIntro && <IntroPage region={state.status === "ready" ? state.data : null} onDone={finishIntro} />}
+      {showIntro && <IntroPage region={state.data} onDone={finishIntro} />}
       {explorerMounted && (
         <div inert={showIntro || undefined}>
           <AppShell theme={resolved} onToggleTheme={toggle} onReplayIntro={() => setShowIntro(true)}>
-            {state.status === "loading" && <p className="status">Loading the burning calendar…</p>}
+            {!state.data && state.status === "loading" && <p className="status">Loading the burning calendar…</p>}
             {state.status === "error" && (
               <div className="status" role="alert">
                 <p>The data could not be loaded: {state.message}</p>
@@ -49,7 +51,7 @@ export default function App() {
                 </button>
               </div>
             )}
-            {state.status === "ready" && <ExplorerPage region={state.data} theme={resolved} />}
+            {state.data && <ExplorerPage region={state.data} theme={resolved} unit={unit} onUnitChange={setUnit} />}
           </AppShell>
         </div>
       )}

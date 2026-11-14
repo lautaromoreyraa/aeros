@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import type { CalendarRecord } from "../api/types";
+import type { CalendarRecord, Unit } from "../api/types";
 import { yearlyTotals } from "../util/aggregation";
-import { formatCount } from "../util/format";
+import { formatCount, unitLabel } from "../util/format";
 import { FLEET_EVENTS } from "../util/geo";
 
 const WIDTH = 640;
@@ -20,7 +20,7 @@ function niceMax(value: number): number {
  * Aqua and then VIIRS start flying, while the fire on the ground did not
  * change; the harmonized line is the series that can be compared across eras.
  */
-export function AnnualChart({ records, showRaw }: { records: CalendarRecord[]; showRaw: boolean }) {
+export function AnnualChart({ records, unit, showRaw }: { records: CalendarRecord[]; unit: Unit; showRaw: boolean }) {
   const years = useMemo(() => yearlyTotals(records), [records]);
   if (years.length < 2) return null;
 
@@ -44,7 +44,7 @@ export function AnnualChart({ records, showRaw }: { records: CalendarRecord[]; s
   return (
     <figure className="annual">
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-labelledby="annual-title annual-desc">
-        <title id="annual-title">Hotspots per year in the selected area</title>
+        <title id="annual-title">{`${unitLabel(unit, "toggle")} per year in the selected area`}</title>
         <desc id="annual-desc">
           Harmonized VIIRS-equivalent totals with their 90 % interval
           {showRaw ? ", and the raw stacked MODIS plus VIIRS count that jumps when satellites change" : ""}.

@@ -4,8 +4,11 @@ import type {
   CalendarQuery,
   CalendarRecord,
   CellsMonthly,
+  CriticalPeriod,
+  DatasetMeta,
   MorningRecord,
   RegionData,
+  Unit,
   Validation,
 } from "./types";
 
@@ -16,32 +19,46 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 /**
- * Serves the demo artifacts copied to `public/data/` and aggregates the
+ * Serves the demo artifacts copied to `public/data/<unit>/` and aggregates the
  * selected cells in the browser, with the same rules the model uses for the
  * region calendar.
  */
 export class StaticCalendarSource implements CalendarDataSource {
-  private region: Promise<RegionData> | null = null;
+  private readonly regions = new Map<Unit, Promise<RegionData>>();
 
   constructor(private readonly baseUrl: string) {}
 
-  loadRegion(): Promise<RegionData> {
-    this.region ??= Promise.all([
-      getJson<CellsMonthly>(`${this.baseUrl}/cells_monthly.json`),
-      getJson<CalendarRecord[]>(`${this.baseUrl}/calendar_region.json`),
-      // Validation and Terra drift are context, not essential; the app works without them.
-      getJson<Validation>(`${this.baseUrl}/validation.json`).catch(() => null),
-      getJson<MorningRecord[]>(`${this.baseUrl}/morning.json`).catch(() => []),
-    ]).then(([cells, region, validation, morning]) => ({ cells, region, validation, morning }));
+  loadRegion(unit: Unit): Promise<RegionData> {
+    const cached = this.regions.get(unit);
+    if (cached) return cached;
+    const base = `${this.baseUrl}/${unit}`;
+    // Validation, drift, metadata and the critical period are context: the
+    // calendar works without them.
+    const optional = <T>(name: string, fallback: T) => getJson<T>(`${base}/${name}`).catch(() => fallback);
+    const region = Promise.all([
+      getJson<CellsMonthly>(`${base}/cells_monthly.json`),
+      getJson<CalendarRecord[]>(`${base}/calendar_region.json`),
+      optional<Validation | null>("validation.json", null),
+      optional<MorningRecord[]>("morning.json", []),
+      optional<DatasetMeta | null>("meta.json", null),
+      optional<CriticalPeriod | null>("critical_period.json", null),
+    ]).then(([cells, regionRecords, validation, morning, meta, criticalPeriod]) => ({
+      unit,
+      meta,
+      criticalPeriod,
+      cells,
+      region: regionRecords,
+      validation,
+      morning,
+    }));
+    this.regions.set(unit, region);
     // A failed load must not be cached forever, so a retry can succeed.
-    this.region.catch(() => {
-      this.region = null;
-    });
-    return this.region;
+    region.catch(() => this.regions.delete(unit));
+    return region;
   }
 
   async calendar(query: CalendarQuery): Promise<CalendarRecord[]> {
-    const { cells, region } = await this.loadRegion();
+    const { cells, region } = await this.loadRegion(query.unit);
     const selected = query.cells === null ? null : new Set(query.cells);
     // Anomalies use every year as reference, so the range is applied last.
     return inRange(aggregateCalendar(cells, region, selected), query.start, query.end);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { calendarSource } from "../api/client";
-import type { RegionData } from "../api/types";
+import type { RegionData, Unit } from "../api/types";
 import { cellCenters, type CellCenter } from "../util/geo";
 import { parseMonth } from "../util/months";
 
@@ -10,17 +10,25 @@ export interface LoadedRegion extends RegionData {
   lastMonth: number;
 }
 
-type State = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: LoadedRegion };
+type State =
+  | { status: "loading"; data: LoadedRegion | null }
+  | { status: "error"; message: string; data: LoadedRegion | null }
+  | { status: "ready"; data: LoadedRegion };
 
-export function useRegion() {
-  const [state, setState] = useState<State>({ status: "loading" });
+/**
+ * The region dataset of a unit. Switching units keeps the previous dataset on
+ * screen until the new one arrives, so the explorer (and the area drawn in it)
+ * is not torn down by the toggle.
+ */
+export function useRegion(unit: Unit) {
+  const [state, setState] = useState<State>({ status: "loading", data: null });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
-    setState({ status: "loading" });
+    setState((previous) => ({ status: "loading", data: previous.data }));
     calendarSource
-      .loadRegion()
+      .loadRegion(unit)
       .then((region) => {
         if (!active) return;
         const months = region.cells.months;
@@ -35,12 +43,14 @@ export function useRegion() {
         });
       })
       .catch((error: unknown) => {
-        if (active) setState({ status: "error", message: error instanceof Error ? error.message : String(error) });
+        if (!active) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setState((previous) => ({ status: "error", message, data: previous.data }));
       });
     return () => {
       active = false;
     };
-  }, [attempt]);
+  }, [unit, attempt]);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
   return useMemo(() => ({ state, retry }), [state, retry]);

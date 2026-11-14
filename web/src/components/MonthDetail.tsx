@@ -1,9 +1,9 @@
-import type { CalendarRecord } from "../api/types";
-import { SOURCE_LABELS, formatCount, formatRatio, formatSigned } from "../util/format";
+import type { CalendarRecord, Unit } from "../api/types";
+import { SOURCE_LABELS, formatCount, formatRatio, formatSigned, unitLabel } from "../util/format";
 import { MONTH_LABELS } from "../util/months";
 
 /** The numbers behind one calendar square. */
-export function MonthDetail({ record, heading }: { record: CalendarRecord; heading: string }) {
+export function MonthDetail({ record, unit, heading }: { record: CalendarRecord; unit: Unit; heading: string }) {
   const name = `${MONTH_LABELS[record.month_of_year - 1]} ${record.year}`;
   const ratio = record.anomaly_ratio;
   const tone = ratio === null ? "neutral" : ratio >= 1.25 ? "above" : ratio <= 0.8 ? "below" : "neutral";
@@ -13,7 +13,7 @@ export function MonthDetail({ record, heading }: { record: CalendarRecord; headi
       <h3 className="month-detail__title">{name}</h3>
       <p className="month-detail__value">
         {formatCount(record.harmonized)}
-        <span> VIIRS-equivalent hotspots</span>
+        <span> VIIRS-equivalent {unitLabel(unit)}</span>
       </p>
       <dl className="month-detail__list">
         <div>

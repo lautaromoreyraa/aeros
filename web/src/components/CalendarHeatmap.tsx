@@ -1,14 +1,18 @@
 import { useMemo } from "react";
-import type { CalendarRecord } from "../api/types";
+import type { CalendarRecord, Unit } from "../api/types";
 import { DIVERGING, VIRIDIS, ratioScale, readableTextOn, sampleRamp, sqrtScale, toCss } from "../util/colorRamp";
 import { MONTH_LABELS } from "../util/months";
-import { formatCount, formatRatio } from "../util/format";
+import { COVERAGE_LABELS, coverageOf, formatCount, formatRatio, unitLabel } from "../util/format";
 
 export type CalendarView = "harmonized" | "raw" | "anomaly";
 
 interface Props {
   records: CalendarRecord[];
   view: CalendarView;
+  unit: Unit;
+  /** Calendar months of the critical period, highlighted in the header. */
+  criticalMonths: number[];
+  peakMonth: number | null;
   selected: CalendarRecord | null;
   onSelect: (record: CalendarRecord) => void;
 }
@@ -32,17 +36,17 @@ export function colorFor(record: CalendarRecord, view: CalendarView, max: number
     : sampleRamp(VIRIDIS, sqrtScale(valueOf(record, view), max));
 }
 
-function describe(record: CalendarRecord, view: CalendarView): string {
-  const month = `${MONTH_LABELS[record.month_of_year - 1]} ${record.year}`;
+function describe(record: CalendarRecord, view: CalendarView, unit: Unit): string {
+  const month = `${MONTH_LABELS[record.month_of_year - 1]} ${record.year} (${COVERAGE_LABELS[coverageOf(record.source)].toLowerCase()})`;
   if (view === "anomaly") {
     return record.anomaly_ratio === null
       ? `${month}: no usual value to compare with`
       : `${month}: ${formatRatio(record.anomaly_ratio)} the usual ${MONTH_LABELS[record.month_of_year - 1]}`;
   }
-  return `${month}: ${formatCount(valueOf(record, view))} ${view === "raw" ? "raw stacked" : "harmonized"} hotspots`;
+  return `${month}: ${formatCount(valueOf(record, view))} ${view === "raw" ? "raw stacked" : "harmonized"} ${unitLabel(unit)}`;
 }
 
-export function CalendarHeatmap({ records, view, selected, onSelect }: Props) {
+export function CalendarHeatmap({ records, view, unit, criticalMonths, peakMonth, selected, onSelect }: Props) {
   const max = useMemo(() => countScaleMax(records), [records]);
   const years = useMemo(() => {
     const byYear = new Map<number, (CalendarRecord | undefined)[]>();
@@ -71,8 +75,23 @@ export function CalendarHeatmap({ records, view, selected, onSelect }: Props) {
             <th scope="col" className="calendar__corner">
               <span className="visually-hidden">Year</span>
             </th>
-            {MONTH_LABELS.map((label) => (
-              <th key={label} scope="col" className="calendar__month">
+            {MONTH_LABELS.map((label, index) => (
+              <th
+                key={label}
+                scope="col"
+                className={[
+                  "calendar__month",
+                  criticalMonths.includes(index + 1) && "calendar__month--critical",
+                  peakMonth === index + 1 && "calendar__month--peak",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                aria-description={
+                  criticalMonths.includes(index + 1)
+                    ? `critical period${peakMonth === index + 1 ? ", peak month" : ""}`
+                    : undefined
+                }
+              >
                 <span aria-hidden="true">{label.slice(0, 1)}</span>
                 <span className="calendar__month-full">{label.slice(1)}</span>
               </th>
@@ -97,9 +116,9 @@ export function CalendarHeatmap({ records, view, selected, onSelect }: Props) {
                       className="calendar__swatch"
                       style={{ background: toCss(color), color: readableTextOn(color) }}
                       aria-pressed={isSelected}
-                      aria-label={describe(record, view)}
-                      title={describe(record, view)}
-                      data-modeled={record.source !== "observed" || undefined}
+                      aria-label={describe(record, view, unit)}
+                      title={describe(record, view, unit)}
+                      data-coverage={coverageOf(record.source)}
                       onClick={() => onSelect(record)}
                     />
                   </td>

@@ -436,11 +436,19 @@ fieldset.segmented {
   border-radius: 3px;
 }
 
-/* Modeled months get a fine dot so their uncertainty is visible without colour. */
-.calendar__swatch[data-modeled] {
+/* Coverage is drawn as texture so it never depends on colour: observed months
+   are solid, bridged months hatched, modeled months dotted. */
+.calendar__swatch[data-coverage="modeled"] {
   background-image: radial-gradient(circle, color-mix(in srgb, currentColor 55%, transparent) 1px, transparent 1.5px) !important;
   background-size: 6px 6px !important;
-  background-blend-mode: normal;
+}
+
+.calendar__swatch[data-coverage="bridged"] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, currentColor 45%, transparent) 0 1.5px,
+    transparent 1.5px 5px
+  ) !important;
 }
 
 .calendar__swatch[aria-pressed="true"] {
@@ -464,21 +472,78 @@ fieldset.segmented {
   border-radius: 999px;
 }
 
-.legend__modeled {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+.coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
-.legend__modeled::before {
+.coverage__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.coverage__item::before {
   content: "";
   width: 14px;
   height: 14px;
   border-radius: 3px;
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.coverage__item--bridged::before {
+  background: repeating-linear-gradient(135deg, var(--color-text-muted) 0 1.5px, transparent 1.5px 5px),
+    var(--color-surface-2);
+}
+
+.coverage__item--modeled::before {
   background: radial-gradient(circle, var(--color-text-muted) 1px, transparent 1.5px) 0 0 / 6px 6px,
     var(--color-surface-2);
+}
+
+/* ---------- Critical period ---------- */
+
+.critical-note {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.critical-note strong {
+  color: var(--color-text);
+}
+
+.critical-note__swatch {
+  flex: none;
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-accent);
+  transform: translateY(-3px);
+}
+
+.calendar__month--critical {
+  color: var(--color-text);
+  box-shadow: inset 0 -4px 0 var(--color-accent);
+}
+
+.calendar__month--peak {
+  font-weight: 800;
+}
+
+.calendar__month--peak::after {
+  content: " ▲" / "";
+  font-size: 8px;
+  color: var(--color-accent);
 }
 
 .legend__labels {

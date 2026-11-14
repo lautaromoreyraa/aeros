@@ -4,14 +4,44 @@
  * return, so the UI never needs to know which of the two it is talking to.
  */
 
-/** Which satellites the harmonized value of a month comes from. */
-export type HarmonizedSource = "modeled_terra" | "modeled_terra_aqua" | "observed";
+/**
+ * Where the value of a month comes from: observed by the VIIRS reference,
+ * bridged by its successor while the reference is gone (NOAA-20 standing in
+ * for Suomi NPP), or modeled from MODIS before VIIRS flew.
+ */
+export type HarmonizedSource = "observed" | "bridged" | "modeled_terra_aqua" | "modeled_terra";
+
+/** What a count means: detections, or H3 cell-days with at least one detection. */
+export type Unit = "hotspots" | "cell_days";
+
+export interface DatasetMeta {
+  unit: Unit;
+  /** VIIRS satellites the series is expressed in, oldest first. */
+  reference_chain: string[];
+  resolution: number;
+  model: string;
+  first_month: string;
+  last_month: string;
+}
+
+/** Shortest run of calendar months holding `share` of the typical yearly activity. */
+export interface CriticalPeriod {
+  share: number;
+  held?: number;
+  /** Calendar months 1-12, in season order (may wrap around the year end). */
+  months: number[];
+  start_month: number | null;
+  end_month: number | null;
+  peak_month?: number;
+  /** Median over years of each calendar month, January first. */
+  median_by_month?: number[];
+}
 
 /** One month of the burning calendar for an area. */
 export interface CalendarRecord {
   year: number;
   month_of_year: number;
-  /** VIIRS-equivalent hotspot count. */
+  /** VIIRS-equivalent count, in the unit of the dataset. */
   harmonized: number;
   /** Lower bound of the 90 % interval. */
   low: number;
@@ -68,6 +98,7 @@ export interface MorningRecord {
 export type MonthKey = number;
 
 export interface CalendarQuery {
+  unit: Unit;
   /** H3 cells of the selected area; `null` means the whole region. */
   cells: string[] | null;
   start: MonthKey;
@@ -76,6 +107,10 @@ export interface CalendarQuery {
 
 /** Everything the app needs to draw the region before any area is chosen. */
 export interface RegionData {
+  unit: Unit;
+  meta: DatasetMeta | null;
+  /** The model's own critical period for the whole region, when it shipped one. */
+  criticalPeriod: CriticalPeriod | null;
   cells: CellsMonthly;
   region: CalendarRecord[];
   validation: Validation | null;
@@ -85,9 +120,9 @@ export interface RegionData {
 /**
  * The one seam between the UI and wherever the numbers come from. The static
  * implementation aggregates the demo artifacts in the browser; the AWS one will
- * send the same query to `POST /calendar`.
+ * send the same query to `POST /calendar`. Each unit is a separate dataset.
  */
 export interface CalendarDataSource {
-  loadRegion(): Promise<RegionData>;
+  loadRegion(unit: Unit): Promise<RegionData>;
   calendar(query: CalendarQuery): Promise<CalendarRecord[]>;
 }
