@@ -14,7 +14,8 @@ Outputs (all in `out_dir`):
 
 With study regions, the translator is fitted once on all of them and every
 region gets the files above in `out_dir/<region id>/`, listed in
-`out_dir/regions.json`.
+`out_dir/regions.json`. The two Parquet tables are also written to `out_dir`
+for the union of the regions: the API input.
 """
 
 from __future__ import annotations
@@ -69,6 +70,15 @@ def run(
             {**meta, "region": region.describe()},
         )
     if study_regions:
+        # The API answers any drawn area, so it reads one table for the union of
+        # the regions (without the neighbor ring) rather than one per region.
+        union = harmonized["cell"].isin(
+            frozenset().union(*(r.cells(resolution) for r in study_regions))
+        )
+        harmonized[union].to_parquet(out_dir / "harmonized_cells.parquet", index=False)
+        harmonize.hotspot_weights(detections, harmonized[union], resolution).to_parquet(
+            out_dir / "hotspots_harmonized.parquet", index=False
+        )
         _write_json(out_dir / "regions.json", [r.describe() for r in study_regions])
     return Result(panel.frame, harmonized, report, report.winner, resolution, unit)
 

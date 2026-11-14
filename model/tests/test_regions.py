@@ -85,6 +85,9 @@ def test_run_reports_each_region_from_one_translator(tmp_path):
     result = pipeline.run(det, tmp_path, split_year=2014, study_regions=chosen)
 
     assert json.loads((tmp_path / "regions.json").read_text())[0]["id"] == "gran-chaco"
+    union = pd.read_parquet(tmp_path / "harmonized_cells.parquet")
+    assert set(union["cell"]) <= chosen[0].cells(4) | chosen[1].cells(4)
+    assert (tmp_path / "hotspots_harmonized.parquet").exists()
     for region in chosen:
         meta = json.loads((tmp_path / region.id / "meta.json").read_text())
         assert meta["region"]["id"] == region.id
