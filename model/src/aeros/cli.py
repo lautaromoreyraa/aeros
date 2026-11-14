@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +17,7 @@ from aeros import (
     archive,
     database,
     firms,
+    goes,
     grid,
     pipeline,
     publish,
@@ -96,6 +97,18 @@ def main(argv: list[str] | None = None) -> int:
     pub.add_argument("--out", type=Path, default=Path("../web/public/data"))
     pub.add_argument("--default-region", default=publish.DEFAULT_REGION)
 
+    fast = sub.add_parser(
+        "goes-latest",
+        help="fire pixels of the latest GOES-19 full-disk scans inside the study area",
+    )
+    fast.add_argument("--out", type=Path, default=Path("data/processed/goes_latest.json"))
+    fast.add_argument(
+        "--raw", type=Path, default=Path("data/raw/goes"), help="where scans are kept"
+    )
+    fast.add_argument("--scans", type=int, default=3, help="how many recent 10-minute scans")
+    fast.add_argument("--area", default=archive.STUDY_AREA, help="west,south,east,north")
+    fast.add_argument("--resolution", type=int, default=4)
+
     check = sub.add_parser(
         "verify-archive",
         help="check every yearly country file on disk against the size FIRMS serves;"
@@ -140,6 +153,19 @@ def main(argv: list[str] | None = None) -> int:
             runs[unit] = Path(folder)
         index = publish.bundle(runs, args.out, args.default_region)
         print(json.dumps(index, indent=2))
+        return 0
+    if args.command == "goes-latest":
+        now = datetime.now(UTC)
+        area = tuple(float(v) for v in args.area.split(","))
+        frames = [
+            goes.decode(goes.download(scan, args.raw), area)
+            for scan in goes.latest_scans(now, args.scans)
+        ]
+        frame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        summary = goes.summarize(frame, args.resolution, args.area, now)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(summary, indent=1))
+        print(json.dumps({k: summary[k] for k in ("scans", "pixels", "confident_pixels")}))
         return 0
     if args.command == "verify-archive":
         report = archive.verify(args.folders)
