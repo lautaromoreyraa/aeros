@@ -42,6 +42,23 @@ jobs:
       - if: steps.present.outputs.present == 'true'
         run: python -m pytest -q
 
+  web:
+    name: web (tsc + vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
   mcp:
     name: infra/mcp (tsc + vitest)
     runs-on: ubuntu-latest
