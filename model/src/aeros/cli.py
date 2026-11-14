@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--out", type=Path, default=Path("data/processed"))
     run.add_argument("--resolution", type=int, default=4)
     run.add_argument(
-        "--reference", default="SNPP,NOAA20", help="VIIRS platform chain, in priority order"
+        "--reference", default="SNPP,NOAA20,NOAA21", help="VIIRS platform chain, in priority order"
     )
     run.add_argument("--unit", choices=["hotspots", "cell_days"], default="hotspots")
     run.add_argument("--split-year", type=int, default=2019)

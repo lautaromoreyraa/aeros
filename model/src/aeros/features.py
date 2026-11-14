@@ -47,7 +47,7 @@ ALL_FEATURES = TERRA_FEATURES + [
 
 
 UNITS = ("hotspots", "cell_days")
-DEFAULT_REFERENCE = ("SNPP", "NOAA20")
+DEFAULT_REFERENCE = ("SNPP", "NOAA20", "NOAA21")
 
 
 @dataclass(frozen=True)
@@ -114,6 +114,8 @@ def build_panel(
     it on their overlap (see `aeros.reference`). Suomi NPP stopped delivering on
     2026-11-02, so without NOAA-20 in the chain every week after that would
     fall back to MODIS-based estimates while MODIS itself is shutting down.
+    NOAA-21 comes last: it only speaks for the weeks where the platforms before
+    it were silent region-wide, so it backs NOAA-20 up during its outages.
     """
     from aeros import reference as ref_chain
 

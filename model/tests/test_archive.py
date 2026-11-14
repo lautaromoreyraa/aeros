@@ -78,6 +78,8 @@ AVAILABLE = {
     "VIIRS_SNPP_NRT": (date(2026, 8, 1), date(2026, 11, 2)),
     "VIIRS_NOAA20_SP": (date(2018, 4, 1), date(2026, 7, 31)),
     "VIIRS_NOAA20_NRT": (date(2026, 8, 1), date(2026, 11, 14)),
+    "VIIRS_NOAA21_SP": (date(2023, 3, 1), date(2026, 7, 31)),
+    "VIIRS_NOAA21_NRT": (date(2026, 8, 1), date(2026, 11, 14)),
 }
 
 
@@ -169,3 +171,25 @@ def test_download_accepts_a_transfer_that_matches_its_declared_size(tmp_path):
 
     assert report["downloaded"] == [f.name]
     assert (tmp_path / f.name).read_bytes() == body
+
+
+def test_recent_plan_fetches_noaa21_from_the_area_api_when_it_lists_it():
+    available = {"VIIRS_NOAA21_NRT": (date(2025, 1, 1), date(2026, 11, 12))}
+
+    requests = archive.recent_plan(
+        available, archive.STUDY_AREA, date(2026, 11, 1), date(2026, 11, 10)
+    )
+
+    assert {r.prefix for r in requests} == {"fire_nrt_j2v-c2"}
+    assert [r.start for r in requests] == [date(2026, 11, 1), date(2026, 11, 6)]
+    assert sensors.instrument_from_filename(requests[0].name) == "VIIRS"
+
+
+def test_recent_plan_skips_noaa21_sources_the_api_does_not_list():
+    available = {"VIIRS_NOAA20_NRT": (date(2025, 1, 1), date(2026, 11, 12))}
+
+    requests = archive.recent_plan(
+        available, archive.STUDY_AREA, date(2026, 11, 1), date(2026, 11, 10)
+    )
+
+    assert all("j2v" not in r.prefix for r in requests)

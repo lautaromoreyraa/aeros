@@ -32,7 +32,7 @@ Only official resource: NASA FIRMS. Raw NASA rows are never shown in the UI, onl
 
 1. **Common grid.** Detections binned to H3 resolution 4 (~22 km edge) × ISO week. Location and year are never model features, so models cannot memorize a cell's usual fire load.
 2. **Two units.** `hotspots` (detection rows) and `cell_days` (distinct days a cell had fire, which removes most pixel-size inflation).
-3. **Continuous VIIRS reference.** Suomi NPP defines the unit; NOAA-20 fills the weeks after 2026-11-02, bridged to SNPP units on their 2018–2026 overlap. Region-wide silent weeks while MODIS sees fire are flagged as data gaps, not zero fire.
+3. **Continuous VIIRS reference.** Suomi NPP defines the unit; NOAA-20 fills the weeks after 2026-11-02, bridged to SNPP units on their 2018–2026 overlap, and NOAA-21 backs NOAA-20 up through its outages (bridged the same way, from 2023). Region-wide silent weeks while MODIS sees fire are flagged as data gaps, not zero fire.
 4. **Translator MODIS → VIIRS-equivalent**, learned where both flew. Three candidates compete:
    - monthly ratio rule (scales with neighboring MODIS activity where MODIS saw nothing);
    - gradient boosting with Poisson loss;
@@ -106,7 +106,7 @@ flowchart LR
 | CI | `verify` workflow runs model, web, MCP and AWS checks |
 | Study regions (MVP): Gran Chaco (RESOLVE Dry + Humid Chaco), Corrientes, Paraguay | `aeros run --regions all`: one translator fitted on the three, outputs per region in `<out>/<region>/` |
 | Detection database | `aeros build-db`: every FIRMS download in one Parquet store by platform and year, time-sorted, deduplicated (standard processing over NRT), with brightness temperatures, unified confidence, cell and region flags; `cell_days` table for ML features; `inventory`, `coverage` (missing days, silent runs) and day-by-day `comparison` reports; `aeros run --db` reads it |
-| Real FIRMS archive for the Gran Chaco | `aeros fetch`: yearly country summaries (AR, PY, BO) to the last closed year, MODIS C6.1 + VIIRS SNPP + NOAA-20; `aeros fetch-recent` (needs `FIRMS_MAP_KEY`): current year through the area API, standard processing then NRT |
+| Real FIRMS archive for the Gran Chaco | `aeros fetch`: yearly country summaries (AR, PY, BO) to the last closed year, MODIS C6.1 + VIIRS SNPP + NOAA-20; `aeros fetch-recent` (needs `FIRMS_MAP_KEY`): the current year through the area API, standard processing then NRT, and the whole NOAA-21 record, which the yearly archive does not publish |
 | AWS deploy | pending: account, `cdk bootstrap`, FIRMS MAP_KEY in SSM; reserved concurrency may exceed a new account's limit of 10 |
 | Biome as a model feature, Theil–Sen trend | optional |
 
@@ -116,5 +116,5 @@ flowchart LR
 - [ ] Link to the deployed app and to this repository
 - [ ] Project page: summary, how it works, future vision, tools used
 - [ ] Explicit declaration of how AI was used (code assistants, research, translation)
-- [ ] List of NASA resources used: FIRMS MODIS C6.1, VIIRS S-NPP and NOAA-20 375 m, NRT
+- [ ] List of NASA resources used: FIRMS MODIS C6.1, VIIRS S-NPP, NOAA-20 and NOAA-21 375 m, NRT
 - [ ] All objectives in section 2 verified one by one before submitting
