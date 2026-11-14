@@ -98,3 +98,79 @@ def test_translators_beat_raw_modis_out_of_sample(small_panel):
     assert report.temporal[report.winner]["mae_cell_year"] < raw["mae_cell_year"]
     assert abs(report.temporal[report.winner]["bias_total"]) < abs(raw["bias_total"])
     assert set(fitted) == set(models.FAMILIES)
+
+
+def _calendar(values_by_month: dict[int, float], years=(2001, 2002, 2003)) -> pd.DataFrame:
+    rows = [
+        {"year": y, "month_of_year": m, "harmonized": values_by_month.get(m, 0.0)}
+        for y in years
+        for m in range(1, 13)
+    ]
+    return pd.DataFrame(rows)
+
+
+def test_critical_period_wraps_around_the_year_end():
+    table = _calendar({11: 30.0, 12: 40.0, 1: 20.0, 6: 10.0})
+    period = burn_calendar.critical_period(table, share=0.8)
+    assert period["months"] == [11, 12, 1]
+    assert period["peak_month"] == 12
+
+
+def test_critical_period_is_the_shortest_run():
+    table = _calendar({8: 50.0, 9: 40.0, 10: 5.0, 3: 5.0})
+    assert burn_calendar.critical_period(table, share=0.8)["months"] == [8, 9]
+
+
+def _bridge_frame():
+    weeks = pd.date_range("2025-06-02", periods=80, freq="7D")
+    frame = pd.DataFrame({"cell": "a", "week": weeks})
+    frame["month"] = grid.week_month(frame["week"])
+    frame["terra_n"] = 5.0
+    frame["aqua_n"] = 5.0
+    frame["snpp_ref_n"] = 10.0
+    frame["noaa20_ref_n"] = 8.0
+    snpp_off = frame["week"] + pd.Timedelta(days=6) > pd.Timestamp("2026-11-01")
+    frame.loc[snpp_off, "snpp_ref_n"] = 0.0
+    outage = frame["week"].between("2026-12-07", "2026-12-14")
+    frame.loc[outage, "noaa20_ref_n"] = 0.0
+    return frame, snpp_off, outage
+
+
+def test_reference_chain_bridges_noaa20_after_snpp_stops():
+    from aeros import reference
+
+    frame, snpp_off, outage = _bridge_frame()
+    out = reference.chain(frame, ("SNPP", "NOAA20"))
+    after = out[snpp_off & ~outage]
+    assert (after["reference_platform"] == "NOAA20").all()
+    # NOAA-20 sees 8 where SNPP saw 10: bridged values are back in SNPP units
+    assert after["viirs_n"].round(6).eq(10.0).all()
+    assert out.loc[~snpp_off, "reference_primary"].all()
+
+
+def test_silent_platform_weeks_are_gaps_not_zero_fire():
+    from aeros import reference
+
+    frame, _, outage = _bridge_frame()
+    out = reference.chain(frame, ("SNPP", "NOAA20"))
+    assert out.loc[outage, "noaa20_gap"].all()
+    assert not out.loc[outage, "reference_on"].any()
+
+
+def test_cell_day_unit_counts_days_not_pixels():
+    raw = pd.DataFrame(
+        {
+            "latitude": [-26.0] * 4,
+            "longitude": [-61.0] * 4,
+            "acq_date": ["2015-08-03", "2015-08-03", "2015-08-03", "2015-08-04"],
+            "acq_time": ["1730"] * 4,
+            "satellite": ["N"] * 4,
+            "frp": [5.0] * 4,
+            "type": [0] * 4,
+        }
+    )
+    det = firms.normalize(raw, "VIIRS")
+    hotspots = features.build_panel(det, unit="hotspots").frame
+    days = features.build_panel(det, unit="cell_days").frame
+    assert hotspots["snpp_ref_n"].sum() == 4
+    assert days["snpp_ref_n"].sum() == 2

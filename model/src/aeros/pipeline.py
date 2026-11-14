@@ -8,6 +8,8 @@ Outputs (all in `out_dir`):
 * `cells_monthly.json`        per-cell monthly series for the map layer
 * `validation.json`           out-of-sample scores, dispersion and the winner
 * `morning.json`              Terra-only share and Terra overpass drift
+* `critical_period.json`      shortest run of months holding 80 % of activity
+* `meta.json`                 unit, reference chain, grid resolution, chosen model
 """
 
 from __future__ import annotations
@@ -28,34 +30,49 @@ class Result:
     harmonized: pd.DataFrame
     report: validation.Report
     translator_name: str
+    resolution: int
+    unit: str
 
 
 def run(
     detections: pd.DataFrame,
     out_dir: Path,
     resolution: int = 4,
-    reference: tuple[str, ...] = ("SNPP",),
+    reference: tuple[str, ...] = features.DEFAULT_REFERENCE,
+    unit: str = "hotspots",
     split_year: int = 2019,
 ) -> Result:
     out_dir.mkdir(parents=True, exist_ok=True)
-    panel = features.build_panel(detections, resolution=resolution, reference=reference)
+    panel = features.build_panel(detections, resolution=resolution, reference=reference, unit=unit)
     report, fitted = validation.evaluate(panel.frame, split_year=split_year)
     translator = fitted[report.winner]
     harmonized = harmonize.harmonize_panel(panel.frame, translator)
 
     harmonized.to_parquet(out_dir / "harmonized_cells.parquet", index=False)
-    weights = harmonize.hotspot_weights(detections, harmonized, resolution, reference)
+    weights = harmonize.hotspot_weights(detections, harmonized, resolution)
     weights.to_parquet(out_dir / "hotspots_harmonized.parquet", index=False)
 
     region = burn_calendar.monthly(harmonized)
     _write_json(out_dir / "calendar_region.json", _calendar_records(region))
     _write_json(out_dir / "cells_monthly.json", _cells_monthly(harmonized, resolution))
+    _write_json(out_dir / "critical_period.json", burn_calendar.critical_period(region))
     _write_json(out_dir / "validation.json", report.as_dict())
     _write_json(
         out_dir / "morning.json",
         morning.terra_only_share(detections, resolution).to_dict(orient="records"),
     )
-    return Result(panel.frame, harmonized, report, report.winner)
+    _write_json(
+        out_dir / "meta.json",
+        {
+            "unit": unit,
+            "reference_chain": list(reference),
+            "resolution": resolution,
+            "model": report.winner,
+            "first_month": str(harmonized["month"].min().date()),
+            "last_month": str(harmonized["month"].max().date()),
+        },
+    )
+    return Result(panel.frame, harmonized, report, report.winner, resolution, unit)
 
 
 def _calendar_records(table: pd.DataFrame) -> list[dict]:

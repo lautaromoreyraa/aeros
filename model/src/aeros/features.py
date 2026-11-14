@@ -1,5 +1,10 @@
 """Cell x week panel: what MODIS saw (inputs) and what VIIRS saw (target).
 
+Two units are supported. `hotspots` counts detection rows. `cell_days` counts
+the distinct days a cell had at least one detection: a large fire lights
+several 375 m VIIRS pixels but few 1 km MODIS pixels, so row counts mix "more
+fire" with "smaller pixels"; presence per day removes most of that.
+
 Location and year are deliberately NOT features. With them, a tree model learns
 "how much fire this cell usually has" during the training years and flattens the
 trend in the years it must reconstruct. Every input describes what MODIS
@@ -41,24 +46,34 @@ ALL_FEATURES = TERRA_FEATURES + [
 ]
 
 
+UNITS = ("hotspots", "cell_days")
+DEFAULT_REFERENCE = ("SNPP", "NOAA20")
+
+
 @dataclass(frozen=True)
 class Panel:
     frame: pd.DataFrame
     resolution: int
     reference: tuple[str, ...]
+    unit: str
 
 
-def _platform_block(det: pd.DataFrame, platform: str) -> pd.DataFrame:
+def _count(group, unit: str) -> pd.Series:
+    return group.size() if unit == "hotspots" else group["day"].nunique()
+
+
+def _platform_block(det: pd.DataFrame, platform: str, unit: str) -> pd.DataFrame:
     sub = det[det["platform"] == platform]
     prefix = platform.lower()
     if sub.empty:
         return pd.DataFrame(columns=["cell", "week"])
-    g = sub.groupby(["cell", "week"])
+    keys = ["cell", "week"]
+    g = sub.groupby(keys)
     block = pd.DataFrame(
         {
-            f"{prefix}_n": g.size(),
-            f"{prefix}_day_n": g["daynight"].apply(lambda s: int((s == "D").sum())),
-            f"{prefix}_night_n": g["daynight"].apply(lambda s: int((s == "N").sum())),
+            f"{prefix}_n": _count(g, unit),
+            f"{prefix}_day_n": _count(sub[sub["daynight"] == "D"].groupby(keys), unit),
+            f"{prefix}_night_n": _count(sub[sub["daynight"] == "N"].groupby(keys), unit),
             f"{prefix}_frp_mean": g["frp"].mean(),
             f"{prefix}_frp_max": g["frp"].max(),
             f"{prefix}_scan_mean": g["scan"].mean(),
@@ -85,35 +100,52 @@ def _neighbor_counts(frame: pd.DataFrame, column: str) -> pd.Series:
 def build_panel(
     detections: pd.DataFrame,
     resolution: int = grid.DEFAULT_RESOLUTION,
-    reference: tuple[str, ...] = ("SNPP",),
+    reference: tuple[str, ...] = DEFAULT_REFERENCE,
+    unit: str = "hotspots",
     vegetation_only: bool = True,
 ) -> Panel:
     """One row per (cell, week) for every cell that ever had a detection.
 
     Weeks with zero detections are kept: VIIRS often sees fire where MODIS saw
     nothing, and those rows are exactly what the model has to learn.
+
+    `reference` is a chain of VIIRS platforms in priority order. The first one
+    defines the unit; later ones fill the weeks it is not operating, bridged to
+    it on their overlap (see `aeros.reference`). Suomi NPP stopped delivering on
+    2026-11-02, so without NOAA-20 in the chain every week after that would
+    fall back to MODIS-based estimates while MODIS itself is shutting down.
     """
+    from aeros import reference as ref_chain
+
+    if unit not in UNITS:
+        raise ValueError(f"unit must be one of {UNITS}")
     det = detections
     if vegetation_only:
         det = det[det["is_vegetation"]]
     det = det.copy()
     det["cell"] = grid.cells_for(det["latitude"], det["longitude"], resolution)
     det["week"] = grid.week_start(det["acq_datetime"])
+    det["day"] = det["acq_datetime"].dt.tz_convert("UTC").dt.floor("D")
 
     cells = np.sort(det["cell"].unique())
     weeks = pd.date_range(det["week"].min(), det["week"].max(), freq="7D")
     frame = pd.MultiIndex.from_product([cells, weeks], names=["cell", "week"]).to_frame(index=False)
 
     for platform in MODIS_ALL:
-        frame = frame.merge(_platform_block(det, platform), on=["cell", "week"], how="left")
-
-    ref = det[det["platform"].isin(reference)].groupby(["cell", "week"]).size()
-    frame = frame.merge(ref.rename("viirs_n").reset_index(), on=["cell", "week"], how="left")
-    # What a user gets by stacking every FIRMS file and counting rows: the
-    # "raw" series whose jumps follow the satellite fleet, not the fire.
-    stacked = det.groupby(["cell", "week"]).size()
+        frame = frame.merge(_platform_block(det, platform, unit), on=["cell", "week"], how="left")
+    for platform in reference:
+        counts = _count(det[det["platform"] == platform].groupby(["cell", "week"]), unit)
+        counts = counts.rename(f"{platform.lower()}_ref_n").reset_index()
+        frame = frame.merge(counts, on=["cell", "week"], how="left")
+    # What a user gets by stacking every FIRMS file and counting: the "raw"
+    # series whose jumps follow the satellite fleet, not the fire.
+    stacked = _count(det.groupby(["cell", "week"]), unit)
     frame = frame.merge(stacked.rename("stacked_n").reset_index(), on=["cell", "week"], how="left")
 
+    # A platform with no detection at all still needs its columns (as zeros).
+    for column in ALL_FEATURES:
+        if column not in frame and not column.startswith("season"):
+            frame[column] = 0.0
     count_cols = [c for c in frame if c.endswith("_n")]
     frame[count_cols] = frame[count_cols].fillna(0).astype(float)
     for platform in MODIS_ALL:
@@ -126,23 +158,16 @@ def build_panel(
     frame["month"] = grid.week_month(frame["week"])
     frame["year"] = frame["week"].dt.year
 
-    frame = _mark_coverage(frame, reference)
-    return Panel(frame=frame, resolution=resolution, reference=reference)
+    frame["terra_on"] = operating(frame, "TERRA")
+    frame["aqua_on"] = operating(frame, "AQUA")
+    frame = ref_chain.chain(frame, reference)
+    return Panel(frame=frame, resolution=resolution, reference=reference, unit=unit)
 
 
-def _mark_coverage(frame: pd.DataFrame, reference: tuple[str, ...]) -> pd.DataFrame:
-    """Which instruments were operating each week, from the mission windows."""
-    week_end = frame["week"] + pd.Timedelta(days=6)
-
-    def operating(name: str) -> pd.Series:
-        p = PLATFORMS[name]
-        start = pd.Timestamp(p.first_day)
-        on = frame["week"] >= start
-        if p.last_day is not None:
-            on &= week_end <= pd.Timestamp(p.last_day)
-        return on
-
-    frame["terra_on"] = operating("TERRA")
-    frame["aqua_on"] = operating("AQUA")
-    frame["reference_on"] = np.logical_and.reduce([operating(r) for r in reference])
-    return frame
+def operating(frame: pd.DataFrame, name: str) -> pd.Series:
+    """Weeks fully inside a platform's mission window."""
+    p = PLATFORMS[name]
+    on = frame["week"] >= pd.Timestamp(p.first_day)
+    if p.last_day is not None:
+        on &= frame["week"] + pd.Timedelta(days=6) <= pd.Timestamp(p.last_day)
+    return on

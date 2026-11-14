@@ -77,3 +77,40 @@ def grid_matrix(table: pd.DataFrame, column: str = "harmonized") -> pd.DataFrame
     return table.pivot(index="year", columns="month_of_year", values=column).reindex(
         columns=range(1, 13)
     )
+
+
+def critical_period(table: pd.DataFrame, share: float = 0.8) -> dict:
+    """Shortest run of consecutive calendar months holding `share` of the activity.
+
+    Runs wrap around the year end, so a southern summer season (November to
+    February) is found as one period. Activity per calendar month is the
+    median over years of the harmonized counts, so one extreme season does not
+    stretch the period.
+    """
+    climatology = (
+        table.groupby("month_of_year")["harmonized"].median().reindex(range(1, 13)).fillna(0.0)
+    )
+    values = climatology.to_numpy()
+    total = values.sum()
+    if total <= 0:
+        return {"share": share, "months": [], "start_month": None, "end_month": None}
+    best: tuple[int, int, float] | None = None
+    for length in range(1, 13):
+        for start in range(12):
+            months = [(start + i) % 12 for i in range(length)]
+            held = values[months].sum() / total
+            if held >= share and (best is None or held > best[2]):
+                best = (start, length, held)
+        if best is not None:
+            break
+    start, length, held = best  # type: ignore[misc]
+    months = [((start + i) % 12) + 1 for i in range(length)]
+    return {
+        "share": share,
+        "held": round(float(held), 4),
+        "months": months,
+        "start_month": months[0],
+        "end_month": months[-1],
+        "peak_month": int(climatology.idxmax()),
+        "median_by_month": [round(float(v), 2) for v in values],
+    }

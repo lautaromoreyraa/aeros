@@ -31,7 +31,9 @@ DEFAULT_BBOX = (-63.0, -27.0, -60.0, -24.0)  # west, south, east, north (Chaco)
 class SyntheticArchive:
     modis: pd.DataFrame
     viirs: pd.DataFrame
-    truth: pd.DataFrame  # cell, week, viirs_truth_n (reference VIIRS, all years)
+    # Suomi NPP detections as if it had flown the whole period: the answer the
+    # backcast is scored against, in either unit.
+    truth_rows: pd.DataFrame
 
 
 def _cells(bbox: tuple[float, float, float, float], resolution: int) -> list[str]:
@@ -42,11 +44,12 @@ def _cells(bbox: tuple[float, float, float, float], resolution: int) -> list[str
 
 def generate(
     start: str = "2000-11-06",
-    end: str = "2026-10-26",
+    end: str = "2027-03-29",
     bbox: tuple[float, float, float, float] = DEFAULT_BBOX,
     resolution: int = 4,
     trend_per_year: float = 0.03,
     seed: int = 7,
+    noaa20_gap: tuple[str, str] | None = None,
 ) -> SyntheticArchive:
     rng = np.random.default_rng(seed)
     cells = _cells(bbox, resolution)
@@ -84,16 +87,20 @@ def generate(
         }
     )
 
-    modis_rows, viirs_rows = [], []
-    truth_counts = np.zeros(total, dtype=int)
-    for name in ("TERRA", "AQUA", "SNPP"):
+    modis_rows, viirs_rows, truth_rows = [], [], []
+    viirs_detection = {  # platform: (p small fire, extra pixels for large fires)
+        "SNPP": (0.55, 3.0),
+        "NOAA20": (0.6, 3.3),  # same instrument, slightly different calibration
+    }
+    for name in ("TERRA", "AQUA", "SNPP", "NOAA20"):
         platform = PLATFORMS[name]
         morning = name == "TERRA"
         active = np.where(fires["morning_only"], morning, True)
-        if name == "SNPP":
+        if name in viirs_detection:
+            p_small, extra = viirs_detection[name]
             scan = rng.uniform(0.32, 0.8, total)
-            p = np.where(small, 0.55, 0.95) * active
-            pixels = np.where(small, 1, 1 + rng.poisson(3.0, total))
+            p = np.where(small, p_small, 0.95) * active
+            pixels = np.where(small, 1, 1 + rng.poisson(extra, total))
         else:
             scan = rng.uniform(1.0, 4.8, total)
             edge_penalty = 1.0 / scan**0.8
@@ -101,27 +108,23 @@ def generate(
             pixels = np.where(small, 1, 1 + rng.poisson(0.6, total))
         detected = rng.random(total) < p
         counts = np.where(detected, pixels, 0)
+        if name == "SNPP":
+            truth_rows.append(_rows(fires, counts, scan, name, small, rng))
 
         on = fires["date"] >= pd.Timestamp(platform.first_day)
         if platform.last_day is not None:
             on &= fires["date"] <= pd.Timestamp(platform.last_day)
-        if name == "SNPP":
-            truth_counts = counts.copy()
+        if name == "NOAA20" and noaa20_gap is not None:
+            on &= ~fires["date"].between(pd.Timestamp(noaa20_gap[0]), pd.Timestamp(noaa20_gap[1]))
         counts = np.where(on, counts, 0)
 
         rows = _rows(fires, counts, scan, name, small, rng)
-        (viirs_rows if name == "SNPP" else modis_rows).append(rows)
+        (viirs_rows if name in viirs_detection else modis_rows).append(rows)
 
-    truth = (
-        fires.assign(viirs_truth_n=truth_counts)
-        .groupby(["cell", "week"])["viirs_truth_n"]
-        .sum()
-        .reset_index()
-    )
     return SyntheticArchive(
         modis=pd.concat(modis_rows, ignore_index=True),
         viirs=pd.concat(viirs_rows, ignore_index=True),
-        truth=truth,
+        truth_rows=pd.concat(truth_rows, ignore_index=True),
     )
 
 
@@ -137,7 +140,7 @@ def _rows(fires, counts, scan, platform, small, rng) -> pd.DataFrame:
     hh = np.floor(utc_hours).astype(int)
     mm = np.floor((utc_hours - hh) * 60).astype(int)
     frp = np.where(small[idx], rng.lognormal(1.8, 0.6, len(idx)), rng.lognormal(3.8, 0.8, len(idx)))
-    satellite = {"TERRA": "Terra", "AQUA": "Aqua", "SNPP": "N"}[platform]
+    satellite = {"TERRA": "Terra", "AQUA": "Aqua", "SNPP": "N", "NOAA20": "N20"}[platform]
     return pd.DataFrame(
         {
             "latitude": lat.round(5),
@@ -150,6 +153,6 @@ def _rows(fires, counts, scan, platform, small, rng) -> pd.DataFrame:
             "frp": frp.round(2),
             "daynight": "D",
             "type": 0,
-            "confidence": "n" if platform == "SNPP" else "70",
+            "confidence": "70" if platform in ("TERRA", "AQUA") else "n",
         }
     )
