@@ -105,7 +105,14 @@ function CameraRig({ target, still }: { target: THREE.Vector3; still: boolean })
   return null;
 }
 
-export default function IntroScene({ cells, still }: { cells: { center: LngLat; weight: number }[]; still: boolean }) {
+interface SceneProps {
+  cells: { center: LngLat; weight: number }[];
+  still: boolean;
+  /** Stops rendering while the scene is scrolled out of view. */
+  paused?: boolean;
+}
+
+export default function IntroScene({ cells, still, paused = false }: SceneProps) {
   const target = useMemo(() => {
     const centre = cells.reduce<LngLat>(
       (sum, cell) => [sum[0] + cell.center[0] / cells.length, sum[1] + cell.center[1] / cells.length],
@@ -116,10 +123,9 @@ export default function IntroScene({ cells, still }: { cells: { center: LngLat; 
 
   return (
     <Canvas
-      className="intro__canvas"
       camera={{ fov: 40, near: 0.1, far: 100, position: [0, 0, 8] }}
       dpr={[1, 2]}
-      frameloop={still ? "demand" : "always"}
+      frameloop={still || paused ? "demand" : "always"}
       gl={{ antialias: true, alpha: false }}
       aria-hidden="true"
     >

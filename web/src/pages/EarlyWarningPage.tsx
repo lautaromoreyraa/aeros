@@ -6,13 +6,10 @@ import type { Loadable } from "../hooks/useOutlook";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { ratioColor } from "../util/forecast";
 import { alertDecision, daysBetween, formatDay, formatPValue, windowCoverage } from "../util/earlyWarning";
-import { formatCount, formatRatio } from "../util/format";
+import { formatCount, formatPlace, formatRatio } from "../util/format";
 import { cellCenters } from "../util/geo";
 
 const RiskMap = lazy(() => import("../components/RiskMap"));
-
-const formatPlace = ([lng, lat]: [number, number]) =>
-  `${Math.abs(lat).toFixed(1)}° ${lat < 0 ? "S" : "N"}, ${Math.abs(lng).toFixed(1)}° ${lng < 0 ? "W" : "E"}`;
 
 const formatUpdated = (iso: string) => {
   const time = Date.parse(iso);

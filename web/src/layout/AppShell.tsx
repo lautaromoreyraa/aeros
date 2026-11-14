@@ -18,11 +18,11 @@ interface Props {
   banner?: ReactNode;
   theme: "light" | "dark";
   onToggleTheme: () => void;
-  onReplayIntro: () => void;
+  onShowLanding: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ section, onSectionChange, alerting, banner, theme, onToggleTheme, onReplayIntro, children }: Props) {
+export function AppShell({ section, onSectionChange, alerting, banner, theme, onToggleTheme, onShowLanding, children }: Props) {
   return (
     <div className="shell">
       <header className="shell__header">
@@ -52,8 +52,8 @@ export function AppShell({ section, onSectionChange, alerting, banner, theme, on
           ))}
         </nav>
         <nav className="shell__actions" aria-label="Display">
-          <button type="button" className="button button--ghost" onClick={onReplayIntro}>
-            Replay intro
+          <button type="button" className="button button--ghost" onClick={onShowLanding}>
+            About aeros
           </button>
           <button
             type="button"

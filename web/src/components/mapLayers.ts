@@ -22,6 +22,13 @@ export const BASEMAP = {
   },
 };
 
+/**
+ * Esri World Imagery: real satellite and aerial imagery, also keyless. Google's
+ * photorealistic tiles would need an API key and a billing account.
+ */
+export const SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+export const SATELLITE_ATTRIBUTION = "Imagery: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
+
 export function rasterLayer(id: string, url: string) {
   return new TileLayer<ImageBitmap>({
     id,

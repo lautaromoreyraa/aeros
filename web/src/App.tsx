@@ -9,15 +9,15 @@ import { AppShell, type Section } from "./layout/AppShell";
 import { EarlyWarningPage } from "./pages/EarlyWarningPage";
 import { ExplorerPage } from "./pages/ExplorerPage";
 import { ForecastPage } from "./pages/ForecastPage";
-import { IntroPage } from "./pages/IntroPage";
+import { LandingPage } from "./pages/LandingPage";
 import { TerrainPage } from "./pages/TerrainPage";
 import { alertDecision } from "./util/earlyWarning";
 
-const INTRO_KEY = "aeros-intro-seen";
+const ENTERED_KEY = "aeros-dashboard-entered";
 
-function introAlreadySeen(): boolean {
+function enteredBefore(): boolean {
   try {
-    return sessionStorage.getItem(INTRO_KEY) === "1";
+    return sessionStorage.getItem(ENTERED_KEY) === "1";
   } catch {
     return false;
   }
@@ -33,27 +33,33 @@ export default function App() {
   const forecast = useForecast();
   const report = warning.state.status === "ready" ? warning.state.data : null;
   const decision = useMemo(() => alertDecision(report), [report]);
-  const [showIntro, setShowIntro] = useState(() => !introAlreadySeen());
-  // The explorer first mounts after the intro: starting deck.gl behind the 3D
-  // scene compiles its shaders on the same thread and freezes the intro. Once
-  // mounted it stays, so replaying the intro keeps the chosen area.
-  const [explorerMounted, setExplorerMounted] = useState(introAlreadySeen);
+  const [onLanding, setOnLanding] = useState(() => !enteredBefore());
+  // The dashboard first mounts when the visitor leaves the landing: its
+  // deck.gl maps would compile their shaders on the same thread as the globe.
+  // Once mounted it stays, so a visit to the landing keeps the chosen area.
+  const [dashboardMounted, setDashboardMounted] = useState(enteredBefore);
 
-  const finishIntro = useCallback(() => {
-    setShowIntro(false);
-    setExplorerMounted(true);
+  const enterDashboard = useCallback(() => {
+    setOnLanding(false);
+    setDashboardMounted(true);
+    window.scrollTo(0, 0);
     try {
-      sessionStorage.setItem(INTRO_KEY, "1");
+      sessionStorage.setItem(ENTERED_KEY, "1");
     } catch {
-      // Without storage the intro simply plays again on reload.
+      // Without storage the landing simply shows again on reload.
     }
+  }, []);
+
+  const showLanding = useCallback(() => {
+    setOnLanding(true);
+    window.scrollTo(0, 0);
   }, []);
 
   return (
     <>
-      {showIntro && <IntroPage region={state.data} onDone={finishIntro} />}
-      {explorerMounted && (
-        <div inert={showIntro || undefined}>
+      {onLanding && <LandingPage region={state.data} warning={warning.state} onEnter={enterDashboard} />}
+      {dashboardMounted && (
+        <div hidden={onLanding} inert={onLanding || undefined}>
           <AppShell
             section={section}
             onSectionChange={setSection}
@@ -65,7 +71,7 @@ export default function App() {
             }
             theme={resolved}
             onToggleTheme={toggle}
-            onReplayIntro={() => setShowIntro(true)}
+            onShowLanding={showLanding}
           >
             {!state.data && state.status === "loading" && <p className="status">Loading the burning calendar…</p>}
             {state.status === "error" && (

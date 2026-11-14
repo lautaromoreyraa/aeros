@@ -1,0 +1,469 @@
+/* The front page is always dark: a night view of the planet that fades to
+   black, then the ground seen from orbit. */
+.landing {
+  --void: #000;
+  --ash: #eee8df;
+  --smoke: #a29c95;
+  --flare: #fbb61a;
+  --hairline: rgb(255 255 255 / 0.16);
+  --font-display: "Archivo Variable", var(--font-sans);
+
+  min-height: 100dvh;
+  background: var(--void);
+  color: var(--ash);
+  color-scheme: dark;
+  --color-focus: #6cb6ff;
+  --color-surface: #13161b;
+  --color-text: #ece8e1;
+  --color-text-muted: #a3a9b1;
+  --color-border: #2a2f38;
+}
+
+.landing__nav {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--gutter);
+}
+
+.landing__nav .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 700;
+  font-size: var(--text-lg);
+}
+
+.landing__cta {
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  border: 1px solid var(--ash);
+  border-radius: 2px;
+  background: var(--ash);
+  color: var(--void);
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.landing__cta:hover {
+  background: transparent;
+  color: var(--ash);
+}
+
+.landing__cta--quiet {
+  min-height: 40px;
+  padding: 0 var(--space-5);
+  background: rgb(0 0 0 / 0.3);
+  color: var(--ash);
+  backdrop-filter: blur(8px);
+}
+
+.landing__cta--quiet:hover {
+  background: var(--ash);
+  color: var(--void);
+}
+
+.landing__heading {
+  font-family: var(--font-display);
+  font-stretch: 118%;
+  font-weight: 650;
+  font-size: clamp(1.75rem, 3.6vw, 3rem);
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  height: 100svh;
+  min-height: 560px;
+  overflow: hidden;
+}
+
+.hero__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.hero__canvas canvas {
+  display: block;
+}
+
+.hero__canvas--fallback {
+  background: radial-gradient(circle at 62% 45%, #142030 0%, var(--void) 62%);
+}
+
+/* Transparent over the planet, black where the page continues: the hero
+   hands over to the map below without a seam. */
+.hero__veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, transparent 0%, transparent 38%, rgb(0 0 0 / 0.72) 72%, var(--void) 100%),
+    linear-gradient(90deg, rgb(0 0 0 / 0.55) 0%, transparent 55%);
+}
+
+.hero__copy {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: clamp(56px, 11vh, 128px);
+  display: grid;
+  gap: var(--space-5);
+  justify-items: start;
+}
+
+.hero__title {
+  max-width: 14ch;
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 750;
+  font-size: clamp(2.6rem, 7vw, 6.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.025em;
+}
+
+.hero__lede {
+  max-width: 34em;
+  font-family: var(--font-display);
+  font-stretch: 100%;
+  font-weight: 400;
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  line-height: 1.3;
+  color: var(--ash);
+}
+
+@media (min-width: 720px) {
+  .hero__lede span {
+    display: block;
+  }
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+  margin-top: var(--space-2);
+}
+
+.hero__more {
+  color: var(--ash);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-underline-offset: 6px;
+}
+
+.hero__more:hover {
+  color: #fff;
+}
+
+/* The one orchestrated moment: while the camera settles over the Chaco the
+   words arrive, title first. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero:not(.hero--still) .hero__title,
+  .hero:not(.hero--still) .hero__lede,
+  .hero:not(.hero--still) .hero__actions {
+    animation: hero-in 1400ms var(--ease-out) both;
+  }
+
+  .hero:not(.hero--still) .hero__title {
+    animation-delay: 1.6s;
+  }
+
+  .hero:not(.hero--still) .hero__lede {
+    animation-delay: 2.6s;
+  }
+
+  .hero:not(.hero--still) .hero__actions {
+    animation-delay: 3.4s;
+  }
+}
+
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* ---------- The record on satellite imagery ---------- */
+
+.record {
+  position: relative;
+  height: 100svh;
+  min-height: 600px;
+  scroll-margin-top: 0;
+}
+
+.record__map {
+  position: absolute;
+  inset: 0;
+  background: var(--void);
+}
+
+/* Continues the hero's black at the top edge. */
+.record::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 28%;
+  z-index: 1;
+  background: linear-gradient(180deg, var(--void) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.record__copy {
+  position: absolute;
+  left: var(--gutter);
+  bottom: var(--space-7);
+  z-index: 1;
+  display: grid;
+  gap: var(--space-4);
+  max-width: min(440px, calc(100% - 2 * var(--gutter)));
+  padding: var(--space-5);
+  background: rgb(0 0 0 / 0.62);
+  backdrop-filter: blur(10px);
+  border-left: 2px solid var(--flare);
+}
+
+.record__copy p {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ash);
+}
+
+.record__flag {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.record__swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: #fff;
+  box-shadow: inset 0 0 0 3px var(--void);
+}
+
+.record .map__attribution {
+  background: rgb(0 0 0 / 0.6);
+  color: var(--smoke);
+}
+
+/* ---------- The message an alert sends ---------- */
+
+.warn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-7);
+  padding: clamp(72px, 14vh, 160px) var(--gutter);
+  border-top: 1px solid var(--hairline);
+}
+
+@media (min-width: 1040px) {
+  .warn {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: center;
+  }
+
+  .warn__note {
+    grid-column: 2;
+  }
+}
+
+.warn__copy {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 46ch;
+}
+
+.warn__copy p {
+  color: var(--smoke);
+  font-size: var(--text-lg);
+  line-height: 1.5;
+}
+
+.warn__note {
+  font-size: var(--text-xs);
+  color: var(--smoke);
+}
+
+.alert-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .alert-preview {
+    grid-template-columns: 300px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .alert-preview .mail {
+    margin-top: var(--space-7);
+  }
+}
+
+.phone,
+.mail {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.phone {
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 28px;
+  background: #0b141a;
+  color: #e9edef;
+}
+
+.phone__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: #202c33;
+}
+
+.phone__bar strong,
+.phone__bar small {
+  display: block;
+}
+
+.phone__bar small {
+  color: #8696a0;
+  font-size: var(--text-xs);
+}
+
+.phone__avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--flare);
+  color: var(--void);
+}
+
+.phone__chat {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3) var(--space-6);
+}
+
+.phone__day {
+  justify-self: center;
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: #182229;
+  color: #8696a0;
+  font-size: var(--text-xs);
+}
+
+.bubble {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 92%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 0 10px 10px 10px;
+  background: #202c33;
+}
+
+.bubble__title {
+  font-weight: 700;
+}
+
+.bubble ul,
+.mail__body ul {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+.bubble__muted {
+  color: #8696a0;
+}
+
+.bubble__time {
+  justify-self: end;
+  color: #8696a0;
+  font-size: 11px;
+}
+
+.mail {
+  border-radius: 6px;
+  background: #f6f4f0;
+  color: #1c1d1f;
+  box-shadow: 0 30px 80px rgb(0 0 0 / 0.6);
+}
+
+.mail__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: var(--space-5);
+  border-bottom: 1px solid #ddd8cf;
+}
+
+.mail__head dt {
+  color: #6b6f75;
+}
+
+.mail__head dd {
+  margin: 0;
+}
+
+.mail__body {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 64ch;
+  padding: var(--space-5);
+}
+
+.mail__muted {
+  color: #5d6167;
+}
+
+/* ---------- End ---------- */
+
+.landing__end {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-6);
+  padding: clamp(72px, 14vh, 160px) var(--gutter);
+  border-top: 1px solid var(--hairline);
+}
+
+.landing__footer {
+  padding: var(--space-5) var(--gutter) var(--space-6);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--text-xs);
+  color: var(--smoke);
+}
