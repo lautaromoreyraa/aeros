@@ -85,3 +85,9 @@ export function boundsOf(points: LngLat[]): BoundingBox {
   }
   return { west, south, east, north };
 }
+
+/** How the chosen area is named in headings and file names. */
+export function areaLabel(area: Area, cells: number): string {
+  if (area.kind === "region") return "Gran Chaco study region";
+  return `${area.kind === "box" ? "Lat-lon box" : "Drawn area"} (${cells} cells)`;
+}
