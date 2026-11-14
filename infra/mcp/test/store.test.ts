@@ -15,6 +15,8 @@ describe("Store", () => {
     const keys = (await store.conventions()).map((c) => c.key);
     expect(keys).toContain("language");
     expect(keys).toContain("branches");
+    expect(keys).toContain("aws_free_plan");
+    expect(keys).toContain("aws_docs");
   });
 
   it("lists the git workflow in the order a change goes through it", async () => {

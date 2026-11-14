@@ -52,7 +52,8 @@ export function buildServer(store: Store, data: PipelineData, identity: Identity
   server.registerTool(
     "get_conventions",
     {
-      description: "Team conventions every agent must follow: language, branches, commits, data, layout.",
+      description: "Team conventions every agent must follow: language, branches, commits, data, layout, " +
+        "and the AWS Free plan limits (aws_free_plan) that bind any infrastructure change.",
       annotations: { readOnlyHint: true },
     },
     async () => text(await store.conventions()),
