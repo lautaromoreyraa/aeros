@@ -1,0 +1,43 @@
+# Documentation and assistant notes are kept outside the repository
+*.md
+CLAUDE.md
+AGENTS.md
+.claude/
+.cursorrules
+.devin/
+.windsurf/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Data (FIRMS downloads and derived tables are rebuilt by the pipeline)
+data/
+*.csv
+*.parquet
+*.zip
+!model/tests/fixtures/*.csv
+
+# Node / web / infra
+node_modules/
+web/dist/
+infra/**/cdk.out/
+.wrangler/
+.dev.vars
+
+# Secrets and local environment
+.env
+.env.*
+*.pem
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
