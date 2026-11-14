@@ -1,5 +1,4 @@
 # Documentation and assistant notes are kept outside the repository
-*.md
 CLAUDE.md
 AGENTS.md
 .claude/
