@@ -232,6 +232,7 @@ def to_json(rows: pd.DataFrame, forecaster: Forecaster, unit: str) -> dict:
             cells.append({"cell": cell, "values": values})
 
     return {
+        "generated_at": pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"),
         "issued_week": str(rows["issue_week"].max().date()),
         "unit": unit,
         "horizons": list(HORIZONS),
