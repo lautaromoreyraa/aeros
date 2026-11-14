@@ -9,8 +9,12 @@ export const DATA_LAYOUT = {
   hotspotsKey: "harmonized/hotspots_harmonized.parquet",
   rawFirmsPrefix: "raw/firms/",
   earlyWarningKey: "derived/early_warning.json",
+  /** GOES-19 fire pixels of the last scans, rewritten every 10 minutes. */
+  goesLatestKey: "derived/goes_latest.json",
   /** What the last alert notification told people; private, never served. */
   alertStateKey: "state/alerts.json",
+  /** Which cells the GOES watch already told people about; private too. */
+  goesAlertStateKey: "state/goes_alerts.json",
 } as const;
 
 export interface DataStackProps extends StackProps {

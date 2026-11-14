@@ -127,6 +127,23 @@ export class WebStack extends Stack {
           responseHeadersPolicy: headers,
           compress: true,
         },
+        // The GOES layer changes every 10 minutes: a two-minute edge cache
+        // keeps a burst of visitors from turning into a burst of invocations.
+        "/api/active-fires": {
+          origin: apiOrigin,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachePolicy: new cloudfront.CachePolicy(this, "ActiveFiresCache", {
+            comment: "aeros GOES-19 active fires, refreshed every 10 minutes",
+            defaultTtl: Duration.minutes(2),
+            minTtl: Duration.seconds(0),
+            maxTtl: Duration.minutes(5),
+            enableAcceptEncodingGzip: true,
+            enableAcceptEncodingBrotli: true,
+          }),
+          responseHeadersPolicy: headers,
+          compress: true,
+        },
         // Queries depend on the body, so nothing is cached. Viewer headers go
         // through: POSTs carry x-amz-content-sha256, which CloudFront needs to
         // sign the request for Lambda.
@@ -174,6 +191,7 @@ export class WebStack extends Stack {
         CELLS_KEY: DATA_LAYOUT.cellsKey,
         HOTSPOTS_KEY: DATA_LAYOUT.hotspotsKey,
         EARLY_WARNING_KEY: DATA_LAYOUT.earlyWarningKey,
+        GOES_LATEST_KEY: DATA_LAYOUT.goesLatestKey,
         DUCKDB_HTTPFS: "/opt/duckdb/httpfs.duckdb_extension",
         MAX_CELLS: "20000",
         MAX_CSV_ROWS: "50000",
@@ -181,6 +199,7 @@ export class WebStack extends Stack {
     });
     props.dataBucket.grantRead(fn, `${DATA_LAYOUT.harmonizedPrefix}*`);
     props.dataBucket.grantRead(fn, DATA_LAYOUT.earlyWarningKey);
+    props.dataBucket.grantRead(fn, DATA_LAYOUT.goesLatestKey);
     return fn;
   }
 

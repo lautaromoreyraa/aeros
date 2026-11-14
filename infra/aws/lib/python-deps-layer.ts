@@ -14,7 +14,7 @@ function pythonCandidates(): string[] {
 }
 
 /**
- * DuckDB, H3 and DuckDB's httpfs for Python 3.12 on arm64, shared by the API
+ * DuckDB, H3, h5py (GOES NetCDF) and DuckDB's httpfs for Python 3.12 on arm64, shared by the API
  * and the refresh functions.
  *
  * A zip layer instead of a container image: no ECR repository to pay for, and
@@ -26,7 +26,7 @@ function pythonCandidates(): string[] {
 export class PythonDepsLayer extends lambda.LayerVersion {
   constructor(scope: Construct, id: string) {
     super(scope, id, {
-      description: "aeros: duckdb, h3 and the httpfs extension (python3.12 arm64)",
+      description: "aeros: duckdb, h3, h5py and the httpfs extension (python3.12 arm64)",
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
       compatibleArchitectures: [lambda.Architecture.ARM_64],
       code: lambda.Code.fromAsset(LAYER_DIR, {

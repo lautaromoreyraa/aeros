@@ -93,7 +93,7 @@ describe("AWS Free plan", () => {
         expect(r.Properties.MemorySize ?? 128, id).toBeLessThanOrEqual(512);
       }
     }
-    expect(count).toBe(2); // API and refresh: no custom-resource functions
+    expect(count).toBe(3); // API, daily refresh and GOES watch: no custom-resource functions
   });
 
   it("reserves low concurrency to cap usage", () => {
@@ -116,7 +116,7 @@ describe("AWS Free plan", () => {
         expect(r.Properties.RetentionInDays, id).toBe(7);
       }
     }
-    expect(count).toBe(2);
+    expect(count).toBe(3);
   });
 
   it("puts every stack in the context Region and never names us-east-1", () => {
@@ -227,12 +227,17 @@ describe("web and API", () => {
     const config = (web.findResources("AWS::CloudFront::Distribution") as any);
     const [distribution] = Object.values(config) as any[];
     const behaviors = distribution.Properties.DistributionConfig.CacheBehaviors;
-    expect(behaviors.map((b: any) => b.PathPattern)).toEqual(["/api/early-warning", "/api/*"]);
-    const api = behaviors[1];
+    expect(behaviors.map((b: any) => b.PathPattern)).toEqual([
+      "/api/early-warning",
+      "/api/active-fires",
+      "/api/*",
+    ]);
+    const api = behaviors[2];
     expect(api.AllowedMethods).toContain("POST");
     expect(api.CachePolicyId).toBe("4135ea2d-6df8-44a3-9df3-4b5a84be39ad"); // CachingDisabled
     expect(api.OriginRequestPolicyId).toBe("b689b0a8-53d0-40ab-baf2-68738e2966ac"); // AllViewerExceptHostHeader
     expect(behaviors[0].AllowedMethods).toEqual(["GET", "HEAD"]);
+    expect(behaviors[1].AllowedMethods).toEqual(["GET", "HEAD"]);
   });
 
   it("rewrites client-side routes with a CloudFront Function, not error pages", () => {
@@ -338,16 +343,20 @@ describe("FIRMS refresh and early warning", () => {
     expect(JSON.stringify(statements(refresh))).not.toContain("secretsmanager:");
   });
 
-  it("writes only raw/firms/, the early warning and the alert state; reads harmonized/ and the state", () => {
+  it("writes only raw/firms/, the published reports and the alert states; reads harmonized/ and the states", () => {
     const s3 = statements(refresh).filter((s) => actionsOf(s).some((a) => a.startsWith("s3:")));
     for (const statement of s3) {
       expect(actionsOf(statement).some((a) => /^s3:Delete/.test(a))).toBe(false);
       const json = JSON.stringify(statement.Resource);
       const writes = actionsOf(statement).some((a) => /^s3:(Put|Abort)/.test(a));
       if (writes) {
-        expect(json).toMatch(/raw\/firms\/\*|derived\/early_warning\.json|state\/alerts\.json/);
+        expect(json).toMatch(
+          /raw\/firms\/\*|derived\/early_warning\.json|derived\/goes_latest\.json|state\/(goes_)?alerts\.json/,
+        );
       } else {
-        expect(json).toMatch(/\/harmonized\/\*|\/state\/alerts\.json/);
+        expect(json).toMatch(
+          /\/harmonized\/\*|\/harmonized\/harmonized_cells\.parquet|\/state\/(goes_)?alerts\.json/,
+        );
       }
     }
   });
@@ -368,14 +377,15 @@ describe("FIRMS refresh and early warning", () => {
     const alertReads = statements(refresh).filter((s) =>
       JSON.stringify(s.Resource).includes("parameter/aeros/alerts/"),
     );
-    expect(alertReads).toHaveLength(1);
-    const [read] = alertReads as [Record<string, unknown>];
-    expect(actionsOf(read)).toEqual(["ssm:GetParameter"]);
-    const json = JSON.stringify(read.Resource);
-    for (const name of ["email-from", "email-to", "telegram-token", "telegram-chat-id"]) {
-      expect(json).toContain(`:parameter/aeros/alerts/${name}`);
+    expect(alertReads).toHaveLength(2); // the daily refresh and the GOES watch
+    for (const read of alertReads) {
+      expect(actionsOf(read)).toEqual(["ssm:GetParameter"]);
+      const json = JSON.stringify(read.Resource);
+      for (const name of ["email-from", "email-to", "telegram-token", "telegram-chat-id"]) {
+        expect(json).toContain(`:parameter/aeros/alerts/${name}`);
+      }
+      expect(json).not.toContain("*");
     }
-    expect(json).not.toContain("*");
   });
 
   it("grants no SES permission unless a sender identity is given", () => {
@@ -387,12 +397,34 @@ describe("FIRMS refresh and early warning", () => {
       build({ "aeros:alertEmailIdentity": "alerts.example.org" }).refresh,
     );
     const ses = statements(template).filter((s) => actionsOf(s).some((a) => a.startsWith("ses:")));
-    expect(ses).toHaveLength(1);
-    const [send] = ses as [Record<string, unknown>];
-    expect(actionsOf(send)).toEqual(["ses:SendEmail"]);
-    const json = JSON.stringify(send.Resource);
-    expect(json).toContain(":identity/alerts.example.org");
-    expect(json).not.toContain("*");
+    expect(ses).toHaveLength(2);
+    for (const send of ses) {
+      expect(actionsOf(send)).toEqual(["ses:SendEmail"]);
+      const json = JSON.stringify(send.Resource);
+      expect(json).toContain(":identity/alerts.example.org");
+      expect(json).not.toContain("*");
+    }
+  });
+
+  it("watches GOES-19 every 10 minutes without retries and never reads the MAP_KEY", () => {
+    refresh.hasResourceProperties("AWS::Events::Rule", {
+      ScheduleExpression: "rate(10 minutes)",
+      Targets: Match.arrayWith([
+        Match.objectLike({ RetryPolicy: Match.objectLike({ MaximumRetryAttempts: 0 }) }),
+      ]),
+    });
+    refresh.hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "goes_watch.handler",
+      MemorySize: 512,
+      Environment: {
+        Variables: Match.objectLike({
+          GOES_LATEST_KEY: "derived/goes_latest.json",
+          GOES_ALERT_STATE_KEY: "state/goes_alerts.json",
+          FIRMS_AREA: "-69,-35,-53,-16",
+          FIRMS_MAP_KEY_PARAMETER: Match.absent(),
+        }),
+      },
+    });
   });
 });
 
