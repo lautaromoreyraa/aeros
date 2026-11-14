@@ -104,7 +104,7 @@ flowchart LR
 | CI | `verify` workflow runs model, web, MCP and AWS checks |
 | Study regions (MVP): Gran Chaco (RESOLVE Dry + Humid Chaco), Corrientes, Paraguay | `aeros run --regions all`: one translator fitted on the three, outputs per region in `<out>/<region>/` |
 | Detection database | `aeros build-db`: every FIRMS download in one Parquet store by platform and year, time-sorted, deduplicated (standard processing over NRT), with brightness temperatures, unified confidence, cell and region flags; `cell_days` table for ML features; `inventory`, `coverage` (missing days, silent runs) and day-by-day `comparison` reports; `aeros run --db` reads it |
-| Real FIRMS archive for the Gran Chaco | to download: yearly country summaries (AR, PY, BO), MODIS C6.1 + VIIRS SNPP + NOAA-20 |
+| Real FIRMS archive for the Gran Chaco | `aeros fetch`: yearly country summaries (AR, PY, BO) to the last closed year, MODIS C6.1 + VIIRS SNPP + NOAA-20; `aeros fetch-recent` (needs `FIRMS_MAP_KEY`): current year through the area API, standard processing then NRT |
 | AWS deploy | pending: account, `cdk bootstrap`, FIRMS MAP_KEY in SSM; reserved concurrency may exceed a new account's limit of 10 |
 | Biome as a model feature, Theil–Sen trend | optional |
 

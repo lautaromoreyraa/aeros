@@ -1,16 +1,19 @@
-"""Command line entry point: `aeros demo`, `aeros build-db` and `aeros run`."""
+"""Command line entry point: `aeros demo`, `aeros fetch`, `aeros fetch-recent`,
+`aeros build-db` and `aeros run`."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from aeros import database, firms, grid, pipeline, regions, synthetic
+from aeros import archive, database, firms, grid, pipeline, regions, synthetic
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,9 +59,39 @@ def main(argv: list[str] | None = None) -> int:
         help="independent FIRMS downloads to check the database against, day by day",
     )
 
+    fetch = sub.add_parser("fetch", help="download FIRMS yearly country summaries")
+    fetch.add_argument("--out", type=Path, default=Path("data/raw/firms"))
+    fetch.add_argument("--countries", default=",".join(archive.GRAN_CHACO_COUNTRIES))
+    fetch.add_argument("--last-year", type=int, default=date.today().year - 1)
+    fetch.add_argument("--workers", type=int, default=4, help="files downloaded at once")
+
+    recent = sub.add_parser(
+        "fetch-recent",
+        help="download the months after the last yearly archive through the FIRMS area API;"
+        " reads the MAP_KEY from the FIRMS_MAP_KEY environment variable",
+    )
+    recent.add_argument("--out", type=Path, default=Path("data/raw/firms-recent"))
+    recent.add_argument("--area", default=archive.STUDY_AREA, help="west,south,east,north")
+    recent.add_argument("--start", type=date.fromisoformat, default=date(date.today().year, 1, 1))
+    recent.add_argument("--end", type=date.fromisoformat, default=date.today())
+
     args = parser.parse_args(argv)
     if args.command == "demo":
         return _demo(args.out, args.seed, args.unit)
+    if args.command == "fetch":
+        files = archive.plan(args.countries.split(","), args.last_year)
+        print(json.dumps(archive.download(files, args.out, workers=args.workers), indent=2))
+        return 0
+    if args.command == "fetch-recent":
+        map_key = os.environ.get("FIRMS_MAP_KEY")
+        if not map_key:
+            parser.error("set FIRMS_MAP_KEY to a FIRMS MAP_KEY")
+        requests = archive.recent_plan(
+            archive.availability(map_key), args.area, args.start, args.end
+        )
+        report = archive.download_recent(requests, args.out, map_key, date.today())
+        print(json.dumps(report, indent=2))
+        return 0
     study = regions.parse(args.regions) if args.regions else []
     if args.command == "build-db":
         report = database.build(args.raw, args.out, study, args.resolution)
