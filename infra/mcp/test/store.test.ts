@@ -24,6 +24,9 @@ describe("Store", () => {
     expect(steps).toEqual(GIT_WORKFLOW_ORDER);
     const sync = (await store.gitWorkflow()).find((c) => c.key === "sync_with_develop");
     expect(sync?.value).toContain("git rebase origin/develop");
+    const pushes = (await store.gitWorkflow()).find((c) => c.key === "task_pushes");
+    expect(pushes?.value).toContain("git push -u origin HEAD");
+    expect(pushes?.value).toContain("force-with-lease");
   });
 
   it("returns progress newest first", async () => {
