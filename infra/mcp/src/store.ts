@@ -48,6 +48,17 @@ export interface Convention {
   updated_at: string;
 }
 
+export const GIT_WORKFLOW_ORDER = [
+  "coordination",
+  "branches",
+  "commits",
+  "cleanup_before_pr",
+  "sync_with_develop",
+  "pull_requests",
+  "merging",
+  "releases",
+] as const;
+
 export class TaskConflictError extends Error {
   constructor(readonly task: Task) {
     super(`task "${task.name}" is held by ${task.owner} (${task.agent}) since ${task.claimed_at}`);
@@ -130,6 +141,15 @@ export class Store {
       .prepare("SELECT * FROM conventions ORDER BY key")
       .all<Convention>();
     return results;
+  }
+
+  /** The git workflow conventions, in the order a change goes through them. */
+  async gitWorkflow(): Promise<Convention[]> {
+    const all = new Map((await this.conventions()).map((c) => [c.key, c]));
+    return GIT_WORKFLOW_ORDER.flatMap((key) => {
+      const convention = all.get(key);
+      return convention ? [convention] : [];
+    });
   }
 
   async setConvention(actor: Actor, key: string, value: string): Promise<void> {

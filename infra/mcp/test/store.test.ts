@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { Store, TaskConflictError } from "../src/store";
+import { GIT_WORKFLOW_ORDER, Store, TaskConflictError } from "../src/store";
 import { migratedDatabase } from "./sqlite-d1";
 
 const lautaro = { author: "lautaro@example.com", agent: "claude" };
@@ -15,6 +15,13 @@ describe("Store", () => {
     const keys = (await store.conventions()).map((c) => c.key);
     expect(keys).toContain("language");
     expect(keys).toContain("branches");
+  });
+
+  it("lists the git workflow in the order a change goes through it", async () => {
+    const steps = (await store.gitWorkflow()).map((c) => c.key);
+    expect(steps).toEqual(GIT_WORKFLOW_ORDER);
+    const sync = (await store.gitWorkflow()).find((c) => c.key === "sync_with_develop");
+    expect(sync?.value).toContain("git rebase origin/develop");
   });
 
   it("returns progress newest first", async () => {

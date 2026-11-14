@@ -1,7 +1,7 @@
 // Minimal D1-shaped adapter over node:sqlite, so the store runs against the
 // real migration SQL in tests without a Workers runtime.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import type { Database, Statement } from "../src/store";
@@ -32,6 +32,9 @@ class SqliteStatement implements Statement {
 
 export function migratedDatabase(): Database {
   const db = new DatabaseSync(":memory:");
-  db.exec(readFileSync(fileURLToPath(new URL("../migrations/0001_team_context.sql", import.meta.url).href), "utf8"));
+  const dir = fileURLToPath(new URL("../migrations/", import.meta.url).href);
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+    db.exec(readFileSync(`${dir}/${file}`, "utf8"));
+  }
   return { prepare: (sql: string) => new SqliteStatement(db, sql) };
 }

@@ -35,7 +35,8 @@ export function buildServer(store: Store, data: PipelineData, identity: Identity
     {
       description:
         "Current state of the aeros project: recent progress from every agent, tasks in flight " +
-        "and how many decisions are recorded. Call this before starting any work.",
+        "and how many decisions are recorded. Call this before starting any work, then " +
+        "git_workflow before touching git.",
       annotations: { readOnlyHint: true },
     },
     async () => {
@@ -55,6 +56,21 @@ export function buildServer(store: Store, data: PipelineData, identity: Identity
       annotations: { readOnlyHint: true },
     },
     async () => text(await store.conventions()),
+  );
+
+  server.registerTool(
+    "git_workflow",
+    {
+      description:
+        "Step-by-step git workflow for this repo: claiming work, branch naming, commit format, " +
+        "rebasing on develop, pull requests, local --no-ff merges and releases. Read it before " +
+        "creating a branch, committing, pushing or merging.",
+      annotations: { readOnlyHint: true },
+    },
+    async () =>
+      text(
+        (await store.gitWorkflow()).map((c, i) => `${i + 1}. ${c.key}: ${c.value}`).join("\n\n"),
+      ),
   );
 
   server.registerTool(
