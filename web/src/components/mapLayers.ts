@@ -7,27 +7,54 @@ import { boundsOf, boxToRing, type Area, type LngLat } from "../util/area";
    of the region and the outline of the chosen area. */
 
 /**
- * Esri's grey canvas basemaps need no API key and stay quiet under the data;
- * their attribution is shown in the corner as the terms ask.
+ * Esri basemaps need no API key; their attribution is shown in the corner as
+ * the terms ask. The grey canvases stay quiet under the data. The physical one
+ * shows relief, rivers and vegetation with borders and place names over it, so
+ * a reader can tell the Pilcomayo from a province line.
  */
-const ESRI = "https://services.arcgisonline.com/arcgis/rest/services/Canvas";
+const ESRI = "https://services.arcgisonline.com/arcgis/rest/services";
+const tiles = (service: string) => `${ESRI}/${service}/MapServer/tile/{z}/{y}/{x}`;
+const STREET_CREDIT = "Esri, HERE, Garmin, © OpenStreetMap contributors";
 export const BASEMAP = {
   light: {
-    base: `${ESRI}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
-    labels: `${ESRI}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+    base: tiles("Canvas/World_Light_Gray_Base"),
+    labels: tiles("Canvas/World_Light_Gray_Reference"),
+    maxZoom: 16,
+    attribution: `Basemap: ${STREET_CREDIT}`,
   },
   dark: {
-    base: `${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
-    labels: `${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+    base: tiles("Canvas/World_Dark_Gray_Base"),
+    labels: tiles("Canvas/World_Dark_Gray_Reference"),
+    maxZoom: 16,
+    attribution: `Basemap: ${STREET_CREDIT}`,
+  },
+  physical: {
+    // Blue sea, land coloured by vegetation and relief; the names and borders
+    // come as their own layer so they can be drawn over the columns close up.
+    base: tiles("World_Physical_Map"),
+    labels: tiles("Reference/World_Boundaries_and_Places"),
+    // The relief stops at 8; past it the last tiles are stretched, which a
+    // shaded relief tolerates while the names above stay sharp.
+    maxZoom: 8,
+    attribution: `Basemap: US National Park Service, Esri; borders and places: ${STREET_CREDIT}`,
   },
 };
+export type Basemap = keyof typeof BASEMAP;
 
-export function rasterLayer(id: string, url: string) {
+/**
+ * Esri World Imagery: real satellite and aerial imagery, also keyless. Google's
+ * photorealistic tiles would need an API key and a billing account.
+ */
+export const SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+export const SATELLITE_ATTRIBUTION = "Imagery: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
+
+/** `parameters` lets a layer draw over the 3D columns, as place names do close up. */
+export function rasterLayer(id: string, url: string, parameters?: typeof ON_TOP, maxZoom = 16) {
   return new TileLayer<ImageBitmap>({
     id,
     data: url,
     minZoom: 0,
-    maxZoom: 16,
+    maxZoom,
     tileSize: 256,
     renderSubLayers: (sub) => {
       const [min, max] = sub.tile.boundingBox;
@@ -36,6 +63,7 @@ export function rasterLayer(id: string, url: string) {
         data: undefined,
         image: sub.data,
         bounds: [min[0] ?? 0, min[1] ?? 0, max[0] ?? 0, max[1] ?? 0],
+        ...(parameters && { parameters }),
       });
     },
   });

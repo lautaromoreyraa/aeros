@@ -11,6 +11,11 @@ export function formatRatio(ratio: number | null): string {
   return `${ratio >= 10 ? ratio.toFixed(0) : ratio.toFixed(1)}×`;
 }
 
+/** "23.4° S, 61.2° W" for a [lng, lat] point. */
+export function formatPlace([lng, lat]: [number, number]): string {
+  return `${Math.abs(lat).toFixed(1)}° ${lat < 0 ? "S" : "N"}, ${Math.abs(lng).toFixed(1)}° ${lng < 0 ? "W" : "E"}`;
+}
+
 export function formatSigned(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "—";
   const rounded = Math.round(value);

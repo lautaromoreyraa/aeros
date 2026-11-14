@@ -86,7 +86,8 @@ flowchart LR
 | Path | Contents |
 |---|---|
 | `model/` | Python package `aeros`: FIRMS ingestion, grid, reference chain, translators, validation, calendar, synthetic archive, CLI |
-| `web/` | React + Vite + TypeScript client: cinematic intro, H3 map, area selection, calendar, anomalies, CSV export |
+| `web/` | React + Vite + TypeScript client: landing page (globe, record on satellite imagery, alert message preview), H3 map, area selection, calendar, anomalies, CSV export |
+| `web/design/` | Design reference for the next UI iteration (3D terrain and sector dashboards): the page to open in a browser and the extracted logic and copy. Not part of the build; its numbers are synthetic |
 | `infra/aws/` | AWS CDK app (TypeScript) and Lambda handlers (Python) |
 | `infra/mcp/` | MCP server on Cloudflare Workers + D1: shared status, tasks, decisions, conventions and the log of steering prompts for every assistant on the team |
 | `.github/workflows/` | Verification: lint, types, tests, build, `cdk synth` |
@@ -114,6 +115,7 @@ flowchart LR
 |---|---|
 | Harmonization model, continuous reference, units, validation, critical period | in `develop` |
 | Web app: intro, H3 map, area selection, calendar with coverage labels and critical period, unit toggle, CSV | in `develop` (54 tests) |
+| Landing page: globe fly-in, H3 columns on Esri World Imagery with this week's flagged cells, WhatsApp and email preview of the early-warning message | on `feature/early-warning-landing`; the preview is UI only, nothing sends WhatsApp or email yet |
 | AWS infrastructure inside the Free plan, calendar/CSV API, daily FIRMS refresh with early warning | in `develop` (29 CDK + 63 Lambda tests, `cdk synth` green); not deployed |
 | Team context MCP server | deployed at `mcp.aeros.lautaromoreyra.dev` (D1 migrated, `workers.dev` off); behind a Cloudflare Access application (deny by default); people and service tokens are added through Access policies |
 | Steering prompt log (`record_steering_prompt`, `steering_study`) | implemented and tested in the MCP server; not deployed |

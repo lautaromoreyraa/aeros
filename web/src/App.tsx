@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Unit } from "./api/types";
 import { AlertBanner } from "./components/AlertBanner";
 import { useAreaSelection } from "./hooks/useAreaSelection";
@@ -9,18 +9,16 @@ import { AppShell, type Section } from "./layout/AppShell";
 import { EarlyWarningPage } from "./pages/EarlyWarningPage";
 import { ExplorerPage } from "./pages/ExplorerPage";
 import { ForecastPage } from "./pages/ForecastPage";
-import { IntroPage } from "./pages/IntroPage";
+import { LandingPage } from "./pages/LandingPage";
+import { TerrainPage } from "./pages/TerrainPage";
 import { alertDecision } from "./util/earlyWarning";
 
-const INTRO_KEY = "aeros-intro-seen";
-
-function introAlreadySeen(): boolean {
-  try {
-    return sessionStorage.getItem(INTRO_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+/**
+ * The dashboard lives at #dashboard and the presentation at the bare URL, so
+ * the browser's back button, a reload and a shared link all land where expected.
+ */
+const DASHBOARD_HASH = "#dashboard";
+const onDashboardUrl = () => window.location.hash === DASHBOARD_HASH;
 
 export default function App() {
   const [unit, setUnit] = useState<Unit>("hotspots");
@@ -32,27 +30,51 @@ export default function App() {
   const forecast = useForecast();
   const report = warning.state.status === "ready" ? warning.state.data : null;
   const decision = useMemo(() => alertDecision(report), [report]);
-  const [showIntro, setShowIntro] = useState(() => !introAlreadySeen());
-  // The explorer first mounts after the intro: starting deck.gl behind the 3D
-  // scene compiles its shaders on the same thread and freezes the intro. Once
-  // mounted it stays, so replaying the intro keeps the chosen area.
-  const [explorerMounted, setExplorerMounted] = useState(introAlreadySeen);
+  const [onLanding, setOnLanding] = useState(() => !onDashboardUrl());
+  // The dashboard first mounts when the visitor leaves the landing: its
+  // deck.gl maps would compile their shaders on the same thread as the globe.
+  // Once mounted it stays, so a visit to the landing keeps the chosen area.
+  const [dashboardMounted, setDashboardMounted] = useState(onDashboardUrl);
 
-  const finishIntro = useCallback(() => {
-    setShowIntro(false);
-    setExplorerMounted(true);
-    try {
-      sessionStorage.setItem(INTRO_KEY, "1");
-    } catch {
-      // Without storage the intro simply plays again on reload.
+  // In-page links such as #record also fire popstate; only a change of view
+  // resets the scroll.
+  const landingRef = useRef(onLanding);
+  landingRef.current = onLanding;
+  useEffect(() => {
+    const onPop = () => {
+      const dashboard = onDashboardUrl();
+      if (landingRef.current === !dashboard) return;
+      setOnLanding(!dashboard);
+      if (dashboard) setDashboardMounted(true);
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const enterDashboard = useCallback(() => {
+    window.history.pushState({ fromLanding: true }, "", DASHBOARD_HASH);
+    setOnLanding(false);
+    setDashboardMounted(true);
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Back to the presentation is a step back in history when the visitor came
+  // from it, so the browser's forward button returns to the dashboard.
+  const showLanding = useCallback(() => {
+    if (window.history.state?.fromLanding) window.history.back();
+    else {
+      window.history.pushState(null, "", window.location.pathname + window.location.search);
+      setOnLanding(true);
+      window.scrollTo(0, 0);
     }
   }, []);
 
   return (
     <>
-      {showIntro && <IntroPage region={state.data} onDone={finishIntro} />}
-      {explorerMounted && (
-        <div inert={showIntro || undefined}>
+      {onLanding && <LandingPage region={state.data} warning={warning.state} onEnter={enterDashboard} />}
+      {dashboardMounted && (
+        <div hidden={onLanding} inert={onLanding || undefined}>
           <AppShell
             section={section}
             onSectionChange={setSection}
@@ -64,7 +86,7 @@ export default function App() {
             }
             theme={resolved}
             onToggleTheme={toggle}
-            onReplayIntro={() => setShowIntro(true)}
+            onShowLanding={showLanding}
           >
             {!state.data && state.status === "loading" && <p className="status">Loading the burning calendar…</p>}
             {state.status === "error" && (
@@ -87,6 +109,9 @@ export default function App() {
                   selection={selection}
                 />
               </div>
+            )}
+            {state.data && section === "terrain" && (
+              <TerrainPage region={state.data} unit={unit} onUnitChange={setUnit} />
             )}
             {state.data && section === "warning" && (
               <EarlyWarningPage state={warning.state} onRetry={warning.retry} region={state.data} theme={resolved} />

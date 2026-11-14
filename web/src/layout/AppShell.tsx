@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 
-export type Section = "calendar" | "warning" | "forecast";
+export type Section = "calendar" | "terrain" | "warning" | "forecast";
 
 const SECTIONS: { value: Section; label: string }[] = [
   { value: "calendar", label: "Calendar" },
+  { value: "terrain", label: "Terrain" },
   { value: "warning", label: "Early warning" },
   { value: "forecast", label: "Forecast" },
 ];
@@ -17,15 +18,29 @@ interface Props {
   banner?: ReactNode;
   theme: "light" | "dark";
   onToggleTheme: () => void;
-  onReplayIntro: () => void;
+  onShowLanding: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ section, onSectionChange, alerting, banner, theme, onToggleTheme, onReplayIntro, children }: Props) {
+export function AppShell({ section, onSectionChange, alerting, banner, theme, onToggleTheme, onShowLanding, children }: Props) {
   return (
     <div className="shell">
       <header className="shell__header">
-        <a className="brand" href="./" aria-label="aeros home">
+        <button type="button" className="shell__back" onClick={onShowLanding} aria-label="Back to the presentation">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="shell__back-label">Back</span>
+        </button>
+        <a
+          className="brand"
+          href="./"
+          aria-label="aeros, back to the presentation"
+          onClick={(event) => {
+            event.preventDefault();
+            onShowLanding();
+          }}
+        >
           <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
             <polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="currentColor" />
           </svg>
@@ -51,9 +66,6 @@ export function AppShell({ section, onSectionChange, alerting, banner, theme, on
           ))}
         </nav>
         <nav className="shell__actions" aria-label="Display">
-          <button type="button" className="button button--ghost" onClick={onReplayIntro}>
-            Replay intro
-          </button>
           <button
             type="button"
             className="button button--ghost"
