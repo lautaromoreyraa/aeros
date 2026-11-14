@@ -193,3 +193,33 @@ def test_recent_plan_skips_noaa21_sources_the_api_does_not_list():
     )
 
     assert all("j2v" not in r.prefix for r in requests)
+
+
+def test_verify_flags_files_shorter_or_longer_than_the_server(tmp_path):
+    sizes = {
+        "modis_2010_Argentina.csv": 10,
+        "modis_2011_Argentina.csv": 10,
+        "viirs-snpp_2015_Paraguay.csv": 10,
+    }
+    for name, size in {
+        "modis_2010_Argentina.csv": 10,
+        "modis_2011_Argentina.csv": 6,
+        "viirs-snpp_2015_Paraguay.csv": 12,
+    }.items():
+        (tmp_path / name).write_bytes(b"x" * size)
+    (tmp_path / "notes.csv").write_bytes(b"ignored")
+
+    report = archive.verify([tmp_path], lambda url: sizes[url.rsplit("/", 1)[-1]])
+
+    assert [p.rsplit("\\", 1)[-1].rsplit("/", 1)[-1] for p in report["ok"]] == [
+        "modis_2010_Argentina.csv"
+    ]
+    assert "modis_2011_Argentina.csv (6 of 10 bytes)" in report["short"][0]
+    assert "viirs-snpp_2015_Paraguay.csv (12 of 10 bytes)" in report["longer"][0]
+    assert report["unknown"] == []
+
+
+def test_verify_reports_unknown_when_the_server_gives_no_size(tmp_path):
+    (tmp_path / "modis_2010_Bolivia.csv").write_bytes(b"x")
+    report = archive.verify([tmp_path], lambda url: None)
+    assert len(report["unknown"]) == 1 and not report["ok"]

@@ -119,6 +119,49 @@ def _declared_length(response: BinaryIO) -> int | None:
     return int(value) if value is not None and str(value).isdigit() else None
 
 
+_ARCHIVE_NAME = re.compile(r"^(modis|viirs-snpp|viirs-jpss1)_(\d{4})_([A-Za-z_]+)\.csv$")
+
+Sizer = Callable[[str], "int | None"]
+
+
+def _server_size(url: str) -> int | None:
+    request = urllib.request.Request(url, method="HEAD")
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return _declared_length(response)
+
+
+def verify(folders: Iterable[Path], sizer: Sizer = _server_size) -> dict[str, list[str]]:
+    """Check every yearly country file on disk against the size FIRMS serves.
+
+    `download` refuses short transfers now, but files fetched before that fix
+    (and copies made on other machines) are never looked at again. A file cut
+    at a line boundary still loads without errors and silently loses
+    detections, so its byte count is the only reliable check.
+    """
+    report: dict[str, list[str]] = {"ok": [], "short": [], "longer": [], "unknown": []}
+    for folder in folders:
+        for path in sorted(Path(folder).glob("*.csv")):
+            match = _ARCHIVE_NAME.match(path.name)
+            if not match:
+                continue
+            product, year, country = match.group(1), int(match.group(2)), match.group(3)
+            url = ArchiveFile(product, year, country).url
+            try:
+                expected = sizer(url)
+            except urllib.error.HTTPError:
+                expected = None
+            local = path.stat().st_size
+            if expected is None:
+                report["unknown"].append(str(path))
+            elif local < expected:
+                report["short"].append(f"{path} ({local} of {expected} bytes)")
+            elif local > expected:
+                report["longer"].append(f"{path} ({local} of {expected} bytes)")
+            else:
+                report["ok"].append(str(path))
+    return report
+
+
 # The three MVP study regions (Gran Chaco, Corrientes, Paraguay) with one
 # degree of margin, so their border cells keep their neighbors.
 STUDY_AREA = "-69,-35,-53,-16"
