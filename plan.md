@@ -42,16 +42,24 @@ Only official resource: NASA FIRMS. Raw NASA rows are never shown in the UI, onl
 6. **Uncertainty.** Quasi-Poisson noise plus a systematic term shared by a whole month, estimated on held-out totals, giving 90 % intervals for any area and period.
 7. **Calendar analytics.** Leave-one-out same-month median, anomaly and ratio, critical period (shortest run of months holding 80 % of median activity), and the Terra-only morning share and overpass drift.
 
-Synthetic archive with known truth (`python -m aeros demo`):
+Real FIRMS run, Gran Chaco (14.6 M detections 2000-11 to 2026-11-14 from 607 verified files; chain Suomi NPP -> NOAA-20 -> NOAA-21; unit: hotspots):
 
-| Metric | Value |
-|---|---|
-| Reconstructed pre-VIIRS years, mean yearly error | 5.0 % (raw stacking: 31 %) |
-| NOAA-20 bridged weeks, mean yearly error | 7.3 % |
-| 90 % interval coverage of yearly totals | 100 % |
-| Winner (leave-one-year-out, cell-year MAE) | ratio rule; boosting wins per cell-week |
+| Metric | Ratio rule | Boosting | Boosting on the ratio rule (winner) |
+|---|---|---|---|
+| Leave-one-year-out MAE, cell-week | 2.80 | 2.80 | **2.63** |
+| Leave-one-year-out MAE, cell-year | 58.2 | 59.2 | **52.6** |
+| Leave-one-year-out max error of a yearly total | 5.2 % | 4.3 % | **4.2 %** |
+| Out-of-window (2020 onward) MAE, cell-week | 3.35 | 3.41 | **3.12** |
+| Spatial hold-out MAE, cell-week | 3.15 | 356.7 | **2.89** |
 
-Real FIRMS numbers replace these once the archive for the region is processed.
+- Plain boosting collapses on unseen regions (it memorizes the training land); boosting as a correction on top of the ratio rule does not, which is why it wins.
+- The MODIS -> VIIRS translation misses a VIIRS-observed monthly regional total by 5.1 % (median) and 15 % (90th percentile).
+- Raw stacking jumps when VIIRS arrives: stacked rows are about 0.3x the harmonized count in 2002-2011 and 2.2-3.3x from 2018, while the harmonized yearly totals stay in one range.
+- After Suomi NPP stopped (2026-11-02) the weeks come from NOAA-20 bridged to Suomi NPP units; the bridge also filled Suomi NPP's 2022-07-27..08-10 outage. NOAA-21 is in the chain but no NOAA-20 outage has needed it yet.
+- Critical period (median activity): July to January, peak in August.
+- Open: 2001 rests on Terra alone (Aqua from July 2002), so it is the least certain year.
+
+Synthetic archive with known truth (`python -m aeros demo`), kept as a method check: reconstructed pre-VIIRS years 5.0 % mean yearly error (raw stacking 31 %), 90 % interval coverage 100 %.
 
 ## 4. Architecture
 
