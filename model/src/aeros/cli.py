@@ -1,4 +1,4 @@
-"""Command line entry point: `aeros demo` and `aeros run`."""
+"""Command line entry point: `aeros demo`, `aeros build-db` and `aeros run`."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from aeros import firms, grid, pipeline, regions, synthetic
+from aeros import database, firms, grid, pipeline, regions, synthetic
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,8 +22,9 @@ def main(argv: list[str] | None = None) -> int:
     demo.add_argument("--seed", type=int, default=7)
     demo.add_argument("--unit", choices=["hotspots", "cell_days"], default="hotspots")
 
-    run = sub.add_parser("run", help="run the pipeline on FIRMS CSV files")
-    run.add_argument("files", nargs="+", type=Path)
+    run = sub.add_parser("run", help="run the pipeline on FIRMS CSV files or the database")
+    run.add_argument("files", nargs="*", type=Path)
+    run.add_argument("--db", type=Path, help="read detections from `aeros build-db` output")
     run.add_argument("--out", type=Path, default=Path("data/processed"))
     run.add_argument("--resolution", type=int, default=4)
     run.add_argument(
@@ -38,13 +39,41 @@ def main(argv: list[str] | None = None) -> int:
         " empty reports every detection as one region",
     )
 
+    db = sub.add_parser(
+        "build-db",
+        help="build the ordered detection database (Parquet by platform and year) for the study"
+        " regions from every FIRMS download",
+    )
+    db.add_argument("raw", nargs="+", type=Path, help="folders with FIRMS CSV files")
+    db.add_argument("--out", type=Path, default=Path("data/db"))
+    db.add_argument("--regions", default="all")
+    db.add_argument("--resolution", type=int, default=4)
+    db.add_argument(
+        "--compare",
+        nargs="*",
+        type=Path,
+        default=[],
+        help="independent FIRMS downloads to check the database against, day by day",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "demo":
         return _demo(args.out, args.seed, args.unit)
     study = regions.parse(args.regions) if args.regions else []
-    # Clipping file by file keeps whole-country archives from filling memory.
-    keep = (lambda d: regions.clip(d, study, args.resolution)) if study else None
-    detections = firms.load_many(args.files, keep=keep)
+    if args.command == "build-db":
+        report = database.build(args.raw, args.out, study, args.resolution)
+        checks = database.compare(args.out, args.compare, study)
+        (args.out / "comparison.json").write_text(json.dumps(checks, indent=1))
+        print(json.dumps({**report, "comparison": checks}, indent=2))
+        return 0
+    if args.db:
+        detections = database.load(args.db)
+    elif args.files:
+        # Clipping file by file keeps whole-country archives from filling memory.
+        keep = (lambda d: regions.clip(d, study, args.resolution)) if study else None
+        detections = firms.load_many(args.files, keep=keep)
+    else:
+        parser.error("run needs FIRMS files or --db")
     result = pipeline.run(
         detections,
         args.out,
