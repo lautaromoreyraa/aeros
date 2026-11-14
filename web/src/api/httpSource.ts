@@ -20,15 +20,18 @@ export class HttpCalendarSource implements CalendarDataSource {
   }
 
   async calendar(query: CalendarQuery): Promise<CalendarRecord[]> {
+    const body = JSON.stringify({
+      unit: query.unit,
+      cells: query.cells,
+      start: formatMonth(query.start),
+      end: formatMonth(query.end),
+    });
     const response = await fetch(`${this.apiUrl}/calendar`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        unit: query.unit,
-        cells: query.cells,
-        start: formatMonth(query.start),
-        end: formatMonth(query.end),
-      }),
+      // CloudFront signs the request for the Lambda function URL (OAC) with
+      // this hash and cannot compute it itself; without it the URL answers 403.
+      headers: { "Content-Type": "application/json", "x-amz-content-sha256": await sha256Hex(body) },
+      body,
     });
     if (!response.ok) throw new Error(`The calendar service answered ${response.status}`);
     return (await response.json()) as CalendarRecord[];
@@ -41,4 +44,9 @@ export class HttpCalendarSource implements CalendarDataSource {
   forecast(): Promise<Forecast | null> {
     return this.regionSource.forecast();
   }
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
