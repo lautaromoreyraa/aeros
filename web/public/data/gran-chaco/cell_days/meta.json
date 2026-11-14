@@ -1,0 +1,1 @@
+{"unit":"cell_days","reference_chain":["SNPP","NOAA20","NOAA21"],"resolution":4,"region":{"id":"gran-chaco","name":"Gran Chaco","source":"RESOLVE Ecoregions 2017: Dry Chaco + Humid Chaco","license":"CC-BY 4.0"},"model":"boosted_offset","first_month":"2000-11-01","last_month":"2026-11-01"}

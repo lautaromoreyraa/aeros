@@ -1,0 +1,42 @@
+{
+ "default_region": "gran-chaco",
+ "units": [
+  "cell_days",
+  "hotspots"
+ ],
+ "regions": [
+  {
+   "id": "corrientes",
+   "name": "Corrientes",
+   "source": "geoBoundaries gbOpen ARG ADM1 (simplified)",
+   "license": "CC BY 2.5",
+   "units": [
+    "hotspots",
+    "cell_days"
+   ],
+   "sectors": false
+  },
+  {
+   "id": "gran-chaco",
+   "name": "Gran Chaco",
+   "source": "RESOLVE Ecoregions 2017: Dry Chaco + Humid Chaco",
+   "license": "CC-BY 4.0",
+   "units": [
+    "hotspots",
+    "cell_days"
+   ],
+   "sectors": true
+  },
+  {
+   "id": "paraguay",
+   "name": "Paraguay",
+   "source": "geoBoundaries gbOpen PRY ADM0 (simplified)",
+   "license": "CC BY 4.0",
+   "units": [
+    "hotspots",
+    "cell_days"
+   ],
+   "sectors": false
+  }
+ ]
+}
