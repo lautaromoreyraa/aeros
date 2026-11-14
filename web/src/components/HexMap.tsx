@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DeckGL from "@deck.gl/react";
 import { FlyToInterpolator, WebMercatorViewport, type MapViewState, type PickingInfo } from "@deck.gl/core";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
@@ -9,6 +9,9 @@ import { boundsOf, type Area, type LngLat } from "../util/area";
 import { type Rgb, VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
 import { formatCount, unitLabel } from "../util/format";
 import { focusPadding, leaderEnd, type Point } from "../util/mapFocus";
+import type { WindField } from "../util/wind";
+import { BitmapLayer } from "@deck.gl/layers";
+import { WindParticles, windSpeedImage } from "./WindParticles";
 import { BASEMAP, ON_TOP, areaLayers, initialView, rasterLayer } from "./mapLayers";
 
 /** Where the camera should go, and the cell a line to the panel starts from. */
@@ -44,10 +47,12 @@ interface Props {
   focus?: MapFocus | null;
   /** The floating panel the focus belongs to; the camera leaves its part of the map free. */
   panel?: RefObject<HTMLElement | null>;
+  /** Animated wind over the columns, at one hour of the field. */
+  wind?: { field: WindField; hour: number } | null;
 }
 
 export default function HexMap(props: Props) {
-  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, focus = null, panel } = props;
+  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, focus = null, panel, wind = null } = props;
   const ramp = props.ramp ?? VIRIDIS;
   const container = useRef<HTMLDivElement>(null);
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0);
@@ -103,15 +108,38 @@ export default function HexMap(props: Props) {
     // Only a new focus moves the camera; dragging afterwards is the visitor's.
   }, [focus]);
 
+  // The particles project with the camera of the latest render.
+  const latestView = useRef(viewState);
+  latestView.current = viewState;
+  const projection = useCallback(() => {
+    const element = container.current;
+    if (!element || element.clientWidth === 0) return null;
+    return new WebMercatorViewport({ ...latestView.current, width: element.clientWidth, height: element.clientHeight });
+  }, []);
+  const cameraKey = [viewState.longitude, viewState.latitude, viewState.zoom, viewState.pitch, viewState.bearing]
+    .map((value) => (value ?? 0).toFixed(5))
+    .join(",");
+
   // Same scale for raw and harmonized so the toggle shows the real difference.
   const max = useMemo(() => totals.reduce((value, cell) => Math.max(value, cell.harmonized, cell.stacked), 0), [totals]);
 
   const value = (cell: CellTotal) => (showRaw ? cell.stacked : cell.harmonized);
   const closeUp = viewState.zoom >= LABELS_ON_TOP_ZOOM;
 
+  const windImage = useMemo(() => wind && windSpeedImage(wind.field, wind.hour), [wind]);
+
   const layers = useMemo(() => {
+    const grid = wind?.field.grid;
     return [
       rasterLayer(`basemap-${theme}`, BASEMAP[theme].base),
+      windImage &&
+        grid &&
+        new BitmapLayer({
+          id: "wind-speed",
+          image: windImage,
+          bounds: [grid.west, grid.south, grid.east, grid.north],
+          opacity: 0.38,
+        }),
       // Seen from afar, place names sit under the columns: context, never
       // covering the data. Close up they go on top, so a town can be found.
       !closeUp && rasterLayer(`labels-${theme}`, BASEMAP[theme].labels),
@@ -138,7 +166,7 @@ export default function HexMap(props: Props) {
       ...areaLayers(area, draft, theme),
       closeUp && rasterLayer(`labels-top-${theme}`, BASEMAP[theme].labels, ON_TOP),
     ];
-  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp]);
+  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp, windImage, wind]);
 
   // The line follows the camera, so it is recomputed on every view change.
   const anchorTotal = useMemo(() => totals.find((cell) => cell.cell === focus?.anchor), [totals, focus]);
@@ -176,6 +204,9 @@ export default function HexMap(props: Props) {
           } else onPick?.((info.object as CellTotal | undefined)?.cell ?? null);
         }}
       />
+      {wind && (
+        <WindParticles field={wind.field} hour={wind.hour} viewport={projection} cameraKey={cameraKey} reducedMotion={reducedMotion} />
+      )}
       {leader && (
         <svg className="map__leader" aria-hidden="true">
           <line x1={leader.from[0]} y1={leader.from[1]} x2={leader.to[0]} y2={leader.to[1]} />
