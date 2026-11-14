@@ -15,7 +15,8 @@ Outputs (all in `out_dir`):
 With study regions, the translator is fitted once on all of them and every
 region gets the files above in `out_dir/<region id>/`, listed in
 `out_dir/regions.json`. The two Parquet tables are also written to `out_dir`
-for the union of the regions: the API input.
+for the union of the regions: the API input. The Gran Chaco folder also gets
+`sectors.json`: its dashboard sectors (country x ecoregion) as sets of cells.
 """
 
 from __future__ import annotations
@@ -28,7 +29,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from aeros import burn_calendar, features, forecast, harmonize, morning, regions, validation
+from aeros import (
+    burn_calendar,
+    features,
+    forecast,
+    harmonize,
+    morning,
+    regions,
+    sectors,
+    validation,
+)
 
 
 @dataclass
@@ -69,6 +79,11 @@ def run(
             out_dir / region.id,
             {**meta, "region": region.describe()},
         )
+        if region.id == sectors.PARENT_REGION:
+            _write_json(
+                out_dir / region.id / "sectors.json",
+                sectors.payload(region.cells(resolution), resolution),
+            )
     if study_regions:
         # The API answers any drawn area, so it reads one table for the union of
         # the regions (without the neighbor ring) rather than one per region.

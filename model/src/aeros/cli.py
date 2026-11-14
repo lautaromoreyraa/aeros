@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from aeros import archive, database, firms, grid, pipeline, regions, synthetic
+from aeros import archive, database, firms, grid, pipeline, regions, sectors, synthetic
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +65,13 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--last-year", type=int, default=date.today().year - 1)
     fetch.add_argument("--workers", type=int, default=4, help="files downloaded at once")
 
+    sec = sub.add_parser(
+        "sectors",
+        help="write the Gran Chaco dashboard sectors (country x ecoregion) as sets of H3 cells",
+    )
+    sec.add_argument("--out", type=Path, required=True, help="sectors.json to write")
+    sec.add_argument("--resolution", type=int, default=4)
+
     check = sub.add_parser(
         "verify-archive",
         help="check every yearly country file on disk against the size FIRMS serves;"
@@ -88,6 +95,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fetch":
         files = archive.plan(args.countries.split(","), args.last_year)
         print(json.dumps(archive.download(files, args.out, workers=args.workers), indent=2))
+        return 0
+    if args.command == "sectors":
+        parent = regions.load(sectors.PARENT_REGION)
+        payload = sectors.payload(parent.cells(args.resolution), args.resolution)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(payload, separators=(",", ":")))
+        print(json.dumps({s["id"]: len(s["cells"]) for s in payload}))
         return 0
     if args.command == "verify-archive":
         report = archive.verify(args.folders)
