@@ -253,3 +253,110 @@ def test_numbers_read_like_the_interface_does():
     assert "Based on 7 of 7 days with satellite data." in text.splitlines()
     assert "Gran Chaco," in text  # the default when a cell has no sector
     assert "Map:" not in text and "Stop these alerts" not in text
+
+
+# ---------- fire weather ----------
+
+
+def weather_field(percentiles, hdw=150.0, days=("2026-11-14", "2026-11-15")):
+    """A 3 x 3 fire_weather.json whose nodes all share one rank per day."""
+    grid = {"west": -69.0, "south": -35.0, "east": -53.0, "north": -16.0, "nx": 3, "ny": 3}
+    return {
+        "grid": grid,
+        "days": list(days),
+        "hdw": [[hdw] * 9 for _ in days],
+        "percentile": [[p] * 9 for p in percentiles],
+        "levels": {"extreme": 95.0, "high": 90.0, "elevated": 75.0},
+    }
+
+
+def test_the_level_of_a_node_comes_from_its_rank_and_the_levels_of_the_file():
+    cases = [(10, "normal"), (74.9, "normal"), (75, "elevated"), (92, "high"), (99, "extreme")]
+    for rank, level in cases:
+        found = t.fire_weather_at(weather_field([rank, 0]), -25, -61, "2026-11-14")
+        assert found == {"level": level, "percentile": rank, "hdw": 150.0}
+
+
+def test_no_fire_weather_without_a_field_a_day_a_node_or_a_value():
+    field = weather_field([99, None])
+    assert t.fire_weather_at(None, -25, -61, "2026-11-14") is None
+    assert t.fire_weather_at(field, -25, -61, "2026-11-30") is None  # not one of its days
+    assert t.fire_weather_at(field, -5, -61, "2026-11-14") is None  # off the grid
+    assert t.fire_weather_at(field, -25, -61, "2026-11-15") is None  # the forecast had no value
+
+
+def test_the_worst_weather_at_the_flagged_cells_is_the_one_reported():
+    near = h3.grid_ring(ORIGIN, 1)[0]
+    grid = {"west": -69.0, "south": -35.0, "east": -53.0, "north": -16.0, "nx": 2, "ny": 2}
+    # Two nodes cover the box: the north-west one is calm, the south-east one is extreme.
+    field = {
+        "grid": grid,
+        "days": ["2026-11-14"],
+        "hdw": [[10.0, 10.0, 10.0, 300.0]],
+        "percentile": [[20.0, 20.0, 20.0, 99.0]],
+        "levels": {"extreme": 95.0, "high": 90.0, "elevated": 75.0},
+    }
+    far_south_east = h3.latlng_to_cell(-34.0, -54.0, 4)
+    match = _match((near, 2.0), (far_south_east, 2.0))
+    worst = t.fire_weather_for(match, field, NOW)
+    assert worst["level"] == "extreme" and worst["percentile"] == 99.0
+    assert t.fire_weather_for(match, None, NOW) is None
+
+
+def test_the_wind_is_described_by_where_it_is_going():
+    assert t.describe_wind(t.Wind(10, 0)) == "toward the east at 36 km/h"
+    assert t.describe_wind(t.Wind(0, -5)) == "toward the south at 18 km/h"
+    assert t.describe_wind(t.Wind(-5, 5)) == "toward the north-west at 25 km/h"
+
+
+def test_the_weather_alone_resends_only_when_it_reaches_high_or_extreme_anew():
+    report = _report((ORIGIN, 2.0))
+    match = _match((ORIGIN, 2.0))
+    quiet = t.next_memory(None, match, report, weather_level="normal")
+    assert not t.should_send(quiet, match, report, weather_level="elevated")
+    assert t.should_send(quiet, match, report, weather_level="high")
+    told_high = t.next_memory(quiet, match, report, weather_level="high")
+    assert not t.should_send(told_high, match, report, weather_level="high")
+    assert t.should_send(told_high, match, report, weather_level="extreme")
+    # A calmer sky never triggers a message, and a missing forecast changes nothing.
+    told_extreme = t.next_memory(told_high, match, report, weather_level="extreme")
+    assert not t.should_send(told_extreme, match, report, weather_level="high")
+    assert not t.should_send(told_extreme, match, report, weather_level=None)
+
+
+def test_the_memory_keeps_the_worst_weather_told_in_a_window_and_resets_with_it():
+    report = _report((ORIGIN, 2.0))
+    match = _match((ORIGIN, 2.0))
+    memory = t.next_memory(None, match, report, weather_level="extreme")
+    assert t.next_memory(memory, match, report, weather_level="elevated")["weather"] == "extreme"
+    assert t.next_memory(None, match, report)["weather"] is None
+    later = _report((ORIGIN, 2.0), window=("2026-11-15", "2026-11-21"))
+    assert t.next_memory(memory, match, later, weather_level="normal")["weather"] == "normal"
+    # Without any weather, the escalation rules of the fire itself are unchanged.
+    assert not t.should_send(memory, match, report)
+
+
+def test_the_message_adds_the_wind_and_the_weather_only_when_they_say_something():
+    match = _match((ORIGIN, 3.0))
+    report = _report((ORIGIN, 3.0))
+    _, plain = t.format_message(match, report)
+    assert "Wind near the fire" not in plain and "Fire weather" not in plain
+
+    wind = t.Wind(10, 0)
+    weather = {"level": "high", "percentile": 93.4, "hdw": 180.0}
+    _, text = t.format_message(match, report, wind=wind, fire_weather=weather)
+    lines = text.splitlines()
+    assert "Wind near the fire: toward the east at 36 km/h." in lines
+    expected = (
+        "Fire weather today: high, drier and windier than 93 % "
+        "of the same days in the past ten years."
+    )
+    assert expected in lines
+    # A normal day and a dead calm are not worth a line.
+    _, calm = t.format_message(
+        match,
+        report,
+        wind=t.Wind(0.1, 0),
+        fire_weather={"level": "normal", "percentile": 40, "hdw": 20},
+    )
+    assert "Wind near the fire" not in calm and "Fire weather" not in calm

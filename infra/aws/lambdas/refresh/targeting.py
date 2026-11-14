@@ -13,7 +13,9 @@ at a tenth of the wind speed, but smoke and embers do travel with it, and the
 zone is a reason to look, not a forecast of where the fire will be.
 
 A subscriber hears about a window once, and again only if it escalates: more
-flagged cells than they were told about, or the highest ratio up by half. The
+flagged cells than they were told about, the highest ratio up by half, or the
+fire weather (`fire_weather.json`) reaching high or extreme where it had not.
+The message says where the wind is going and how unusual the air is. The
 memory is one small record per subscriber, kept by whoever calls this module.
 
 Nothing here talks to AWS: wind, report and subscribers come in as plain data,
@@ -59,6 +61,19 @@ class Wind:
         return math.degrees(math.atan2(self.u, self.v)) % 360
 
 
+def nearest_node(grid: Mapping, lat: float, lng: float) -> int | None:
+    """Index of the grid node nearest to a point, rows north to south; None if it is off the grid.
+
+    A point is off the grid when it lies more than half a node outside it.
+    """
+    nx, ny = grid["nx"], grid["ny"]
+    col = (lng - grid["west"]) / (grid["east"] - grid["west"]) * (nx - 1)
+    row = (grid["north"] - lat) / (grid["north"] - grid["south"]) * (ny - 1)
+    if not (-0.5 <= col <= nx - 0.5 and -0.5 <= row <= ny - 0.5):
+        return None
+    return min(ny - 1, max(0, round(row))) * nx + min(nx - 1, max(0, round(col)))
+
+
 def wind_at(field: Mapping | None, lat: float, lng: float, when: datetime) -> Wind | None:
     """The wind of the nearest node and hour of a `wind.json` field, or None.
 
@@ -67,13 +82,9 @@ def wind_at(field: Mapping | None, lat: float, lng: float, when: datetime) -> Wi
     """
     if not field:
         return None
-    grid = field["grid"]
-    nx, ny = grid["nx"], grid["ny"]
-    col = (lng - grid["west"]) / (grid["east"] - grid["west"]) * (nx - 1)
-    row = (grid["north"] - lat) / (grid["north"] - grid["south"]) * (ny - 1)
-    if not (-0.5 <= col <= nx - 0.5 and -0.5 <= row <= ny - 0.5):
+    node = nearest_node(field["grid"], lat, lng)
+    if node is None:
         return None
-    node = min(ny - 1, max(0, round(row))) * nx + min(nx - 1, max(0, round(col)))
 
     moment = when.astimezone(UTC)
     gaps = [abs(datetime.fromisoformat(h.replace("Z", "+00:00")) - moment) for h in field["hours"]]
@@ -81,6 +92,55 @@ def wind_at(field: Mapping | None, lat: float, lng: float, when: datetime) -> Wi
         return None
     hour = gaps.index(min(gaps))
     return Wind(float(field["u"][hour][node]), float(field["v"][hour][node]))
+
+
+_COMPASS = (
+    "north",
+    "north-east",
+    "east",
+    "south-east",
+    "south",
+    "south-west",
+    "west",
+    "north-west",
+)
+
+
+def describe_wind(wind: Wind) -> str:
+    """ "toward the south-east at 28 km/h": where the wind is going, which is where smoke goes."""
+    point = _COMPASS[round(wind.blows_to / 45) % 8]
+    return f"toward the {point} at {round(wind.speed_kmh)} km/h"
+
+
+# ---------- fire weather ----------
+
+#: Ascending severity of the levels `fire_weather.json` names.
+FIRE_WEATHER_ORDER = ("normal", "elevated", "high", "extreme")
+#: From this level on, the weather alone is a reason to tell people again.
+FIRE_WEATHER_RESEND_FROM = "high"
+
+
+def fire_weather_at(field: Mapping | None, lat: float, lng: float, day: str) -> dict | None:
+    """Level and rank of the Hot-Dry-Windy index at the node nearest to a point on one day.
+
+    `field` is a `fire_weather.json`; None when there is no field, the point is
+    off its grid, the day is not one of its days, or the forecast had no value.
+    """
+    if not field or day not in field["days"]:
+        return None
+    node = nearest_node(field["grid"], lat, lng)
+    if node is None:
+        return None
+    index = field["days"].index(day)
+    percentile = field["percentile"][index][node]
+    if percentile is None:
+        return None
+    level = "normal"
+    for name, floor in sorted(field["levels"].items(), key=lambda item: -item[1]):
+        if percentile >= floor:
+            level = name
+            break
+    return {"level": level, "percentile": percentile, "hdw": field["hdw"][index][node]}
 
 
 def distance_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -185,24 +245,65 @@ def window_id(report: Mapping) -> str:
     return f"{start}/{end}"
 
 
-def should_send(memory: Mapping | None, match: Match, report: Mapping) -> bool:
-    """One message per subscriber per window, resent only if it escalates."""
+def fire_weather_for(match: Match, field: Mapping | None, when: datetime) -> dict | None:
+    """The worst fire weather of the day at the flagged cells that reach the subscriber."""
+    day = when.astimezone(UTC).date().isoformat()
+    worst = None
+    for entry in match.flagged:
+        lat, lng = h3.cell_to_latlng(entry["cell"])
+        here = fire_weather_at(field, lat, lng, day)
+        if here and (worst is None or here["percentile"] > worst["percentile"]):
+            worst = here
+    return worst
+
+
+def _severity(level: str | None) -> int:
+    return FIRE_WEATHER_ORDER.index(level) if level in FIRE_WEATHER_ORDER else -1
+
+
+def should_send(
+    memory: Mapping | None,
+    match: Match,
+    report: Mapping,
+    *,
+    weather_level: str | None = None,
+) -> bool:
+    """One message per subscriber per window, resent only if it escalates.
+
+    Escalating means more flagged cells than they were told about, the top
+    ratio up by half, or the fire weather reaching a level it had not (high or
+    extreme): a fire that was already known is worse when the air turns dry and
+    windy, but a calmer sky never triggers a message.
+    """
     if not memory or memory.get("window") != window_id(report):
         return True
     if {c["cell"] for c in match.flagged} - set(memory.get("cells") or []):
         return True
     before, now = memory.get("ratio"), match.top_ratio
-    return bool(before and now is not None and now >= before * ESCALATION_FACTOR)
+    if before and now is not None and now >= before * ESCALATION_FACTOR:
+        return True
+    told = _severity(memory.get("weather"))
+    return _severity(weather_level) >= _severity(FIRE_WEATHER_RESEND_FROM) and (
+        _severity(weather_level) > told
+    )
 
 
-def next_memory(memory: Mapping | None, match: Match, report: Mapping) -> dict:
+def next_memory(
+    memory: Mapping | None,
+    match: Match,
+    report: Mapping,
+    *,
+    weather_level: str | None = None,
+) -> dict:
     """What the subscriber now knows; shrinking is silent, so it only ever grows."""
     same = memory if memory and memory.get("window") == window_id(report) else {}
     ratios = [r for r in (match.top_ratio, same.get("ratio")) if r is not None]
+    levels = [lv for lv in (weather_level, same.get("weather")) if _severity(lv) >= 0]
     return {
         "window": window_id(report),
         "cells": sorted({c["cell"] for c in match.flagged} | set(same.get("cells") or [])),
         "ratio": max(ratios) if ratios else None,
+        "weather": max(levels, key=_severity) if levels else None,
     }
 
 
@@ -252,8 +353,14 @@ def format_message(
     sector_of: Mapping[str, str] | None = None,
     web_url: str = "",
     unsubscribe: str = "",
+    wind: Wind | None = None,
+    fire_weather: Mapping | None = None,
 ) -> tuple[str, str]:
-    """(subject, text) with the fields of the interface's alert message, for one subscriber."""
+    """(subject, text) with the fields of the interface's alert message, for one subscriber.
+
+    `wind` and `fire_weather` add one line each when they say something: the
+    direction the wind is going, and the weather when it is more than normal.
+    """
     start, end = (report.get("window") or ["?", "?"])[:2]
     sector_of = sector_of or {}
     areas = len(match.flagged)
@@ -275,6 +382,13 @@ def format_message(
         )
     if areas > MAX_PLACES:
         lines.append(f"+ {areas - MAX_PLACES} more")
+    if wind is not None and wind.speed_kmh >= 1:
+        lines.append(f"Wind near the fire: {describe_wind(wind)}.")
+    if fire_weather and _severity(fire_weather["level"]) > 0:
+        lines.append(
+            f"Fire weather today: {fire_weather['level']}, drier and windier than "
+            f"{fire_weather['percentile']:.0f} % of the same days in the past ten years."
+        )
     if coverage := coverage_line(report):
         lines.append(coverage)
     if web_url:
