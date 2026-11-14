@@ -6,7 +6,7 @@ static industrial sources, offshore) are flagged so the caller decides.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import numpy as np
@@ -87,8 +87,12 @@ def normalize(raw: pd.DataFrame, instrument: str, source_file: str = "") -> pd.D
     return out[COLUMNS]
 
 
-def load_many(paths: Iterable[Path | str]) -> pd.DataFrame:
-    frames = [read_firms_csv(p) for p in paths]
+def load_many(
+    paths: Iterable[Path | str],
+    keep: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
+) -> pd.DataFrame:
+    """Read and concatenate FIRMS files, passing each through `keep` first if given."""
+    frames = [read_firms_csv(p) if keep is None else keep(read_firms_csv(p)) for p in paths]
     if not frames:
         raise FileNotFoundError("no FIRMS CSV files given")
     return pd.concat(frames, ignore_index=True)
