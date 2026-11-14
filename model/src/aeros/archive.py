@@ -229,16 +229,36 @@ def availability(map_key: str, opener: Opener = _open) -> Availability:
     }
 
 
-def recent_plan(available: Availability, area: str, start: date, end: date) -> list[AreaRequest]:
+PLATFORM_OF_SOURCES = {"MODIS": 0, "SNPP": 1, "NOAA20": 2, "NOAA21": 3}
+
+
+def recent_plan(
+    available: Availability,
+    area: str,
+    start: date,
+    end: date,
+    platforms: tuple[str, ...] | None = None,
+) -> list[AreaRequest]:
     """Requests covering `start`..`end`: standard processing while it exists, NRT after.
 
     Each day comes from exactly one source per platform, so the same detection
-    is never stored twice under two processing levels.
+    is never stored twice under two processing levels. `platforms` (MODIS,
+    SNPP, NOAA20, NOAA21) narrows the plan, so filling one platform's history
+    does not download again what the yearly archive already holds.
     """
     if not _AREA.match(area):
         raise ValueError(f'area must be "west,south,east,north", got {area!r}')
+    if platforms is not None:
+        unknown = set(platforms) - set(PLATFORM_OF_SOURCES)
+        if unknown:
+            raise ValueError(
+                f"unknown platforms {sorted(unknown)}, expected {list(PLATFORM_OF_SOURCES)}"
+            )
+        chosen = [RECENT_SOURCES[PLATFORM_OF_SOURCES[p]] for p in platforms]
+    else:
+        chosen = list(RECENT_SOURCES)
     requests = []
-    for (sp, sp_prefix), (nrt, nrt_prefix) in RECENT_SOURCES:
+    for (sp, sp_prefix), (nrt, nrt_prefix) in chosen:
         nrt_from = start
         if sp in available:
             first, last = available[sp]
