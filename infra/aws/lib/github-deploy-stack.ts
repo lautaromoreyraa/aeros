@@ -29,10 +29,12 @@ export class GithubDeployStack extends Stack {
     super(scope, id, props);
 
     const providerArn = props.createOidcProvider
-      ? new iam.OpenIdConnectProvider(this, "GithubOidc", {
+      ? // Native AWS::IAM::OIDCProvider: no custom-resource Lambda; IAM
+        // fetches the issuer's certificate thumbprint itself.
+        new iam.OidcProviderNative(this, "GithubOidc", {
           url: `https://${GITHUB_ISSUER}`,
           clientIds: ["sts.amazonaws.com"],
-        }).openIdConnectProviderArn
+        }).oidcProviderArn
       : `arn:${this.partition}:iam::${this.account}:oidc-provider/${GITHUB_ISSUER}`;
 
     const repo = `repo:${props.repository}`;

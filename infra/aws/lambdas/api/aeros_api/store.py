@@ -163,26 +163,26 @@ def _float(value) -> float | None:
 
 
 def _lambda_config() -> dict:
-    # Lambda only lets us write to /tmp; the extension was installed into the
-    # image at build time (see the Dockerfile).
+    # Lambda only lets us write to /tmp. DuckDB gets 60 % of the function's
+    # memory so a large scan spills to disk instead of killing the runtime.
+    memory_mb = int(os.environ.get("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "512"))
     return {
         "home_directory": "/tmp",
         "temp_directory": "/tmp/duckdb",
-        "extension_directory": os.environ.get(
-            "DUCKDB_EXTENSION_DIRECTORY", "/opt/duckdb_extensions"
-        ),
+        "memory_limit": f"{int(memory_mb * 0.6)}MB",
         "autoinstall_known_extensions": False,
         "timezone": "UTC",
     }
 
 
 def _configure_s3(con: duckdb.DuckDBPyConnection) -> None:
-    """Hand DuckDB the execution role's credentials from the Lambda environment."""
-    con.load_extension("httpfs")
+    """Load httpfs from the layer and hand DuckDB the execution role's credentials."""
+    extension = os.environ.get("DUCKDB_HTTPFS", "/opt/duckdb/httpfs.duckdb_extension")
+    con.execute(f"LOAD {_quote(extension)}")
     fields = {
         "KEY_ID": os.environ["AWS_ACCESS_KEY_ID"],
         "SECRET": os.environ["AWS_SECRET_ACCESS_KEY"],
-        "REGION": os.environ.get("AWS_REGION", "us-east-1"),
+        "REGION": os.environ["AWS_REGION"],
     }
     token = os.environ.get("AWS_SESSION_TOKEN")
     if token:

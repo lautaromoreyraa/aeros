@@ -1,7 +1,16 @@
-"""Lambda entry point for the HTTP API (payload format 2.0).
+"""Lambda entry point behind the function URL (payload format 2.0).
 
-POST /calendar      -> JSON month x year calendar for the area
-POST /hotspots.csv  -> CSV of the area's detections with their harmonized weight
+The URL only accepts SigV4-signed calls, and only CloudFront signs them (origin
+access control), so every request arrives through the distribution, with the
+path the browser used:
+
+POST /api/calendar       -> JSON month x year calendar for the area
+POST /api/hotspots.csv   -> CSV of the area's detections with their harmonized weight
+GET  /api/early-warning  -> the latest early_warning.json from the daily refresh
+
+Browsers must send `x-amz-content-sha256` (hex SHA-256 of the body) with every
+POST: CloudFront signs the request for Lambda with it and Lambda does not
+accept unsigned payloads.
 
 Client mistakes come back as 400 with a message; anything else is logged and
 answered with a bare 500 so internals (bucket names, SQL) never leak.
@@ -29,7 +38,12 @@ logger.setLevel(logging.INFO)
 # Lambda caps a synchronous response at 6 MB; leave room for headers.
 MAX_RESPONSE_BYTES = 5_500_000
 UNIT = "VIIRS-equivalent hotspots"
-ROUTES = ("POST /calendar", "POST /hotspots.csv")
+CALENDAR = "POST /api/calendar"
+HOTSPOTS = "POST /api/hotspots.csv"
+EARLY_WARNING = "GET /api/early-warning"
+ROUTES = (CALENDAR, HOTSPOTS, EARLY_WARNING)
+# CloudFront caches the early warning; it changes once a day.
+EARLY_WARNING_MAX_AGE = 900
 
 _store: Store | None = None
 
@@ -42,19 +56,33 @@ def _default_store() -> Store:
     return _store
 
 
+def _read_data_object(key: str) -> bytes | None:
+    import boto3  # shipped with the Lambda runtime
+
+    client = boto3.client("s3")
+    try:
+        return client.get_object(Bucket=os.environ["DATA_BUCKET"], Key=key)["Body"].read()
+    except client.exceptions.NoSuchKey:
+        return None
+
+
 def handler(
     event: dict,
     context: object = None,
     store_factory: Callable[[], Store] | None = None,
+    read_object: Callable[[str], bytes | None] | None = None,
 ) -> dict:
     store_factory = store_factory or _default_store
+    read_object = read_object or _read_data_object
     method = event.get("requestContext", {}).get("http", {}).get("method", "")
     route = f"{method} {event.get('rawPath') or ''}"
     if route not in ROUTES:
         return _json(404, {"error": "not found"})
     try:
+        if route == EARLY_WARNING:
+            return _early_warning(read_object)
         query = parse(_body(event))
-        if route == "POST /calendar":
+        if route == CALENDAR:
             return _calendar(store_factory(), query)
         return _hotspots(store_factory(), query)
     except (BadRequest, AreaTooLarge) as exc:
@@ -107,6 +135,20 @@ def _hotspots(store: Store, query: AreaQuery) -> dict:
             "cache-control": "no-store",
         },
         "body": buffer.getvalue(),
+    }
+
+
+def _early_warning(read_object: Callable[[str], bytes | None]) -> dict:
+    body = read_object(os.environ.get("EARLY_WARNING_KEY", "derived/early_warning.json"))
+    if body is None:
+        return _json(404, {"error": "no early warning published yet"})
+    return {
+        "statusCode": 200,
+        "headers": {
+            "content-type": "application/json",
+            "cache-control": f"public, max-age={EARLY_WARNING_MAX_AGE}",
+        },
+        "body": body.decode("utf-8"),
     }
 
 

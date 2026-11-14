@@ -1,5 +1,5 @@
-import { type App, type Environment, Tags } from "aws-cdk-lib";
-import { ApiStack } from "./api-stack.js";
+import { type App, Tags } from "aws-cdk-lib";
+import { BudgetStack } from "./budget-stack.js";
 import { loadConfig } from "./config.js";
 import { DataStack } from "./data-stack.js";
 import { GithubDeployStack } from "./github-deploy-stack.js";
@@ -9,32 +9,39 @@ import { WebStack } from "./web-stack.js";
 export interface AerosStacks {
   data: DataStack;
   web: WebStack;
-  api: ApiStack;
   refresh: RefreshStack;
+  budget: BudgetStack;
   deploy: GithubDeployStack;
 }
 
-/** Builds every stack on `app`. Shared by bin/aeros.ts and the assertion tests. */
-export function buildAeros(app: App, env?: Environment): AerosStacks {
+/**
+ * Builds every stack on `app`, all in the one Region the context names (the
+ * free plan's project Region). Shared by bin/aeros.ts and the assertion tests.
+ */
+export function buildAeros(app: App, account?: string): AerosStacks {
   const config = loadConfig(app);
+  const env = { account, region: config.region };
   Tags.of(app).add("project", "aeros");
 
-  const data = new DataStack(app, "AerosData", { env });
+  const data = new DataStack(app, "AerosData", { env, rawRetentionDays: config.rawRetentionDays });
   const web = new WebStack(app, "AerosWeb", {
     env,
+    dataBucket: data.bucket,
+    apiReservedConcurrency: config.apiReservedConcurrency,
     domainName: config.webDomainName,
     certificateArn: config.webCertificateArn,
-  });
-  const api = new ApiStack(app, "AerosApi", {
-    env,
-    dataBucket: data.bucket,
-    allowedOrigins: config.allowedOrigins,
   });
   const refresh = new RefreshStack(app, "AerosRefresh", {
     env,
     dataBucket: data.bucket,
-    firmsSecretName: config.firmsSecretName,
+    firmsMapKeyParameter: config.firmsMapKeyParameter,
     firmsArea: config.firmsArea,
+    reservedConcurrency: config.refreshReservedConcurrency,
+  });
+  const budget = new BudgetStack(app, "AerosBudget", {
+    env,
+    limitUsd: config.budgetLimitUsd,
+    email: config.budgetEmail,
   });
   const deploy = new GithubDeployStack(app, "AerosGithubDeploy", {
     env,
@@ -44,5 +51,5 @@ export function buildAeros(app: App, env?: Environment): AerosStacks {
     webBucket: web.bucket,
     distribution: web.distribution,
   });
-  return { data, web, api, refresh, deploy };
+  return { data, web, refresh, budget, deploy };
 }

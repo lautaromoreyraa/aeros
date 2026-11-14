@@ -1,23 +1,27 @@
-import { App } from "aws-cdk-lib";
+import { App, type Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { beforeAll, describe, expect, it } from "vitest";
 import { type AerosStacks, buildAeros } from "../lib/aeros-app.js";
 import { loadConfig } from "../lib/config.js";
 
-const ENV = { account: "111111111111", region: "us-east-1" };
+const ACCOUNT = "111111111111";
+// Not us-east-1 on purpose: nothing may assume the Region.
+const REGION = "sa-east-1";
 
 const CONTEXT = {
+  region: REGION,
   "aeros:githubRepository": "lautaromoreyraa/aeros",
   "aeros:deployBranch": "main",
-  "aeros:allowedOrigins": ["https://aeros.example.dev"],
-  "aeros:firmsSecretName": "aeros/firms-map-key",
+  "aeros:firmsMapKeyParameter": "/aeros/firms/map-key",
   "aeros:firmsArea": "-74,-56,-53,-21",
   "aeros:createGithubOidcProvider": true,
+  // Synthesize without building the Python layer (pip, network).
+  "aws:cdk:bundling-stacks": [],
 };
 
 function build(extra: Record<string, unknown> = {}): AerosStacks {
   const app = new App({ context: { ...CONTEXT, ...extra } });
-  return buildAeros(app, ENV);
+  return buildAeros(app, ACCOUNT);
 }
 
 /** Every IAM statement of a template, flattened. */
@@ -32,24 +36,107 @@ function actionsOf(statement: Record<string, unknown>): string[] {
   return Array.isArray(action) ? action : [action];
 }
 
+function resources(template: Template): Array<[string, { Type: string; Properties?: any }]> {
+  return Object.entries(template.toJSON().Resources ?? {}) as any;
+}
+
 let stacks: AerosStacks;
+let all: Array<[Stack, Template]>;
 let data: Template;
 let web: Template;
-let api: Template;
 let refresh: Template;
+let budget: Template;
 let deploy: Template;
 
 beforeAll(() => {
   stacks = build();
+  all = Object.values(stacks).map((s: Stack) => [s, Template.fromStack(s)]);
   data = Template.fromStack(stacks.data);
   web = Template.fromStack(stacks.web);
-  api = Template.fromStack(stacks.api);
   refresh = Template.fromStack(stacks.refresh);
+  budget = Template.fromStack(stacks.budget);
   deploy = Template.fromStack(stacks.deploy);
 });
 
+describe("AWS Free plan", () => {
+  const FORBIDDEN = [
+    /^AWS::ApiGateway::/,
+    /^AWS::ApiGatewayV2::/,
+    /^AWS::SecretsManager::Secret$/,
+    /^AWS::Route53::HostedZone$/,
+    /^AWS::EC2::NatGateway$/,
+    /^AWS::EC2::Instance$/,
+    /^AWS::KMS::Key$/,
+    /^AWS::ElasticLoadBalancingV2::/,
+    /^AWS::ECR::/,
+  ];
+
+  it("uses none of the forbidden resource types", () => {
+    const found = all.flatMap(([stack, template]) =>
+      resources(template)
+        .filter(([, r]) => FORBIDDEN.some((re) => re.test(r.Type)))
+        .map(([id, r]) => `${stack.stackName}/${id}: ${r.Type}`),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("runs every function as a small zip, outside any VPC", () => {
+    let count = 0;
+    for (const [, template] of all) {
+      for (const [id, r] of resources(template)) {
+        if (r.Type !== "AWS::Lambda::Function") continue;
+        count += 1;
+        expect(r.Properties.PackageType, id).not.toBe("Image");
+        expect(r.Properties.VpcConfig, id).toBeUndefined();
+        expect(r.Properties.MemorySize ?? 128, id).toBeLessThanOrEqual(512);
+      }
+    }
+    expect(count).toBe(2); // API and refresh: no custom-resource functions
+  });
+
+  it("reserves low concurrency to cap usage", () => {
+    web.hasResourceProperties("AWS::Lambda::Function", { ReservedConcurrentExecutions: 2 });
+    refresh.hasResourceProperties("AWS::Lambda::Function", { ReservedConcurrentExecutions: 1 });
+    const none = Template.fromStack(
+      build({ "aeros:apiReservedConcurrency": "0" }).web,
+    ).findResources("AWS::Lambda::Function");
+    for (const fn of Object.values(none)) {
+      expect((fn as any).Properties.ReservedConcurrentExecutions).toBeUndefined();
+    }
+  });
+
+  it("keeps every log group for 7 days", () => {
+    let count = 0;
+    for (const [, template] of all) {
+      for (const [id, r] of resources(template)) {
+        if (r.Type !== "AWS::Logs::LogGroup") continue;
+        count += 1;
+        expect(r.Properties.RetentionInDays, id).toBe(7);
+      }
+    }
+    expect(count).toBe(2);
+  });
+
+  it("puts every stack in the context Region and never names us-east-1", () => {
+    for (const [stack, template] of all) {
+      expect(stack.region).toBe(REGION);
+      expect(JSON.stringify(template.toJSON())).not.toContain("us-east-1");
+    }
+  });
+
+  it("has no Lambda@Edge association", () => {
+    const json = JSON.stringify(web.toJSON());
+    expect(json).not.toContain("LambdaFunctionAssociations");
+  });
+
+  it("requires the region in context", () => {
+    const app = new App({ context: { ...CONTEXT, region: undefined } });
+    expect(() => loadConfig(app)).toThrow(/region/);
+  });
+});
+
 describe("data bucket", () => {
-  it("is private, encrypted, versioned and retained", () => {
+  it("is private, SSE-S3 encrypted, versioned and retained", () => {
     data.hasResource("AWS::S3::Bucket", {
       DeletionPolicy: "Retain",
       Properties: {
@@ -69,6 +156,17 @@ describe("data bucket", () => {
     });
   });
 
+  it("expires raw downloads and old versions", () => {
+    data.hasResourceProperties("AWS::S3::Bucket", {
+      LifecycleConfiguration: {
+        Rules: Match.arrayWith([
+          Match.objectLike({ NoncurrentVersionExpiration: { NoncurrentDays: 7 } }),
+          Match.objectLike({ Prefix: "raw/firms/", ExpirationInDays: 90, Status: "Enabled" }),
+        ]),
+      },
+    });
+  });
+
   it("refuses plain HTTP", () => {
     data.hasResourceProperties("AWS::S3::BucketPolicy", {
       PolicyDocument: {
@@ -83,18 +181,11 @@ describe("data bucket", () => {
   });
 });
 
-describe("web", () => {
+describe("web and API", () => {
   it("serves the bucket through CloudFront with Origin Access Control only", () => {
-    web.resourceCountIs("AWS::CloudFront::OriginAccessControl", 1);
     web.resourceCountIs("AWS::CloudFront::CloudFrontOriginAccessIdentity", 0);
-    web.hasResourceProperties("AWS::CloudFront::Distribution", {
-      DistributionConfig: Match.objectLike({
-        DefaultRootObject: "index.html",
-        DefaultCacheBehavior: Match.objectLike({ ViewerProtocolPolicy: "redirect-to-https" }),
-        Origins: [
-          Match.objectLike({ OriginAccessControlId: Match.anyValue(), S3OriginConfig: Match.anyValue() }),
-        ],
-      }),
+    web.hasResourceProperties("AWS::CloudFront::OriginAccessControl", {
+      OriginAccessControlConfig: Match.objectLike({ OriginAccessControlOriginType: "s3" }),
     });
     web.hasResourceProperties("AWS::S3::BucketPolicy", {
       PolicyDocument: {
@@ -106,6 +197,53 @@ describe("web", () => {
           }),
         ]),
       },
+    });
+  });
+
+  it("exposes the API only as an IAM function URL signed by CloudFront", () => {
+    web.hasResourceProperties("AWS::Lambda::Url", { AuthType: "AWS_IAM" });
+    web.hasResourceProperties("AWS::CloudFront::OriginAccessControl", {
+      OriginAccessControlConfig: Match.objectLike({
+        OriginAccessControlOriginType: "lambda",
+        SigningBehavior: "always",
+      }),
+    });
+    const permissions = Object.values(web.findResources("AWS::Lambda::Permission")).map(
+      (p) => (p as any).Properties,
+    );
+    expect(permissions.map((p) => p.Action).sort()).toEqual([
+      "lambda:InvokeFunction",
+      "lambda:InvokeFunctionUrl",
+    ]);
+    for (const p of permissions) {
+      expect(p.Principal).toBe("cloudfront.amazonaws.com");
+      expect(JSON.stringify(p.SourceArn)).toContain(":distribution/");
+    }
+  });
+
+  it("routes /api/* uncached with viewer headers, and caches the early warning", () => {
+    const config = (web.findResources("AWS::CloudFront::Distribution") as any);
+    const [distribution] = Object.values(config) as any[];
+    const behaviors = distribution.Properties.DistributionConfig.CacheBehaviors;
+    expect(behaviors.map((b: any) => b.PathPattern)).toEqual(["/api/early-warning", "/api/*"]);
+    const api = behaviors[1];
+    expect(api.AllowedMethods).toContain("POST");
+    expect(api.CachePolicyId).toBe("4135ea2d-6df8-44a3-9df3-4b5a84be39ad"); // CachingDisabled
+    expect(api.OriginRequestPolicyId).toBe("b689b0a8-53d0-40ab-baf2-68738e2966ac"); // AllViewerExceptHostHeader
+    expect(behaviors[0].AllowedMethods).toEqual(["GET", "HEAD"]);
+  });
+
+  it("rewrites client-side routes with a CloudFront Function, not error pages", () => {
+    web.hasResourceProperties("AWS::CloudFront::Function", {
+      FunctionConfig: Match.objectLike({ Runtime: "cloudfront-js-2.0" }),
+    });
+    web.hasResourceProperties("AWS::CloudFront::Distribution", {
+      DistributionConfig: Match.objectLike({
+        CustomErrorResponses: Match.absent(),
+        DefaultCacheBehavior: Match.objectLike({
+          FunctionAssociations: [Match.objectLike({ EventType: "viewer-request" })],
+        }),
+      }),
     });
   });
 
@@ -124,6 +262,38 @@ describe("web", () => {
     });
   });
 
+  it("runs the API from the zip and the shared layer", () => {
+    web.hasResourceProperties("AWS::Lambda::Function", {
+      Runtime: "python3.12",
+      Handler: "aeros_api.handler.handler",
+      Architectures: ["arm64"],
+      MemorySize: 512,
+      Layers: [Match.anyValue()],
+      Environment: {
+        Variables: Match.objectLike({
+          CELLS_KEY: "harmonized/harmonized_cells.parquet",
+          HOTSPOTS_KEY: "harmonized/hotspots_harmonized.parquet",
+          EARLY_WARNING_KEY: "derived/early_warning.json",
+        }),
+      },
+    });
+    web.hasResourceProperties("AWS::Lambda::LayerVersion", {
+      CompatibleRuntimes: ["python3.12"],
+      CompatibleArchitectures: ["arm64"],
+    });
+  });
+
+  it("lets the API only read the harmonized tables and the early warning", () => {
+    const s3 = statements(web).filter((s) => actionsOf(s).some((a) => a.startsWith("s3:")));
+    expect(s3.length).toBeGreaterThan(0);
+    for (const statement of s3) {
+      expect(actionsOf(statement).every((a) => /^s3:(Get|List)/.test(a))).toBe(true);
+    }
+    const json = JSON.stringify(s3);
+    expect(json).toContain("/harmonized/*");
+    expect(json).toContain("/derived/early_warning.json");
+  });
+
   it("uses the custom domain only when both domain and certificate are given", () => {
     const withDomain = Template.fromStack(
       build({
@@ -138,74 +308,75 @@ describe("web", () => {
   });
 });
 
-describe("api", () => {
-  it("routes the two POST endpoints to one container Lambda", () => {
-    api.hasResourceProperties("AWS::Lambda::Function", {
-      PackageType: "Image",
-      Architectures: ["arm64"],
-      Timeout: 28,
-      Environment: {
-        Variables: Match.objectLike({
-          CELLS_KEY: "harmonized/harmonized_cells.parquet",
-          HOTSPOTS_KEY: "harmonized/hotspots_harmonized.parquet",
-        }),
-      },
-    });
-    const routes = Object.values(api.findResources("AWS::ApiGatewayV2::Route")).map(
-      (r) => (r as any).Properties.RouteKey,
-    );
-    expect(routes.sort()).toEqual(["POST /calendar", "POST /hotspots.csv"]);
-  });
-
-  it("limits CORS to the configured origins and throttles the stage", () => {
-    api.hasResourceProperties("AWS::ApiGatewayV2::Api", {
-      ProtocolType: "HTTP",
-      CorsConfiguration: Match.objectLike({ AllowOrigins: ["https://aeros.example.dev"] }),
-    });
-    api.hasResourceProperties("AWS::ApiGatewayV2::Stage", {
-      StageName: "$default",
-      DefaultRouteSettings: { ThrottlingRateLimit: 20, ThrottlingBurstLimit: 40 },
-    });
-  });
-
-  it("can only read the harmonized prefix of the data bucket", () => {
-    const s3 = statements(api).filter((s) => actionsOf(s).some((a) => a.startsWith("s3:")));
-    expect(s3.length).toBeGreaterThan(0);
-    for (const statement of s3) {
-      expect(actionsOf(statement).every((a) => /^s3:(Get|List)/.test(a))).toBe(true);
-    }
-    expect(JSON.stringify(s3)).toContain("/harmonized/*");
-  });
-});
-
-describe("FIRMS refresh", () => {
-  it("runs daily and knows the secret by name only", () => {
+describe("FIRMS refresh and early warning", () => {
+  it("runs daily on NOAA-20/21 and MODIS, never Suomi NPP", () => {
     refresh.hasResourceProperties("AWS::Events::Rule", {
       ScheduleExpression: "cron(0 6 * * ? *)",
     });
     refresh.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "python3.12",
       Handler: "refresh.handler",
+      MemorySize: 512,
       Environment: {
         Variables: Match.objectLike({
-          FIRMS_SECRET_NAME: "aeros/firms-map-key",
+          FIRMS_MAP_KEY_PARAMETER: "/aeros/firms/map-key",
           FIRMS_AREA: "-74,-56,-53,-21",
+          FIRMS_SOURCES: "MODIS_NRT,VIIRS_NOAA20_NRT,VIIRS_NOAA21_NRT",
+          FIRMS_DAYS_BACK: "7",
+          EARLY_WARNING_KEY: "derived/early_warning.json",
         }),
       },
     });
-    // No secret is created here: the MAP_KEY is put in Secrets Manager by hand.
-    refresh.resourceCountIs("AWS::SecretsManager::Secret", 0);
   });
 
-  it("reads only that secret and writes only under raw/firms/", () => {
-    const all = statements(refresh);
-    const secret = all.filter((s) => actionsOf(s).includes("secretsmanager:GetSecretValue"));
-    expect(JSON.stringify(secret)).toContain("secret:aeros/firms-map-key");
-    const s3 = all.filter((s) => actionsOf(s).some((a) => a.startsWith("s3:")));
+  it("reads the MAP_KEY from Parameter Store by name and creates no secret", () => {
+    refresh.resourceCountIs("AWS::SSM::Parameter", 0);
+    const ssm = statements(refresh).filter((s) => actionsOf(s).includes("ssm:GetParameter"));
+    expect(JSON.stringify(ssm)).toContain(":parameter/aeros/firms/map-key");
+    expect(JSON.stringify(statements(refresh))).not.toContain("secretsmanager:");
+  });
+
+  it("writes only raw/firms/ and the early warning, and reads only harmonized/", () => {
+    const s3 = statements(refresh).filter((s) => actionsOf(s).some((a) => a.startsWith("s3:")));
     for (const statement of s3) {
-      expect(actionsOf(statement).some((a) => /^s3:(Get|Delete)/.test(a))).toBe(false);
+      expect(actionsOf(statement).some((a) => /^s3:Delete/.test(a))).toBe(false);
+      const json = JSON.stringify(statement.Resource);
+      const writes = actionsOf(statement).some((a) => /^s3:(Put|Abort)/.test(a));
+      if (writes) expect(json).toMatch(/raw\/firms\/\*|derived\/early_warning\.json/);
+      else expect(json).toContain("/harmonized/*");
     }
-    expect(JSON.stringify(s3)).toContain("/raw/firms/*");
+  });
+});
+
+describe("budget", () => {
+  it("alerts on USD 1 of actual monthly cost through SNS", () => {
+    budget.hasResourceProperties("AWS::Budgets::Budget", {
+      Budget: Match.objectLike({
+        BudgetType: "COST",
+        TimeUnit: "MONTHLY",
+        BudgetLimit: { Amount: 1, Unit: "USD" },
+      }),
+      NotificationsWithSubscribers: [
+        {
+          Notification: Match.objectLike({ NotificationType: "ACTUAL", Threshold: 100 }),
+          Subscribers: [Match.objectLike({ SubscriptionType: "SNS" })],
+        },
+      ],
+    });
+    budget.hasResourceProperties("AWS::SNS::TopicPolicy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({ Principal: { Service: "budgets.amazonaws.com" } }),
+        ]),
+      },
+    });
+    budget.hasOutput("FreePlanLimits", { Value: Match.stringLikeRegexp("Free plan") });
+  });
+
+  it("subscribes an e-mail only when one is passed at deploy time", () => {
+    budget.resourceCountIs("AWS::SNS::Subscription", 0);
+    const withEmail = Template.fromStack(build({ "aeros:budgetEmail": "ops@example.dev" }).budget);
+    withEmail.hasResourceProperties("AWS::SNS::Subscription", { Protocol: "email" });
   });
 });
 
@@ -238,17 +409,18 @@ describe("GitHub deploy role", () => {
         expect(action.endsWith(":*")).toBe(false);
       }
     }
-    const roles = deploy.findResources("AWS::IAM::Role");
-    expect(JSON.stringify(roles)).not.toContain("AdministratorAccess");
+    expect(JSON.stringify(deploy.findResources("AWS::IAM::Role"))).not.toContain(
+      "AdministratorAccess",
+    );
   });
 
-  it("reuses an existing OIDC provider when told to", () => {
+  it("creates a native OIDC provider, or reuses the account's", () => {
+    deploy.resourceCountIs("AWS::IAM::OIDCProvider", 1);
     const reuse = Template.fromStack(build({ "aeros:createGithubOidcProvider": "false" }).deploy);
-    reuse.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 0);
+    reuse.resourceCountIs("AWS::IAM::OIDCProvider", 0);
     expect(JSON.stringify(reuse.toJSON())).toContain(
       "oidc-provider/token.actions.githubusercontent.com",
     );
-    deploy.resourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 1);
   });
 });
 
@@ -261,5 +433,10 @@ describe("config", () => {
   it("rejects a malformed FIRMS area", () => {
     const app = new App({ context: { ...CONTEXT, "aeros:firmsArea": "-74,-56" } });
     expect(() => loadConfig(app)).toThrow(/firmsArea/);
+  });
+
+  it("rejects a parameter name that is not a path", () => {
+    const app = new App({ context: { ...CONTEXT, "aeros:firmsMapKeyParameter": "map-key" } });
+    expect(() => loadConfig(app)).toThrow(/firmsMapKeyParameter/);
   });
 });

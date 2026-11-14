@@ -1,0 +1,6 @@
+line-length = 100
+target-version = "py312"
+src = ["api", "refresh", "layer"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]

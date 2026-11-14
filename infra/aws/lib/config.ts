@@ -5,61 +5,97 @@ import type { Construct } from "constructs";
  * so the stacks never carry an environment-specific literal.
  */
 export interface AerosConfig {
+  /**
+   * The account's project Region. The AWS Free plan allows one Region per
+   * project and no cross-Region features, so every Regional resource goes here.
+   */
+  readonly region: string;
   /** "owner/name" of the only repository allowed to assume the deploy role. */
   readonly githubRepository: string;
   /** Branch whose workflows may deploy. */
   readonly deployBranch: string;
-  /** Browser origins allowed to call the API (the web app and local dev). */
-  readonly allowedOrigins: string[];
-  /** Secrets Manager name holding the FIRMS MAP_KEY. Only the name is known here. */
-  readonly firmsSecretName: string;
+  /** SSM Parameter Store SecureString (standard tier) holding the FIRMS MAP_KEY. */
+  readonly firmsMapKeyParameter: string;
   /** FIRMS area as "west,south,east,north". */
   readonly firmsArea: string;
+  /** Days raw FIRMS downloads are kept before S3 expires them. */
+  readonly rawRetentionDays: number;
+  /** Concurrency reserved for the API function: caps how much it can ever run. 0 = none. */
+  readonly apiReservedConcurrency: number;
+  /** Same for the daily refresh. 0 = none. */
+  readonly refreshReservedConcurrency: number;
+  /** Monthly cost, in USD, at which the budget alert fires. */
+  readonly budgetLimitUsd: number;
+  /** Optional e-mail subscribed to the budget alert; pass it with -c, never commit it. */
+  readonly budgetEmail?: string;
   /** False when the account already has the GitHub OIDC provider (one per account). */
   readonly createGithubOidcProvider: boolean;
   /** Optional custom domain served by CloudFront behind Cloudflare. */
   readonly webDomainName?: string;
-  /** ACM certificate in us-east-1 for webDomainName. */
+  /** ACM certificate for webDomainName; CloudFront only accepts us-east-1 ones. */
   readonly webCertificateArn?: string;
 }
 
 const PREFIX = "aeros:";
 
 function read<T>(scope: Construct, key: string): T | undefined {
-  return scope.node.tryGetContext(PREFIX + key) as T | undefined;
+  return scope.node.tryGetContext(key) as T | undefined;
 }
 
 function required<T>(scope: Construct, key: string): T {
   const value = read<T>(scope, key);
   if (value === undefined || value === null || value === "") {
-    throw new Error(`missing context value ${PREFIX}${key}`);
+    throw new Error(`missing context value ${key}`);
+  }
+  return value;
+}
+
+/** `-c key=value` on the command line always passes strings. */
+function integer(scope: Construct, key: string, fallback: number, min: number, max: number): number {
+  const raw = read<number | string>(scope, key);
+  const value = raw === undefined ? fallback : Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${key} must be an integer between ${min} and ${max}, got "${raw}"`);
   }
   return value;
 }
 
 export function loadConfig(scope: Construct): AerosConfig {
-  const repository = required<string>(scope, "githubRepository");
+  const region = required<string>(scope, "region");
+  if (!/^[a-z]{2}(-[a-z]+)+-\d$/.test(region)) {
+    throw new Error(`region must be an AWS Region code, got "${region}"`);
+  }
+  const repository = required<string>(scope, PREFIX + "githubRepository");
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) {
     throw new Error(`aeros:githubRepository must be "owner/name", got "${repository}"`);
   }
-  const area = required<string>(scope, "firmsArea");
+  const area = required<string>(scope, PREFIX + "firmsArea");
   const bounds = area.split(",").map(Number);
   if (bounds.length !== 4 || bounds.some((n) => !Number.isFinite(n))) {
     throw new Error(`aeros:firmsArea must be "west,south,east,north", got "${area}"`);
   }
-  const domain = read<string>(scope, "webDomainName");
-  const certificate = read<string>(scope, "webCertificateArn");
+  const parameter = required<string>(scope, PREFIX + "firmsMapKeyParameter");
+  if (!/^\/[\w.\-/]+$/.test(parameter)) {
+    throw new Error(`aeros:firmsMapKeyParameter must be a path like /aeros/firms/map-key`);
+  }
+  const domain = read<string>(scope, PREFIX + "webDomainName");
+  const certificate = read<string>(scope, PREFIX + "webCertificateArn");
   if (Boolean(domain) !== Boolean(certificate)) {
     throw new Error("aeros:webDomainName and aeros:webCertificateArn go together");
   }
-  const createProvider = read<boolean | string>(scope, "createGithubOidcProvider");
+  const createProvider = read<boolean | string>(scope, PREFIX + "createGithubOidcProvider");
+  const email = read<string>(scope, PREFIX + "budgetEmail");
   return {
+    region,
     githubRepository: repository,
-    deployBranch: required<string>(scope, "deployBranch"),
-    allowedOrigins: required<string[]>(scope, "allowedOrigins"),
-    firmsSecretName: required<string>(scope, "firmsSecretName"),
+    deployBranch: required<string>(scope, PREFIX + "deployBranch"),
+    firmsMapKeyParameter: parameter,
     firmsArea: area,
-    // `-c` on the command line always passes strings.
+    rawRetentionDays: integer(scope, PREFIX + "rawRetentionDays", 90, 7, 3650),
+    apiReservedConcurrency: integer(scope, PREFIX + "apiReservedConcurrency", 2, 0, 100),
+    refreshReservedConcurrency: integer(scope, PREFIX + "refreshReservedConcurrency", 1, 0, 10),
+    budgetLimitUsd: integer(scope, PREFIX + "budgetLimitUsd", 1, 1, 1000),
+    budgetEmail: email || undefined,
     createGithubOidcProvider: createProvider !== false && createProvider !== "false",
     webDomainName: domain || undefined,
     webCertificateArn: certificate || undefined,

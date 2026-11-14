@@ -1,22 +1,37 @@
 {
   "app": "npx tsx bin/aeros.ts",
   "watch": {
-    "include": ["bin/**", "lib/**", "lambdas/**"],
-    "exclude": ["**/__pycache__", "**/tests/**", "cdk.out", "node_modules"]
+    "include": [
+      "bin/**",
+      "lib/**",
+      "lambdas/**"
+    ],
+    "exclude": [
+      "**/__pycache__",
+      "**/tests/**",
+      "cdk.out",
+      "node_modules"
+    ]
   },
   "context": {
+    "region": "us-east-1",
     "aeros:githubRepository": "lautaromoreyraa/aeros",
     "aeros:deployBranch": "main",
-    "aeros:allowedOrigins": ["https://aeros.lautaromoreyra.dev", "http://localhost:5173"],
-    "aeros:firmsSecretName": "aeros/firms-map-key",
+    "aeros:firmsMapKeyParameter": "/aeros/firms/map-key",
     "aeros:firmsArea": "-74,-56,-53,-21",
     "aeros:createGithubOidcProvider": true,
     "@aws-cdk/core:checkSecretUsage": true,
     "@aws-cdk/core:defaultCrossStackReferences": "strong",
-    "@aws-cdk/core:target-partitions": ["aws"],
+    "@aws-cdk/core:target-partitions": [
+      "aws"
+    ],
     "@aws-cdk/aws-iam:minimizePolicies": true,
     "@aws-cdk/aws-s3:createDefaultLoggingPolicy": true,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
-    "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": true
+    "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": true,
+    "aeros:rawRetentionDays": 90,
+    "aeros:apiReservedConcurrency": 2,
+    "aeros:refreshReservedConcurrency": 1,
+    "aeros:budgetLimitUsd": 1
   }
 }

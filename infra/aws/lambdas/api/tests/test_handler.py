@@ -28,7 +28,7 @@ class TestCalendar:
     def test_sums_area_cells_with_interval_and_anomaly(self, store):
         response = call(
             store,
-            "/calendar",
+            "/api/calendar",
             {"area": area_around(CELL_A, CELL_B), "start": "2000-01", "end": "2003-12"},
         )
         assert response["statusCode"] == 200
@@ -63,7 +63,7 @@ class TestCalendar:
         payload = body(
             call(
                 store,
-                "/calendar",
+                "/api/calendar",
                 {"area": area_around(CELL_A, CELL_B), "start": "2000-01", "end": "2000-01"},
             )
         )
@@ -77,7 +77,7 @@ class TestCalendar:
         payload = body(
             call(
                 store,
-                "/calendar",
+                "/api/calendar",
                 {"area": area_around(CELL_A, CELL_B), "start": "2001-01", "end": "2002-12"},
             )
         )
@@ -90,7 +90,7 @@ class TestCalendar:
         payload = body(
             call(
                 store,
-                "/calendar",
+                "/api/calendar",
                 {"area": area_around(CELL_A, CELL_B), "start": "2001-02", "end": "2001-02"},
             )
         )
@@ -105,7 +105,7 @@ class TestCalendar:
             body(
                 call(
                     store,
-                    "/calendar",
+                    "/api/calendar",
                     {"area": area_around(CELL_C), "start": "2001-01", "end": "2001-01"},
                 )
             )["months"]
@@ -116,7 +116,7 @@ class TestCalendar:
         payload = body(
             call(
                 store,
-                "/calendar",
+                "/api/calendar",
                 {
                     "area": area_around(CELL_C, pad=0.0001),
                     "start": "2001-01",
@@ -131,7 +131,7 @@ class TestCalendar:
         payload = body(
             call(
                 store,
-                "/calendar",
+                "/api/calendar",
                 {
                     "area": {"type": "Polygon", "coordinates": [ring]},
                     "start": "2001-01",
@@ -149,7 +149,7 @@ class TestCalendar:
                 "end": "2003-01",
             }
         )
-        request = event("/calendar", base64.b64encode(raw.encode()).decode())
+        request = event("/api/calendar", base64.b64encode(raw.encode()).decode())
         request["isBase64Encoded"] = True
         response = handler(request, None, store_factory=lambda: store)
         assert response["statusCode"] == 200
@@ -159,7 +159,7 @@ class TestCalendar:
         monkeypatch.setenv("MAX_CELLS", "1")
         response = call(
             store,
-            "/calendar",
+            "/api/calendar",
             {"area": area_around(CELL_A, CELL_B), "start": "2001-01", "end": "2001-12"},
         )
         assert response["statusCode"] == 400
@@ -173,7 +173,7 @@ class TestHotspotsCsv:
     def test_filters_by_area_and_inclusive_dates(self, store):
         response = call(
             store,
-            "/hotspots.csv",
+            "/api/hotspots.csv",
             {"area": area_around(CELL_A, CELL_B), "start": "2002-01-01", "end": "2003-01"},
         )
         assert response["statusCode"] == 200
@@ -197,7 +197,7 @@ class TestHotspotsCsv:
         monkeypatch.setenv("MAX_CSV_ROWS", "2")
         response = call(
             store,
-            "/hotspots.csv",
+            "/api/hotspots.csv",
             {"area": area_around(CELL_A, CELL_B), "start": "2001-01", "end": "2003-12"},
         )
         assert response["headers"]["x-aeros-truncated"] == "true"
@@ -207,7 +207,7 @@ class TestHotspotsCsv:
         monkeypatch.setenv("MAX_CSV_ROWS", "5")
         response = call(
             store,
-            "/hotspots.csv",
+            "/api/hotspots.csv",
             {"area": area_around(CELL_A, CELL_B), "start": "2001-01", "end": "2003-12"},
         )
         assert response["headers"]["x-aeros-truncated"] == "false"
@@ -248,13 +248,13 @@ class TestErrors:
         ],
     )
     def test_bad_requests_are_400(self, store, payload):
-        response = call(store, "/calendar", payload)
+        response = call(store, "/api/calendar", payload)
         assert response["statusCode"] == 400
         assert body(response)["error"]
 
     def test_unknown_route_is_404(self, store):
-        assert call(store, "/calendar", {}, method="GET")["statusCode"] == 404
-        assert call(store, "/other", {})["statusCode"] == 404
+        assert call(store, "/api/calendar", {}, method="GET")["statusCode"] == 404
+        assert call(store, "/api/other", {})["statusCode"] == 404
 
     def test_internal_errors_do_not_leak(self, store):
         class Broken:
@@ -263,7 +263,7 @@ class TestErrors:
 
         response = handler(
             event(
-                "/calendar",
+                "/api/calendar",
                 {"area": area_around(CELL_A), "start": "2001-01", "end": "2001-02"},
             ),
             None,
@@ -271,3 +271,36 @@ class TestErrors:
         )
         assert response["statusCode"] == 500
         assert "secret-bucket" not in response["body"]
+
+
+class TestEarlyWarning:
+    def test_returns_published_json_with_cache_header(self, store):
+        published = b'{"generated_at":"2026-11-14T06:00:00Z","cells":[]}'
+        keys = []
+
+        def read(key):
+            keys.append(key)
+            return published
+
+        response = handler(
+            event("/api/early-warning", None, method="GET"),
+            None,
+            store_factory=lambda: store,
+            read_object=read,
+        )
+        assert response["statusCode"] == 200
+        assert response["body"] == published.decode()
+        assert response["headers"]["cache-control"].startswith("public, max-age=")
+        assert keys == ["derived/early_warning.json"]
+
+    def test_missing_report_is_404(self, store):
+        response = handler(
+            event("/api/early-warning", None, method="GET"),
+            None,
+            store_factory=lambda: store,
+            read_object=lambda key: None,
+        )
+        assert response["statusCode"] == 404
+
+    def test_post_to_early_warning_is_404(self, store):
+        assert call(store, "/api/early-warning", {})["statusCode"] == 404
