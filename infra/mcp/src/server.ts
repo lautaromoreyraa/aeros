@@ -6,7 +6,16 @@ import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import type { Identity } from "./access";
 import { type PipelineData, unusualMonths } from "./data";
-import { type Actor, type Store, TaskConflictError } from "./store";
+import {
+  type Actor,
+  InvalidTimeError,
+  PROMPT_CATEGORIES,
+  PROMPTERS,
+  SecretInTextError,
+  type Store,
+  TaskConflictError,
+} from "./store";
+import { renderStudy } from "./study";
 
 const agentArg = z
   .string()
@@ -40,12 +49,19 @@ export function buildServer(store: Store, data: PipelineData, identity: Identity
       annotations: { readOnlyHint: true },
     },
     async () => {
-      const [progress, tasks, decisions] = await Promise.all([
+      const [progress, tasks, decisions, prompts] = await Promise.all([
         store.recentProgress(20),
         store.tasks(),
         store.decisions(),
+        store.steeringPrompts(),
       ]);
-      return text({ you: identity.author, tasks_in_flight: tasks, recent_progress: progress, decisions: decisions.length });
+      return text({
+        you: identity.author,
+        tasks_in_flight: tasks,
+        recent_progress: progress,
+        decisions: decisions.length,
+        steering_prompts: prompts.length,
+      });
     },
   );
 
@@ -153,6 +169,87 @@ export function buildServer(store: Store, data: PipelineData, identity: Identity
     "list_decisions",
     { description: "Every recorded decision, oldest first.", annotations: { readOnlyHint: true } },
     async () => text(await store.decisions()),
+  );
+
+  server.registerTool(
+    "record_steering_prompt",
+    {
+      description:
+        "Keep a prompt that changed what we build or how: its situation, the decision taken and the " +
+        "impact. Call it right after acting on a prompt from Lautaro or David that redirected scope, " +
+        "priority, architecture, data, process or quality, or that corrected a mistake. Log what " +
+        "changed the course, not every message. This feeds the study and the final presentation. " +
+        "Text containing a credential is rejected.",
+      inputSchema: z.object({
+        prompted_by: z.enum(PROMPTERS).describe("The person who wrote the prompt, not the assistant."),
+        category: z.enum(PROMPT_CATEGORIES),
+        importance: z
+          .union([z.literal(1), z.literal(2), z.literal(3)])
+          .describe("3 redirected the product, 2 shaped a feature or a process, 1 refined something."),
+        title: z.string().min(1).max(120).describe("Short headline of what changed."),
+        prompt: z
+          .string()
+          .min(1)
+          .max(2000)
+          .describe("The person's own words, trimmed to the instruction that mattered. No credentials."),
+        situation: z.string().min(1).max(1000).describe("What was going on when the prompt arrived."),
+        decision: z.string().min(1).max(1500).describe("What was decided or done because of it."),
+        impact: z.string().max(1000).optional().describe("What changed as a result."),
+        refs: z.string().max(500).optional().describe("Branches, PRs, commits or decisions."),
+        occurred_at: z
+          .string()
+          .max(40)
+          .optional()
+          .describe("ISO date or time, only when recording after the fact; defaults to now."),
+        agent: agentArg,
+      }),
+    },
+    async ({ prompted_by, occurred_at, agent, ...entry }) => {
+      try {
+        const saved = await store.recordSteeringPrompt(actor(agent), {
+          ...entry,
+          promptedBy: prompted_by,
+          occurredAt: occurred_at,
+        });
+        return text(`steering prompt #${saved.id} recorded (${saved.category}, importance ${saved.importance})`);
+      } catch (error) {
+        if (error instanceof SecretInTextError || error instanceof InvalidTimeError) {
+          return failure(error.message);
+        }
+        throw error;
+      }
+    },
+  );
+
+  server.registerTool(
+    "steering_study",
+    {
+      description:
+        "The study of how the product was steered: the prompts that redirected it, the situation each " +
+        "answered and the decisions taken, as a ready-to-present document. Use format json for raw rows.",
+      inputSchema: z.object({
+        format: z.enum(["markdown", "json"]).optional(),
+        prompted_by: z.enum(PROMPTERS).optional(),
+        category: z.enum(PROMPT_CATEGORIES).optional(),
+        min_importance: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+        since: z.string().max(40).optional().describe("ISO date: only prompts from then on."),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ format, prompted_by, category, min_importance, since }) => {
+      try {
+        const prompts = await store.steeringPrompts({
+          promptedBy: prompted_by,
+          category,
+          minImportance: min_importance,
+          since,
+        });
+        return text(format === "json" ? prompts : renderStudy(prompts));
+      } catch (error) {
+        if (error instanceof InvalidTimeError) return failure(error.message);
+        throw error;
+      }
+    },
   );
 
   server.registerTool(
