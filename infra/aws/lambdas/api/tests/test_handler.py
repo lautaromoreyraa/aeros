@@ -304,3 +304,32 @@ class TestEarlyWarning:
 
     def test_post_to_early_warning_is_404(self, store):
         assert call(store, "/api/early-warning", {})["statusCode"] == 404
+
+
+class TestActiveFires:
+    def test_returns_the_goes_layer_with_a_short_cache(self, store):
+        published = b'{"satellite":"GOES-19","cells":[]}'
+        keys = []
+
+        def read(key):
+            keys.append(key)
+            return published
+
+        response = handler(
+            event("/api/active-fires", None, method="GET"),
+            None,
+            store_factory=lambda: store,
+            read_object=read,
+        )
+        assert response["statusCode"] == 200 and response["body"] == published.decode()
+        assert response["headers"]["cache-control"] == "public, max-age=120"
+        assert keys == ["derived/goes_latest.json"]
+
+    def test_missing_layer_is_404(self, store):
+        response = handler(
+            event("/api/active-fires", None, method="GET"),
+            None,
+            store_factory=lambda: store,
+            read_object=lambda key: None,
+        )
+        assert response["statusCode"] == 404

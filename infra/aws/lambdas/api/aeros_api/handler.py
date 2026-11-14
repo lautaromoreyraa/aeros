@@ -7,6 +7,7 @@ path the browser used:
 POST /api/calendar       -> JSON month x year calendar for the area
 POST /api/hotspots.csv   -> CSV of the area's detections with their harmonized weight
 GET  /api/early-warning  -> the latest early_warning.json from the daily refresh
+GET  /api/active-fires   -> the latest goes_latest.json from the 10-minute GOES watch
 
 Browsers must send `x-amz-content-sha256` (hex SHA-256 of the body) with every
 POST: CloudFront signs the request for Lambda with it and Lambda does not
@@ -41,9 +42,12 @@ UNIT = "VIIRS-equivalent hotspots"
 CALENDAR = "POST /api/calendar"
 HOTSPOTS = "POST /api/hotspots.csv"
 EARLY_WARNING = "GET /api/early-warning"
-ROUTES = (CALENDAR, HOTSPOTS, EARLY_WARNING)
+ACTIVE_FIRES = "GET /api/active-fires"
+ROUTES = (CALENDAR, HOTSPOTS, EARLY_WARNING, ACTIVE_FIRES)
 # CloudFront caches the early warning; it changes once a day.
 EARLY_WARNING_MAX_AGE = 900
+# The GOES layer changes every 10 minutes; a short cache still absorbs bursts.
+ACTIVE_FIRES_MAX_AGE = 120
 
 _store: Store | None = None
 
@@ -80,7 +84,19 @@ def handler(
         return _json(404, {"error": "not found"})
     try:
         if route == EARLY_WARNING:
-            return _early_warning(read_object)
+            return _published(
+                read_object,
+                os.environ.get("EARLY_WARNING_KEY", "derived/early_warning.json"),
+                EARLY_WARNING_MAX_AGE,
+                "no early warning published yet",
+            )
+        if route == ACTIVE_FIRES:
+            return _published(
+                read_object,
+                os.environ.get("GOES_LATEST_KEY", "derived/goes_latest.json"),
+                ACTIVE_FIRES_MAX_AGE,
+                "no GOES scan published yet",
+            )
         query = parse(_body(event))
         if route == CALENDAR:
             return _calendar(store_factory(), query)
@@ -138,15 +154,18 @@ def _hotspots(store: Store, query: AreaQuery) -> dict:
     }
 
 
-def _early_warning(read_object: Callable[[str], bytes | None]) -> dict:
-    body = read_object(os.environ.get("EARLY_WARNING_KEY", "derived/early_warning.json"))
+def _published(
+    read_object: Callable[[str], bytes | None], key: str, max_age: int, missing: str
+) -> dict:
+    """A JSON file a scheduled function publishes, served as it is."""
+    body = read_object(key)
     if body is None:
-        return _json(404, {"error": "no early warning published yet"})
+        return _json(404, {"error": missing})
     return {
         "statusCode": 200,
         "headers": {
             "content-type": "application/json",
-            "cache-control": f"public, max-age={EARLY_WARNING_MAX_AGE}",
+            "cache-control": f"public, max-age={max_age}",
         },
         "body": body.decode("utf-8"),
     }

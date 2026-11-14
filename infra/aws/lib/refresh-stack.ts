@@ -14,6 +14,22 @@ import { PythonDepsLayer } from "./python-deps-layer.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const REFRESH_LAMBDA_DIR = path.join(here, "..", "lambdas", "refresh");
+/** Allow-list: tests, caches and tooling config never reach the functions. */
+const REFRESH_CODE_EXCLUDE = [
+  "*",
+  ".*",
+  "!refresh.py",
+  "!early_warning.py",
+  "!alerts.py",
+  "!goes_watch.py",
+];
+
+function logGroupFor(scope: Construct, id: string): logs.LogGroup {
+  return new logs.LogGroup(scope, id, {
+    retention: logs.RetentionDays.ONE_WEEK,
+    removalPolicy: RemovalPolicy.DESTROY,
+  });
+}
 
 /** Suomi NPP stopped on 2026-11-02; NOAA-20 and NOAA-21 carry VIIRS now. */
 export const FIRMS_SOURCES = ["MODIS_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT"];
@@ -57,6 +73,8 @@ export interface RefreshStackProps extends StackProps {
  */
 export class RefreshStack extends Stack {
   readonly handler: lambda.Function;
+  readonly goesWatch: lambda.Function;
+  private readonly layer: PythonDepsLayer;
 
   constructor(scope: Construct, id: string, props: RefreshStackProps) {
     super(scope, id, props);
@@ -65,21 +83,18 @@ export class RefreshStack extends Stack {
       parameterName: props.firmsMapKeyParameter,
     });
 
-    const logGroup = new logs.LogGroup(this, "RefreshHandlerLogs", {
-      retention: logs.RetentionDays.ONE_WEEK,
-      removalPolicy: RemovalPolicy.DESTROY,
-    });
+    const logGroup = logGroupFor(this, "RefreshHandlerLogs");
+    this.layer = new PythonDepsLayer(this, "PythonDeps");
 
     this.handler = new lambda.Function(this, "RefreshHandler", {
       description: "Daily FIRMS NRT download, early warning and fire alerts",
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: "refresh.handler",
-      // Allow-list: tests, caches and tooling config never reach the function.
       code: lambda.Code.fromAsset(REFRESH_LAMBDA_DIR, {
-        exclude: ["*", ".*", "!refresh.py", "!early_warning.py", "!alerts.py"],
+        exclude: REFRESH_CODE_EXCLUDE,
       }),
-      layers: [new PythonDepsLayer(this, "PythonDeps")],
+      layers: [this.layer],
       memorySize: 512,
       timeout: Duration.minutes(5),
       // One run at a time is all a daily job needs, and it caps a runaway retry loop.
@@ -115,9 +130,74 @@ export class RefreshStack extends Stack {
     props.dataBucket.grantRead(this.handler, DATA_LAYOUT.alertStateKey);
     props.dataBucket.grantPut(this.handler, DATA_LAYOUT.alertStateKey);
 
+    this.grantAlerts(this.handler, props);
+
+    this.goesWatch = this.goesWatchFunction(props, logGroupFor(this, "GoesWatchLogs"));
+
+    // 06:00 UTC: after the night passes over South America are in the NRT feed.
+    new events.Rule(this, "DailyRefresh", {
+      description: "Pull the latest FIRMS NRT detections and publish the early warning",
+      schedule: events.Schedule.cron({ minute: "0", hour: "6" }),
+      targets: [new targets.LambdaFunction(this.handler, { retryAttempts: 2 })],
+    });
+  }
+
+  /**
+   * Every 10 minutes: read the newest GOES-19 fire scans from NOAA's public
+   * bucket, publish derived/goes_latest.json and tell people about a fire
+   * that persists in the study cells. 4,320 short runs a month stay inside
+   * the always-free Lambda allowance, and the scans themselves are read from
+   * NOAA, never copied into the data bucket.
+   */
+  private goesWatchFunction(props: RefreshStackProps, logGroup: logs.LogGroup): lambda.Function {
+    const fn = new lambda.Function(this, "GoesWatchHandler", {
+      description: "GOES-19 fire pixels every 10 minutes and fast fire alerts",
+      runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.ARM_64,
+      handler: "goes_watch.handler",
+      code: lambda.Code.fromAsset(REFRESH_LAMBDA_DIR, { exclude: REFRESH_CODE_EXCLUDE }),
+      layers: [this.layer],
+      // A full-disk fire mask is 5424 x 5424 int16, about 59 MB per scan.
+      memorySize: 512,
+      timeout: Duration.minutes(2),
+      reservedConcurrentExecutions: props.reservedConcurrency || undefined,
+      logGroup,
+      environment: {
+        DATA_BUCKET: props.dataBucket.bucketName,
+        FIRMS_AREA: props.firmsArea,
+        GOES_LATEST_KEY: DATA_LAYOUT.goesLatestKey,
+        CELLS_KEY: DATA_LAYOUT.cellsKey,
+        DUCKDB_HTTPFS: "/opt/duckdb/httpfs.duckdb_extension",
+        ALERT_STATE_KEY: DATA_LAYOUT.alertStateKey,
+        GOES_ALERT_STATE_KEY: DATA_LAYOUT.goesAlertStateKey,
+        ALERT_WEB_URL: props.webUrl,
+        ALERT_REGION_NAME: props.alertRegionName,
+        ALERT_EMAIL_FROM_PARAMETER: ALERT_PARAMETERS.emailFrom,
+        ALERT_EMAIL_TO_PARAMETER: ALERT_PARAMETERS.emailTo,
+        ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
+        ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
+      },
+    });
+    props.dataBucket.grantPut(fn, DATA_LAYOUT.goesLatestKey);
+    props.dataBucket.grantRead(fn, DATA_LAYOUT.cellsKey);
+    props.dataBucket.grantRead(fn, DATA_LAYOUT.goesAlertStateKey);
+    props.dataBucket.grantPut(fn, DATA_LAYOUT.goesAlertStateKey);
+    this.grantAlerts(fn, props);
+
+    new events.Rule(this, "GoesWatchSchedule", {
+      description: "Read the newest GOES-19 fire scans and publish the active fires",
+      schedule: events.Schedule.rate(Duration.minutes(10)),
+      // A missed run is replaced by the next one ten minutes later.
+      targets: [new targets.LambdaFunction(fn, { retryAttempts: 0 })],
+    });
+    return fn;
+  }
+
+  /** Exactly what sending an alert needs, for whichever function sends it. */
+  private grantAlerts(fn: lambda.Function, props: RefreshStackProps): void {
     // Exactly the four alert parameters, read with GetParameter only. Like the
     // MAP_KEY they use the AWS-managed aws/ssm key, so no KMS grant is needed.
-    this.handler.addToRolePolicy(
+    fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["ssm:GetParameter"],
         resources: Object.values(ALERT_PARAMETERS).map((name) =>
@@ -129,7 +209,7 @@ export class RefreshStack extends Stack {
     // identity, so the function cannot send as anyone else. In sandbox mode
     // every recipient must be a verified identity too (see alerts.py).
     if (props.alertEmailIdentity) {
-      this.handler.addToRolePolicy(
+      fn.addToRolePolicy(
         new iam.PolicyStatement({
           actions: ["ses:SendEmail"],
           resources: [
@@ -142,12 +222,5 @@ export class RefreshStack extends Stack {
         }),
       );
     }
-
-    // 06:00 UTC: after the night passes over South America are in the NRT feed.
-    new events.Rule(this, "DailyRefresh", {
-      description: "Pull the latest FIRMS NRT detections and publish the early warning",
-      schedule: events.Schedule.cron({ minute: "0", hour: "6" }),
-      targets: [new targets.LambdaFunction(this.handler, { retryAttempts: 2 })],
-    });
   }
 }

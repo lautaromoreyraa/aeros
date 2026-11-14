@@ -276,30 +276,10 @@ def save_state(s3, bucket: str, key: str, state: dict) -> None:
     )
 
 
-def notify(
-    report: dict,
-    settings: AlertSettings,
-    *,
-    bucket: str,
-    s3,
-    ssm,
-    ses=None,
-    post: Post | None = None,
-) -> dict:
-    """Decide, send through every configured channel and remember what was told."""
-    state = load_state(s3, bucket, settings.state_key)
-    alert = assess(report)
-    kind = decide(alert, state)
-    summary: dict = {"decision": kind}
-    if kind == "none":
-        if state and state.get("active"):
-            save_state(s3, bucket, settings.state_key, {"active": False})
-        return summary
-    if kind == "repeat":
-        logger.info("alert unchanged since the last notification; not sending")
-        return summary
-
-    subject, text = format_message(report, kind, settings)
+def deliver(
+    subject: str, text: str, settings: AlertSettings, *, ssm, ses=None, post: Post | None = None
+) -> dict[str, str]:
+    """Send one message through every configured channel; one failing never stops the other."""
     channels: dict[str, str] = {}
 
     try:
@@ -335,6 +315,34 @@ def notify(
         message = str(exc).replace(token, "***") if token else str(exc)
         logger.error("Telegram alert failed: %s", message)
         channels["telegram"] = "failed"
+    return channels
+
+
+def notify(
+    report: dict,
+    settings: AlertSettings,
+    *,
+    bucket: str,
+    s3,
+    ssm,
+    ses=None,
+    post: Post | None = None,
+) -> dict:
+    """Decide, send through every configured channel and remember what was told."""
+    state = load_state(s3, bucket, settings.state_key)
+    alert = assess(report)
+    kind = decide(alert, state)
+    summary: dict = {"decision": kind}
+    if kind == "none":
+        if state and state.get("active"):
+            save_state(s3, bucket, settings.state_key, {"active": False})
+        return summary
+    if kind == "repeat":
+        logger.info("alert unchanged since the last notification; not sending")
+        return summary
+
+    subject, text = format_message(report, kind, settings)
+    channels = deliver(subject, text, settings, ssm=ssm, ses=ses, post=post)
 
     summary["channels"] = channels
     if any(v.startswith("sent") for v in channels.values()):

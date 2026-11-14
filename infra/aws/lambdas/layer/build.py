@@ -1,4 +1,4 @@
-"""Build the Lambda layer: DuckDB and H3 for linux/arm64, plus DuckDB's httpfs.
+"""Build the Lambda layer: DuckDB, H3 and h5py for linux/arm64, plus DuckDB's httpfs.
 
     python build.py <output-dir> [--cross]
 
