@@ -74,7 +74,7 @@ flowchart LR
 | `model/` | Python package `aeros`: FIRMS ingestion, grid, reference chain, translators, validation, calendar, synthetic archive, CLI |
 | `web/` | React + Vite + TypeScript client: cinematic intro, H3 map, area selection, calendar, anomalies, CSV export |
 | `infra/aws/` | AWS CDK app (TypeScript) and Lambda handlers (Python) |
-| `infra/mcp/` | MCP server on Cloudflare Workers + D1: shared status, tasks, decisions and conventions for every assistant on the team |
+| `infra/mcp/` | MCP server on Cloudflare Workers + D1: shared status, tasks, decisions, conventions and the log of steering prompts for every assistant on the team |
 | `.github/workflows/` | Verification: lint, types, tests, build, `cdk synth` |
 
 **AWS runs inside the Free plan.**
@@ -92,6 +92,7 @@ flowchart LR
 - Rebase on `develop` before review, then push with `--force-with-lease`. Merge locally with `--no-ff` after approval, then delete the branch.
 - `main` is production: Lautaro decides each release and tags it with semver.
 - Assistants (Claude for Lautaro, Devin and Grok for David) read `git_workflow`, `get_conventions` and `project_status` from the MCP server, and claim a task before touching its files.
+- When a prompt from either of us changes what we build or how, the assistant records it with `record_steering_prompt` (the prompt, the situation, the decision, the impact). `steering_study` turns that log into the study for the final presentation.
 
 ## 6. Status and next steps
 
@@ -101,6 +102,7 @@ flowchart LR
 | Web app: intro, H3 map, area selection, calendar with coverage labels and critical period, unit toggle, CSV | in `develop` (54 tests) |
 | AWS infrastructure inside the Free plan, calendar/CSV API, daily FIRMS refresh with early warning | in `develop` (29 CDK + 63 Lambda tests, `cdk synth` green); not deployed |
 | Team context MCP server | deployed at `mcp.aeros.lautaromoreyra.dev` (D1 migrated, `workers.dev` off); behind a Cloudflare Access application (deny by default); people and service tokens are added through Access policies |
+| Steering prompt log (`record_steering_prompt`, `steering_study`) | implemented and tested in the MCP server; not deployed |
 | CI | `verify` workflow runs model, web, MCP and AWS checks |
 | Real FIRMS archive for the Gran Chaco | to download: yearly country summaries (AR, PY, BO), MODIS C6.1 + VIIRS SNPP + NOAA-20 |
 | AWS deploy | pending: account, `cdk bootstrap`, FIRMS MAP_KEY in SSM; reserved concurrency may exceed a new account's limit of 10 |
