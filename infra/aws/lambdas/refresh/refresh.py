@@ -13,6 +13,7 @@ as they are.
 
 After the downloads, the VIIRS files of the last seven complete days feed
 `early_warning.py`, which writes `derived/early_warning.json` (see there).
+When that report is an alert, `alerts.py` tells people by e-mail and Telegram.
 
 The MAP_KEY is a SecureString in SSM Parameter Store (standard tier, AWS-managed
 key: no charge), read on every run and never logged: it is part of the request
@@ -31,6 +32,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
+import alerts
 from early_warning import WINDOW_DAYS, window
 
 logger = logging.getLogger()
@@ -68,6 +70,7 @@ class Settings:
     early_warning_key: str | None = None
     cells_key: str | None = None
     hotspots_key: str | None = None
+    alert_settings: alerts.AlertSettings | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -95,6 +98,7 @@ class Settings:
             early_warning_key=early_warning_key,
             cells_key=os.environ.get("CELLS_KEY"),
             hotspots_key=os.environ.get("HOTSPOTS_KEY"),
+            alert_settings=alerts.AlertSettings.from_environment() if early_warning_key else None,
         )
 
 
@@ -114,6 +118,8 @@ def handler(
     fetch: Fetch | None = None,
     now: datetime | None = None,
     early_warning: EarlyWarning | None = None,
+    ses=None,
+    post: alerts.Post | None = None,
 ) -> dict:
     settings = settings or Settings.from_environment()
     if s3 is None or ssm is None:
@@ -178,6 +184,22 @@ def handler(
                 "days_with_data": len(report["days_with_data"]),
                 "flagged_cells": len(report["cells"]),
             }
+            if settings.alert_settings:
+                try:
+                    summary["alerts"] = alerts.notify(
+                        report,
+                        settings.alert_settings,
+                        bucket=settings.bucket,
+                        s3=s3,
+                        ssm=ssm,
+                        ses=ses,
+                        post=post,
+                    )
+                except Exception:
+                    # The report is already published; a broken alert path
+                    # must not fail the run and trigger download retries.
+                    logger.exception("alert notification failed")
+                    summary["alerts"] = "failed"
     return summary
 
 
