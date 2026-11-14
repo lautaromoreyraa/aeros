@@ -1,5 +1,6 @@
 // Read-only views over the artifacts the model pipeline publishes
-// (validation.json, calendar_region.json, morning.json).
+// (validation.json, calendar_region.json, morning.json, critical_period.json,
+// meta.json).
 
 export interface CalendarRow {
   year: number;
@@ -41,6 +42,14 @@ export class PipelineData {
 
   morning(): Promise<unknown> {
     return this.json("morning.json");
+  }
+
+  criticalPeriod(): Promise<unknown> {
+    return this.json("critical_period.json");
+  }
+
+  meta(): Promise<unknown> {
+    return this.json("meta.json");
   }
 
   async calendar(query: CalendarQuery = {}): Promise<CalendarRow[]> {

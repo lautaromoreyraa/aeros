@@ -187,6 +187,28 @@ export function buildServer(store: Store, data: PipelineData, identity: Identity
   );
 
   server.registerTool(
+    "critical_period",
+    {
+      description:
+        "The fire season of the validation region: the shortest run of calendar months holding " +
+        "80 % of the median harmonized activity, its peak month, and the median per month.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => text(await data.criticalPeriod()),
+  );
+
+  server.registerTool(
+    "pipeline_meta",
+    {
+      description:
+        "How the published artifacts were produced: unit (hotspots or cell_days), VIIRS " +
+        "reference chain, H3 resolution, chosen model and the months covered.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => text(await data.meta()),
+  );
+
+  server.registerTool(
     "morning_loss",
     {
       description:
