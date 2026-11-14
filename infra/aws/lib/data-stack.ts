@@ -1,4 +1,5 @@
 import { Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 
@@ -15,7 +16,18 @@ export const DATA_LAYOUT = {
   alertStateKey: "state/alerts.json",
   /** Which cells the GOES watch already told people about; private too. */
   goesAlertStateKey: "state/goes_alerts.json",
+  /** Wind of the next 48 h (`aeros wind`); optional, uploaded by hand or by a job. */
+  windKey: "derived/wind.json",
+  /** Fire-weather index of the next days (`aeros fire-weather`); optional too. */
+  fireWeatherKey: "derived/fire_weather.json",
 } as const;
+
+/**
+ * Provisioned capacity of the subscriptions table, in units. The always-free
+ * allowance is 25 read and 25 write units for the whole account, so this
+ * leaves room and, being provisioned, can never turn into a bill.
+ */
+export const SUBSCRIPTIONS_CAPACITY = { read: 5, write: 5 } as const;
 
 export interface DataStackProps extends StackProps {
   /** Days a raw FIRMS download is kept. */
@@ -30,9 +42,24 @@ export interface DataStackProps extends StackProps {
  */
 export class DataStack extends Stack {
   readonly bucket: s3.Bucket;
+  readonly subscriptions: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
+
+    // Who asked for alerts about which cells. Tiny, so a Scan reads it; kept on
+    // delete because people signed up in it. Pending sign-ups carry `ttl` and
+    // DynamoDB removes them after their day, at no cost. No point-in-time
+    // recovery (billed) and no autoscaling (it creates alarms, which count
+    // against the free ten).
+    this.subscriptions = new dynamodb.Table(this, "SubscriptionsTable", {
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PROVISIONED,
+      readCapacity: SUBSCRIPTIONS_CAPACITY.read,
+      writeCapacity: SUBSCRIPTIONS_CAPACITY.write,
+      timeToLiveAttribute: "ttl",
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
 
     this.bucket = new s3.Bucket(this, "DataBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,

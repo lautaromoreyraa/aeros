@@ -28,12 +28,17 @@ export function buildAeros(app: App, account?: string): AerosStacks {
     env,
     dataBucket: data.bucket,
     apiReservedConcurrency: config.apiReservedConcurrency,
+    subscriptionsTable: data.subscriptions,
+    firmsArea: config.firmsArea,
+    webUrl: config.webUrl,
+    alertEmailIdentity: config.alertEmailIdentity,
     domainName: config.webDomainName,
     certificateArn: config.webCertificateArn,
   });
   const refresh = new RefreshStack(app, "AerosRefresh", {
     env,
     dataBucket: data.bucket,
+    subscriptionsTable: data.subscriptions,
     firmsMapKeyParameter: config.firmsMapKeyParameter,
     firmsArea: config.firmsArea,
     reservedConcurrency: config.refreshReservedConcurrency,

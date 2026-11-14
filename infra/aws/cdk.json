@@ -32,8 +32,8 @@
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": true,
     "aeros:rawRetentionDays": 90,
-    "aeros:apiReservedConcurrency": 2,
-    "aeros:refreshReservedConcurrency": 1,
+    "aeros:apiReservedConcurrency": 0,
+    "aeros:refreshReservedConcurrency": 0,
     "aeros:budgetLimitUsd": 1
   }
 }
