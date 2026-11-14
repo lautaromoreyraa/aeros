@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from aeros import firms, grid, pipeline, synthetic
+from aeros import firms, grid, pipeline, regions, synthetic
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,11 +31,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     run.add_argument("--unit", choices=["hotspots", "cell_days"], default="hotspots")
     run.add_argument("--split-year", type=int, default=2019)
+    run.add_argument(
+        "--regions",
+        default="",
+        help=f"study regions to report, comma-separated or 'all' ({', '.join(regions.REGION_IDS)});"
+        " empty reports every detection as one region",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "demo":
         return _demo(args.out, args.seed, args.unit)
-    detections = firms.load_many(args.files)
+    study = regions.parse(args.regions) if args.regions else []
+    # Clipping file by file keeps whole-country archives from filling memory.
+    keep = (lambda d: regions.clip(d, study, args.resolution)) if study else None
+    detections = firms.load_many(args.files, keep=keep)
     result = pipeline.run(
         detections,
         args.out,
@@ -43,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         reference=tuple(args.reference.split(",")),
         unit=args.unit,
         split_year=args.split_year,
+        study_regions=study,
     )
     print(json.dumps(result.report.as_dict(), indent=2))
     return 0

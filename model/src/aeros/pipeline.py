@@ -11,18 +11,24 @@ Outputs (all in `out_dir`):
 * `critical_period.json`      shortest run of months holding 80 % of activity
 * `forecast.json`             1-4 week activity forecast with its validation
 * `meta.json`                 unit, reference chain, grid resolution, chosen model
+
+With study regions, the translator is fitted once on all of them and every
+region gets the files above in `out_dir/<region id>/`, listed in
+`out_dir/regions.json`. The two Parquet tables are also written to `out_dir`
+for the union of the regions: the API input.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from aeros import burn_calendar, features, forecast, harmonize, morning, validation
+from aeros import burn_calendar, features, forecast, harmonize, morning, regions, validation
 
 
 @dataclass
@@ -42,13 +48,50 @@ def run(
     reference: tuple[str, ...] = features.DEFAULT_REFERENCE,
     unit: str = "hotspots",
     split_year: int = 2019,
+    study_regions: Sequence[regions.Region] = (),
 ) -> Result:
     out_dir.mkdir(parents=True, exist_ok=True)
+    if study_regions:
+        detections = regions.clip(detections, study_regions, resolution)
     panel = features.build_panel(detections, resolution=resolution, reference=reference, unit=unit)
     report, fitted = validation.evaluate(panel.frame, split_year=split_year)
     translator = fitted[report.winner]
     harmonized = harmonize.harmonize_panel(panel.frame, translator)
 
+    meta = {"unit": unit, "reference_chain": list(reference), "resolution": resolution}
+    if not study_regions:
+        _write_outputs(detections, harmonized, report, out_dir, meta)
+    for region in study_regions:
+        _write_outputs(
+            detections[regions.in_region(detections, region, resolution)],
+            harmonized[regions.in_region(harmonized, region, resolution)],
+            report,
+            out_dir / region.id,
+            {**meta, "region": region.describe()},
+        )
+    if study_regions:
+        # The API answers any drawn area, so it reads one table for the union of
+        # the regions (without the neighbor ring) rather than one per region.
+        union = harmonized["cell"].isin(
+            frozenset().union(*(r.cells(resolution) for r in study_regions))
+        )
+        harmonized[union].to_parquet(out_dir / "harmonized_cells.parquet", index=False)
+        harmonize.hotspot_weights(detections, harmonized[union], resolution).to_parquet(
+            out_dir / "hotspots_harmonized.parquet", index=False
+        )
+        _write_json(out_dir / "regions.json", [r.describe() for r in study_regions])
+    return Result(panel.frame, harmonized, report, report.winner, resolution, unit)
+
+
+def _write_outputs(
+    detections: pd.DataFrame,
+    harmonized: pd.DataFrame,
+    report: validation.Report,
+    out_dir: Path,
+    meta: dict,
+) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    resolution, unit = meta["resolution"], meta["unit"]
     harmonized.to_parquet(out_dir / "harmonized_cells.parquet", index=False)
     weights = harmonize.hotspot_weights(detections, harmonized, resolution)
     weights.to_parquet(out_dir / "hotspots_harmonized.parquet", index=False)
@@ -73,15 +116,12 @@ def run(
     _write_json(
         out_dir / "meta.json",
         {
-            "unit": unit,
-            "reference_chain": list(reference),
-            "resolution": resolution,
+            **meta,
             "model": report.winner,
             "first_month": str(harmonized["month"].min().date()),
             "last_month": str(harmonized["month"].max().date()),
         },
     )
-    return Result(panel.frame, harmonized, report, report.winner, resolution, unit)
 
 
 def _calendar_records(table: pd.DataFrame) -> list[dict]:
