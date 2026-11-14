@@ -1,16 +1,17 @@
-"""Command line entry point: `aeros demo` and `aeros run`."""
+"""Command line entry point: `aeros demo`, `aeros fetch` and `aeros run`."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from aeros import firms, grid, pipeline, synthetic
+from aeros import archive, firms, grid, pipeline, synthetic
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -32,9 +33,18 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--unit", choices=["hotspots", "cell_days"], default="hotspots")
     run.add_argument("--split-year", type=int, default=2019)
 
+    fetch = sub.add_parser("fetch", help="download FIRMS yearly country summaries")
+    fetch.add_argument("--out", type=Path, default=Path("data/raw/firms"))
+    fetch.add_argument("--countries", default=",".join(archive.GRAN_CHACO_COUNTRIES))
+    fetch.add_argument("--last-year", type=int, default=date.today().year - 1)
+
     args = parser.parse_args(argv)
     if args.command == "demo":
         return _demo(args.out, args.seed, args.unit)
+    if args.command == "fetch":
+        files = archive.plan(args.countries.split(","), args.last_year)
+        print(json.dumps(archive.download(files, args.out), indent=2))
+        return 0
     detections = firms.load_many(args.files)
     result = pipeline.run(
         detections,
