@@ -34,6 +34,15 @@ export interface AerosConfig {
   readonly webDomainName?: string;
   /** ACM certificate for webDomainName; CloudFront only accepts us-east-1 ones. */
   readonly webCertificateArn?: string;
+  /** Public URL of the web app, linked from every alert. */
+  readonly webUrl: string;
+  /** Human name of the FIRMS area, used in alert messages. */
+  readonly alertRegionName: string;
+  /**
+   * Verified SES identity (domain or address) alerts are sent from. Without it
+   * the function gets no SES permission and the e-mail channel stays off.
+   */
+  readonly alertEmailIdentity?: string;
 }
 
 const PREFIX = "aeros:";
@@ -85,6 +94,14 @@ export function loadConfig(scope: Construct): AerosConfig {
   }
   const createProvider = read<boolean | string>(scope, PREFIX + "createGithubOidcProvider");
   const email = read<string>(scope, PREFIX + "budgetEmail");
+  const webUrl = required<string>(scope, PREFIX + "webUrl");
+  if (!/^https:\/\/[\w.-]+(:\d+)?(\/[\w./-]*)?$/.test(webUrl)) {
+    throw new Error(`aeros:webUrl must be an https URL, got "${webUrl}"`);
+  }
+  const identity = read<string>(scope, PREFIX + "alertEmailIdentity");
+  if (identity && !/^([\w.+-]+@)?[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(identity)) {
+    throw new Error("aeros:alertEmailIdentity must be a domain or an e-mail address");
+  }
   return {
     region,
     githubRepository: repository,
@@ -99,5 +116,8 @@ export function loadConfig(scope: Construct): AerosConfig {
     createGithubOidcProvider: createProvider !== false && createProvider !== "false",
     webDomainName: domain || undefined,
     webCertificateArn: certificate || undefined,
+    webUrl,
+    alertRegionName: read<string>(scope, PREFIX + "alertRegionName") || "the monitored region",
+    alertEmailIdentity: identity || undefined,
   };
 }

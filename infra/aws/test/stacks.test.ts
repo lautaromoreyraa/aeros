@@ -15,6 +15,8 @@ const CONTEXT = {
   "aeros:firmsMapKeyParameter": "/aeros/firms/map-key",
   "aeros:firmsArea": "-74,-56,-53,-21",
   "aeros:createGithubOidcProvider": true,
+  "aeros:webUrl": "https://aeros.example.org",
+  "aeros:alertRegionName": "Test region",
   // Synthesize without building the Python layer (pip, network).
   "aws:cdk:bundling-stacks": [],
 };
@@ -336,15 +338,61 @@ describe("FIRMS refresh and early warning", () => {
     expect(JSON.stringify(statements(refresh))).not.toContain("secretsmanager:");
   });
 
-  it("writes only raw/firms/ and the early warning, and reads only harmonized/", () => {
+  it("writes only raw/firms/, the early warning and the alert state; reads harmonized/ and the state", () => {
     const s3 = statements(refresh).filter((s) => actionsOf(s).some((a) => a.startsWith("s3:")));
     for (const statement of s3) {
       expect(actionsOf(statement).some((a) => /^s3:Delete/.test(a))).toBe(false);
       const json = JSON.stringify(statement.Resource);
       const writes = actionsOf(statement).some((a) => /^s3:(Put|Abort)/.test(a));
-      if (writes) expect(json).toMatch(/raw\/firms\/\*|derived\/early_warning\.json/);
-      else expect(json).toContain("/harmonized/*");
+      if (writes) {
+        expect(json).toMatch(/raw\/firms\/\*|derived\/early_warning\.json|state\/alerts\.json/);
+      } else {
+        expect(json).toMatch(/\/harmonized\/\*|\/state\/alerts\.json/);
+      }
     }
+  });
+
+  it("reads exactly the four alert parameters with GetParameter only", () => {
+    refresh.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ALERT_STATE_KEY: "state/alerts.json",
+          ALERT_WEB_URL: "https://aeros.example.org",
+          ALERT_EMAIL_FROM_PARAMETER: "/aeros/alerts/email-from",
+          ALERT_EMAIL_TO_PARAMETER: "/aeros/alerts/email-to",
+          ALERT_TELEGRAM_TOKEN_PARAMETER: "/aeros/alerts/telegram-token",
+          ALERT_TELEGRAM_CHAT_PARAMETER: "/aeros/alerts/telegram-chat-id",
+        }),
+      },
+    });
+    const alertReads = statements(refresh).filter((s) =>
+      JSON.stringify(s.Resource).includes("parameter/aeros/alerts/"),
+    );
+    expect(alertReads).toHaveLength(1);
+    const [read] = alertReads as [Record<string, unknown>];
+    expect(actionsOf(read)).toEqual(["ssm:GetParameter"]);
+    const json = JSON.stringify(read.Resource);
+    for (const name of ["email-from", "email-to", "telegram-token", "telegram-chat-id"]) {
+      expect(json).toContain(`:parameter/aeros/alerts/${name}`);
+    }
+    expect(json).not.toContain("*");
+  });
+
+  it("grants no SES permission unless a sender identity is given", () => {
+    expect(JSON.stringify(statements(refresh))).not.toContain("ses:");
+  });
+
+  it("scopes ses:SendEmail to the sender identity alone", () => {
+    const template = Template.fromStack(
+      build({ "aeros:alertEmailIdentity": "alerts.example.org" }).refresh,
+    );
+    const ses = statements(template).filter((s) => actionsOf(s).some((a) => a.startsWith("ses:")));
+    expect(ses).toHaveLength(1);
+    const [send] = ses as [Record<string, unknown>];
+    expect(actionsOf(send)).toEqual(["ses:SendEmail"]);
+    const json = JSON.stringify(send.Resource);
+    expect(json).toContain(":identity/alerts.example.org");
+    expect(json).not.toContain("*");
   });
 });
 
@@ -425,6 +473,16 @@ describe("GitHub deploy role", () => {
 });
 
 describe("config", () => {
+  it("rejects a web URL that is not https", () => {
+    expect(() => build({ "aeros:webUrl": "http://aeros.example.org" })).toThrow(/aeros:webUrl/);
+  });
+
+  it("rejects a malformed SES identity", () => {
+    expect(() => build({ "aeros:alertEmailIdentity": "not an identity" })).toThrow(
+      /alertEmailIdentity/,
+    );
+  });
+
   it("rejects a repository that is not owner/name", () => {
     const app = new App({ context: { ...CONTEXT, "aeros:githubRepository": "aeros" } });
     expect(() => loadConfig(app)).toThrow(/owner\/name/);

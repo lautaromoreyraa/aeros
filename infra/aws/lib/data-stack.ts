@@ -9,6 +9,8 @@ export const DATA_LAYOUT = {
   hotspotsKey: "harmonized/hotspots_harmonized.parquet",
   rawFirmsPrefix: "raw/firms/",
   earlyWarningKey: "derived/early_warning.json",
+  /** What the last alert notification told people; private, never served. */
+  alertStateKey: "state/alerts.json",
 } as const;
 
 export interface DataStackProps extends StackProps {
