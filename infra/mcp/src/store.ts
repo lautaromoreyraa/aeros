@@ -130,6 +130,7 @@ export const GIT_WORKFLOW_ORDER = [
   "coordination",
   "branches",
   "commits",
+  "task_pushes",
   "cleanup_before_pr",
   "sync_with_develop",
   "pull_requests",
