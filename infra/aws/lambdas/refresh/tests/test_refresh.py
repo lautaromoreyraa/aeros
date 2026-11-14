@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -10,6 +10,7 @@ from refresh import RefreshError, Settings
 
 KEY = "abcdef0123456789abcdef0123456789"
 TODAY = date(2026, 11, 14)
+NOW = datetime(2026, 11, 14, 6, 0, tzinfo=UTC)
 HEADER = b"latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,frp\n"
 
 
@@ -17,7 +18,7 @@ def settings(**overrides) -> Settings:
     base = dict(
         bucket="data-bucket",
         prefix="raw/firms/",
-        secret_name="aeros/firms-map-key",
+        map_key_parameter="/aeros/firms/map-key",
         area="-74,-56,-53,-21",
         sources=("MODIS_NRT", "VIIRS_SNPP_NRT"),
         days_back=2,
@@ -34,14 +35,14 @@ class FakeS3:
         self.objects[kwargs["Key"]] = kwargs
 
 
-class FakeSecrets:
+class FakeSsm:
     def __init__(self, value: str):
         self.value = value
-        self.asked: list[str] = []
+        self.asked: list[tuple[str, bool]] = []
 
-    def get_secret_value(self, SecretId: str):  # noqa: N803 (boto3 signature)
-        self.asked.append(SecretId)
-        return {"SecretString": self.value}
+    def get_parameter(self, Name: str, WithDecryption: bool):  # noqa: N803 (boto3 signature)
+        self.asked.append((Name, WithDecryption))
+        return {"Parameter": {"Name": Name, "Type": "SecureString", "Value": self.value}}
 
 
 def csv_with(rows: int) -> bytes:
@@ -49,19 +50,20 @@ def csv_with(rows: int) -> bytes:
     return HEADER + line * rows
 
 
-def run(fetch, secret=KEY, **overrides):
+def run(fetch, secret=KEY, early_warning=None, **overrides):
     s3 = FakeS3()
-    secrets = FakeSecrets(secret)
+    ssm = FakeSsm(secret)
     summary = refresh.handler(
         {},
         None,
         settings=settings(**overrides),
         s3=s3,
-        secrets=secrets,
+        ssm=ssm,
         fetch=fetch,
-        today=TODAY,
+        now=NOW,
+        early_warning=early_warning,
     )
-    return summary, s3, secrets
+    return summary, s3, ssm
 
 
 def test_one_file_per_source_and_day_named_for_the_pipeline():
@@ -71,8 +73,8 @@ def test_one_file_per_source_and_day_named_for_the_pipeline():
         urls.append(url)
         return csv_with(3)
 
-    summary, s3, secrets = run(fetch)
-    assert secrets.asked == ["aeros/firms-map-key"]
+    summary, s3, ssm = run(fetch)
+    assert ssm.asked == [("/aeros/firms/map-key", True)]
     assert sorted(s3.objects) == [
         "raw/firms/nrt/2026-11-12/fire_nrt_m-c61_2026-11-12.csv",
         "raw/firms/nrt/2026-11-12/fire_nrt_sv-c2_2026-11-12.csv",
@@ -163,7 +165,7 @@ def test_http_failure_is_reported_without_url(monkeypatch):
 def test_settings_from_environment(monkeypatch):
     monkeypatch.setenv("DATA_BUCKET", "b")
     monkeypatch.setenv("RAW_PREFIX", "raw/firms")
-    monkeypatch.setenv("FIRMS_SECRET_NAME", "aeros/firms-map-key")
+    monkeypatch.setenv("FIRMS_MAP_KEY_PARAMETER", "/aeros/firms/map-key")
     monkeypatch.setenv("FIRMS_AREA", "-74, -56, -53, -21")
     monkeypatch.setenv("FIRMS_SOURCES", "MODIS_NRT, VIIRS_NOAA21_NRT")
     monkeypatch.setenv("FIRMS_DAYS_BACK", "3")
@@ -179,14 +181,63 @@ def test_settings_from_environment(monkeypatch):
     [
         ("FIRMS_SOURCES", "MODIS_NRT,LANDSAT"),
         ("FIRMS_AREA", "world"),
-        ("FIRMS_DAYS_BACK", "9"),
+        ("FIRMS_DAYS_BACK", "11"),
     ],
 )
 def test_bad_settings_are_rejected(monkeypatch, name, value):
     monkeypatch.setenv("DATA_BUCKET", "b")
-    monkeypatch.setenv("FIRMS_SECRET_NAME", "s")
+    monkeypatch.setenv("FIRMS_MAP_KEY_PARAMETER", "/p")
     monkeypatch.setenv("FIRMS_AREA", "-74,-56,-53,-21")
     monkeypatch.setenv("FIRMS_SOURCES", "MODIS_NRT")
     monkeypatch.setenv(name, value)
     with pytest.raises(RefreshError):
+        Settings.from_environment()
+
+
+def test_early_warning_runs_on_this_runs_downloads_and_is_published():
+    seen = {}
+
+    def early_warning(downloads, days, now):
+        seen.update(downloads=downloads, days=days, now=now)
+        return {"days_with_data": [d.isoformat() for d in days], "cells": [{"cell": "x"}]}
+
+    summary, s3, _ = run(
+        lambda url: csv_with(1),
+        early_warning=early_warning,
+        sources=("VIIRS_NOAA20_NRT",),
+        days_back=7,
+        early_warning_key="derived/early_warning.json",
+    )
+    assert seen["days"] == [date(2026, 11, d) for d in range(7, 14)]
+    assert ("VIIRS_NOAA20_NRT", date(2026, 11, 13)) in seen["downloads"]
+    published = s3.objects["derived/early_warning.json"]
+    assert published["ContentType"] == "application/json"
+    assert json.loads(published["Body"])["cells"] == [{"cell": "x"}]
+    assert summary["early_warning"]["flagged_cells"] == 1
+
+
+def test_early_warning_failure_keeps_the_downloads():
+    def broken(downloads, days, now):
+        raise LookupError("harmonized_cells.parquet missing")
+
+    summary, s3, _ = run(
+        lambda url: csv_with(1),
+        early_warning=broken,
+        sources=("VIIRS_NOAA20_NRT",),
+        days_back=7,
+        early_warning_key="derived/early_warning.json",
+    )
+    assert summary["early_warning"] == "failed"
+    assert "derived/early_warning.json" not in s3.objects
+    assert len(s3.objects) == 7
+
+
+def test_early_warning_needs_a_full_window(monkeypatch):
+    monkeypatch.setenv("DATA_BUCKET", "b")
+    monkeypatch.setenv("FIRMS_MAP_KEY_PARAMETER", "/p")
+    monkeypatch.setenv("FIRMS_AREA", "-74,-56,-53,-21")
+    monkeypatch.setenv("FIRMS_SOURCES", "VIIRS_NOAA20_NRT")
+    monkeypatch.setenv("FIRMS_DAYS_BACK", "3")
+    monkeypatch.setenv("EARLY_WARNING_KEY", "derived/early_warning.json")
+    with pytest.raises(RefreshError, match="FIRMS_DAYS_BACK"):
         Settings.from_environment()
