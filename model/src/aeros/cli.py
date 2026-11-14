@@ -1,5 +1,5 @@
 """Command line entry point: `aeros demo`, `aeros fetch`, `aeros fetch-recent`,
-`aeros build-db`, `aeros run` and `aeros wind`."""
+`aeros build-db`, `aeros run`, `aeros wind` and `aeros fire-weather`."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import pandas as pd
 from aeros import (
     archive,
     database,
+    fireweather,
     firms,
     goes,
     grid,
@@ -120,6 +121,19 @@ def main(argv: list[str] | None = None) -> int:
     wnd.add_argument("--ny", type=int, default=12, help="grid nodes north to south")
     wnd.add_argument("--hours", type=int, default=48, help="hourly steps from the current hour")
 
+    fw = sub.add_parser(
+        "fire-weather",
+        help="Hot-Dry-Windy index of the next days against the same season of past years",
+    )
+    fw.add_argument("--out", type=Path, default=Path("data/processed/fire_weather.json"))
+    fw.add_argument("--area", default=archive.STUDY_AREA, help="west,south,east,north")
+    fw.add_argument("--nx", type=int, default=8, help="grid nodes west to east")
+    fw.add_argument("--ny", type=int, default=8, help="grid nodes north to south")
+    fw.add_argument("--days", type=int, default=4, help="days ahead, today included")
+    fw.add_argument("--years", type=int, default=10, help="years of ERA5 for the ranking")
+    fw.add_argument("--half-window", type=int, default=15, help="days around the season")
+    fw.add_argument("--pause", type=float, default=20.0, help="seconds between history requests")
+
     check = sub.add_parser(
         "verify-archive",
         help="check every yearly country file on disk against the size FIRMS serves;"
@@ -189,6 +203,21 @@ def main(argv: list[str] | None = None) -> int:
                 {"hours": len(field["hours"]), "first": field["hours"][0], "grid": field["grid"]}
             )
         )
+        return 0
+    if args.command == "fire-weather":
+        field = fireweather.build(
+            wind.parse_area(args.area),
+            args.nx,
+            args.ny,
+            args.days,
+            datetime.now(UTC),
+            years=args.years,
+            half_window=args.half_window,
+            pause=args.pause,
+        )
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(field, separators=(",", ":")))
+        print(json.dumps(fireweather.summarize(field), indent=1))
         return 0
     if args.command == "verify-archive":
         report = archive.verify(args.folders)
