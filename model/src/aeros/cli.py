@@ -1,5 +1,5 @@
 """Command line entry point: `aeros demo`, `aeros fetch`, `aeros fetch-recent`,
-`aeros build-db` and `aeros run`."""
+`aeros build-db`, `aeros run` and `aeros wind`."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from aeros import (
     regions,
     sectors,
     synthetic,
+    wind,
 )
 
 
@@ -109,6 +110,16 @@ def main(argv: list[str] | None = None) -> int:
     fast.add_argument("--area", default=archive.STUDY_AREA, help="west,south,east,north")
     fast.add_argument("--resolution", type=int, default=4)
 
+    wnd = sub.add_parser(
+        "wind",
+        help="hourly 10 m wind over the study area for the next two days, as wind.json",
+    )
+    wnd.add_argument("--out", type=Path, default=Path("data/processed/wind.json"))
+    wnd.add_argument("--area", default=archive.STUDY_AREA, help="west,south,east,north")
+    wnd.add_argument("--nx", type=int, default=12, help="grid nodes west to east")
+    wnd.add_argument("--ny", type=int, default=12, help="grid nodes north to south")
+    wnd.add_argument("--hours", type=int, default=48, help="hourly steps from the current hour")
+
     check = sub.add_parser(
         "verify-archive",
         help="check every yearly country file on disk against the size FIRMS serves;"
@@ -166,6 +177,18 @@ def main(argv: list[str] | None = None) -> int:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(summary, indent=1))
         print(json.dumps({k: summary[k] for k in ("scans", "pixels", "confident_pixels")}))
+        return 0
+    if args.command == "wind":
+        field = wind.build(
+            wind.parse_area(args.area), args.nx, args.ny, args.hours, datetime.now(UTC)
+        )
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(field, separators=(",", ":")))
+        print(
+            json.dumps(
+                {"hours": len(field["hours"]), "first": field["hours"][0], "grid": field["grid"]}
+            )
+        )
         return 0
     if args.command == "verify-archive":
         report = archive.verify(args.folders)
