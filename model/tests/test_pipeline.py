@@ -157,6 +157,39 @@ def test_silent_platform_weeks_are_gaps_not_zero_fire():
     assert not out.loc[outage, "reference_on"].any()
 
 
+def test_noaa21_backs_up_noaa20_during_its_outage():
+    from aeros import reference
+
+    frame, snpp_off, outage = _bridge_frame()
+    # NOAA-21 sees 9 where Suomi NPP saw 10, and keeps delivering through the outage.
+    frame["noaa21_ref_n"] = 9.0
+    out = reference.chain(frame, ("SNPP", "NOAA20", "NOAA21"))
+
+    backup = out[outage]
+    assert (backup["reference_platform"] == "NOAA21").all()
+    assert backup["reference_on"].all()
+    assert backup["viirs_n"].round(6).eq(10.0).all()
+    # Outside the outage the earlier platform keeps speaking: NOAA-21 never takes over by default.
+    assert (out.loc[snpp_off & ~outage, "reference_platform"] == "NOAA20").all()
+    assert (out.loc[~snpp_off, "reference_platform"] == "SNPP").all()
+
+
+def test_a_chain_with_no_noaa21_files_behaves_as_before():
+    from aeros import reference
+
+    frame, _, _ = _bridge_frame()
+    before = reference.chain(frame, ("SNPP", "NOAA20"))
+    frame["noaa21_ref_n"] = 0.0
+    after = reference.chain(frame, ("SNPP", "NOAA20", "NOAA21"))
+
+    for column in ("viirs_n", "reference_platform", "reference_on", "reference_primary"):
+        assert after[column].equals(before[column]), column
+
+
+def test_the_default_chain_ends_with_noaa21():
+    assert features.DEFAULT_REFERENCE == ("SNPP", "NOAA20", "NOAA21")
+
+
 def test_cell_day_unit_counts_days_not_pixels():
     raw = pd.DataFrame(
         {

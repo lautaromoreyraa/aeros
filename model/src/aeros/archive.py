@@ -125,11 +125,14 @@ STUDY_AREA = "-69,-35,-53,-16"
 
 # Per platform: standard-processing source, then near-real-time, each with the
 # file prefix `aeros.sensors.FILE_PREFIXES` maps to an instrument. NOAA-21 is
-# left out, as in the yearly archive: it is not in the reference chain.
+# only here: the yearly country archive does not publish it, so its whole
+# record comes from this API. A source the API does not list is skipped, so
+# the standard-processing entry of a platform that has none costs nothing.
 RECENT_SOURCES = (
     (("MODIS_SP", "fire_archive_m-c61"), ("MODIS_NRT", "fire_nrt_m-c61")),
     (("VIIRS_SNPP_SP", "fire_archive_sv-c2"), ("VIIRS_SNPP_NRT", "fire_nrt_sv-c2")),
     (("VIIRS_NOAA20_SP", "fire_archive_j1v-c2"), ("VIIRS_NOAA20_NRT", "fire_nrt_j1v-c2")),
+    (("VIIRS_NOAA21_SP", "fire_archive_j2v-c2"), ("VIIRS_NOAA21_NRT", "fire_nrt_j2v-c2")),
 )
 # The area API serves at most five days per request.
 MAX_DAYS = 5
