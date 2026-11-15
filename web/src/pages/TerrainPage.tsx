@@ -9,6 +9,7 @@ import { SectorOverview } from "../components/SectorOverview";
 import type { MapFocus } from "../components/HexMap";
 import { useFireWeather } from "../hooks/useFireWeather";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
+import { useRememberedChoice } from "../hooks/useRememberedChoice";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { useSectorCalendars } from "../hooks/useSectorCalendars";
 import { useWind } from "../hooks/useWind";
@@ -77,9 +78,13 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
   const panelRef = useRef<HTMLElement>(null);
   // Wind is one more layer of the terrain, always on.
   const windState = useWind();
+  const [windPlaying, setWindPlaying] = useRememberedChoice("aeros-wind", !reducedMotion);
   const wind = useMemo(
-    () => (windState?.status === "ready" ? { field: windState.data, hour: hourIndexAt(windState.data, Date.now()) } : null),
-    [windState],
+    () =>
+      windState?.status === "ready"
+        ? { field: windState.data, hour: hourIndexAt(windState.data, Date.now()), playing: windPlaying, onToggle: () => setWindPlaying(!windPlaying) }
+        : null,
+    [windState, windPlaying, setWindPlaying],
   );
   const [tab, setTab] = useState<Tab>("overview");
   const [month, setMonth] = useState(region.lastMonth);
@@ -179,6 +184,20 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
   const current = zones.find((zone) => zone.id === sectorId);
   const units = unitLabel(region.unit);
 
+  const windTime = wind
+    ? (() => {
+        const parsed = Date.parse(wind.field.hours[wind.hour] ?? "");
+        return Number.isNaN(parsed) ? "" : ` (${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(parsed)})`;
+      })()
+    : "";
+  const windLegend = wind
+    ? windPlaying
+      ? `Wind now${windTime}: the streaks move the way it blows; brighter and faster means stronger.`
+      : `Wind now${windTime}: each arrow points the way it blows; brighter and longer means stronger.${
+          reducedMotion ? " Paused because this device asks for less motion; press Play wind to see it move." : ""
+        }`
+    : null;
+
   return (
     <div className="terrain">
       <section className="terrain__map" aria-label={`Terrain of ${units} per H3 cell`}>
@@ -235,8 +254,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
           )}
           {wind && (
             <p className="terrain__legend">
-              Wind at 10 m, {wind.field.hours[wind.hour]?.slice(11, 16)} UTC: faint, slow streaks are a light breeze;
-              bright, fast ones a strong wind.{" "}
+              {windLegend}{" "}
               <a className="credit-link" href="https://open-meteo.com/">
                 Weather data by Open-Meteo.com
               </a>

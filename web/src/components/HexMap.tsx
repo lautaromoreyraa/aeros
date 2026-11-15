@@ -48,8 +48,8 @@ interface Props {
   panel?: RefObject<HTMLElement | null>;
   /** The ground under the columns; the theme's grey canvas unless a view asks for another. */
   basemap?: Basemap;
-  /** Animated wind over the columns, at one hour of the field. */
-  wind?: { field: WindField; hour: number } | null;
+  /** Wind streaks over the columns, at one hour of the field, with its play control. */
+  wind?: { field: WindField; hour: number; playing: boolean; onToggle: () => void } | null;
 }
 
 export default function HexMap(props: Props) {
@@ -210,7 +210,7 @@ export default function HexMap(props: Props) {
           hour={wind.hour}
           viewport={projection}
           cameraKey={cameraKey}
-          reducedMotion={reducedMotion}
+          playing={wind.playing}
           ink={groundId === "dark" ? "light" : "dark"}
         />
       )}
@@ -222,6 +222,11 @@ export default function HexMap(props: Props) {
         </svg>
       )}
       <div className="map__controls">
+        {wind && (
+          <button type="button" className="map__button" onClick={wind.onToggle}>
+            {wind.playing ? "Pause wind" : "Play wind"}
+          </button>
+        )}
         <button
           type="button"
           className="map__button"
