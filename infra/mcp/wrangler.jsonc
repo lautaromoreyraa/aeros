@@ -22,6 +22,6 @@
     // Audience tag of the Access application that fronts this hostname. Not a secret:
     // it only pins which application's signed assertions the Worker accepts.
     "ACCESS_AUD": "d49b6117483e53a303ce1d604930225c0b046f0008e87e41349b7734b043a42b",
-    "DATA_BASE_URL": "https://aeros.lautaromoreyra.dev/data"
+    "DATA_BASE_URL": "https://aer-os.health/data/hotspots"
   }
 }
