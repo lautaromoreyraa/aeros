@@ -56,6 +56,8 @@ export const ALERT_PARAMETERS = {
   emailTo: "/aeros/alerts/email-to",
   telegramToken: "/aeros/alerts/telegram-token",
   telegramChatId: "/aeros/alerts/telegram-chat-id",
+  /** Resend API key (SecureString). When it exists e-mail goes through Resend, else SES. */
+  resendKey: "/aeros/alerts/resend-api-key",
 } as const;
 
 /**
@@ -173,6 +175,7 @@ export class RefreshStack extends Stack {
         ALERT_EMAIL_TO_PARAMETER: ALERT_PARAMETERS.emailTo,
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
+        ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
         SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
         WIND_KEY: DATA_LAYOUT.windKey,
         FIRE_WEATHER_KEY: DATA_LAYOUT.fireWeatherKey,
@@ -238,6 +241,7 @@ export class RefreshStack extends Stack {
         ALERT_EMAIL_TO_PARAMETER: ALERT_PARAMETERS.emailTo,
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
+        ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
       },
     });
     props.dataBucket.grantPut(fn, DATA_LAYOUT.goesLatestKey);

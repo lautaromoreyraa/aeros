@@ -265,18 +265,26 @@ def _api_dependencies() -> Dependencies:
     if "api" not in _cache:
         import boto3
 
-        ssm, ses = boto3.client("ssm"), boto3.client("sesv2")
-        sender = _parameter(ssm, "ALERT_EMAIL_FROM_PARAMETER")
+        ssm = boto3.client("ssm")
+        send = alerts.email_sender_from_parameters(
+            ssm,
+            from_parameter=os.environ.get(
+                "ALERT_EMAIL_FROM_PARAMETER", alerts.EMAIL_FROM_PARAMETER
+            ),
+            resend_key_parameter=os.environ.get(
+                "ALERT_RESEND_KEY_PARAMETER", alerts.RESEND_KEY_PARAMETER
+            ),
+        )
 
         def send_mail(address: str, subject: str, text: str) -> None:
-            assert sender
-            alerts.send_email(ses, sender, [address], subject, text)
+            assert send
+            send([address], subject, text)
 
         _cache["api"] = Dependencies(
             _subscriptions(),
             web_url=os.environ.get("ALERT_WEB_URL", ""),
             bot_username=_parameter(ssm, "ALERT_TELEGRAM_BOT_PARAMETER"),
-            send_mail=send_mail if sender else None,
+            send_mail=send_mail if send else None,
         )
     return _cache["api"]
 

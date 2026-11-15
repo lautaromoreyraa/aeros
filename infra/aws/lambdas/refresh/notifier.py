@@ -51,6 +51,15 @@ def email_sender(ses, from_address: str) -> Sender:
     return send
 
 
+def mail_sender(send: alerts.MailSender) -> Sender:
+    """Any e-mail provider: `send` is what `alerts.email_sender_from_parameters` returns."""
+
+    def deliver(subscription: Subscription, subject: str, text: str) -> None:
+        send([str(subscription.address)], subject, text)
+
+    return deliver
+
+
 def notify(
     report: Mapping,
     subscriptions: Subscriptions,

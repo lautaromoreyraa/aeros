@@ -270,11 +270,16 @@ export class WebStack extends Stack {
         FIRMS_AREA: props.firmsArea,
         ALERT_WEB_URL: props.webUrl,
         ALERT_EMAIL_FROM_PARAMETER: ALERT_PARAMETERS.emailFrom,
+        ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
         ALERT_TELEGRAM_BOT_PARAMETER: SUBSCRIPTION_PARAMETERS.telegramBot,
       },
     });
     grantSubscriptionsTable(fn, props.subscriptionsTable);
-    grantParameters(this, fn, [ALERT_PARAMETERS.emailFrom, SUBSCRIPTION_PARAMETERS.telegramBot]);
+    grantParameters(this, fn, [
+      ALERT_PARAMETERS.emailFrom,
+      ALERT_PARAMETERS.resendKey,
+      SUBSCRIPTION_PARAMETERS.telegramBot,
+    ]);
     if (props.alertEmailIdentity) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({

@@ -9,11 +9,14 @@ so the next one is new again. That memory is a small JSON object in the data
 bucket, written only after at least one channel delivered: if every channel
 failed, tomorrow's run tries again.
 
+E-mail goes through Resend when its API key parameter exists and through Amazon
+SES otherwise (see `email_sender_from_parameters`).
+
 Both channels are optional and independent. Each one is configured by Parameter
 Store parameters created by hand; when they are missing the channel is skipped
 and logged, and one channel failing never stops the other. Secrets (the bot
-token) are read on every run and never logged: the token is part of the
-Telegram URL, so that URL is not logged either.
+token, the Resend key) are read on every run and never logged: the token is part
+of the Telegram URL, so that URL is not logged either.
 """
 
 from __future__ import annotations
@@ -35,12 +38,14 @@ REGION_ALPHA = 0.01
 REGION_GROWTH = 1.25
 TOP_CELLS = 5
 TELEGRAM_API = "https://api.telegram.org"
+RESEND_API = "https://api.resend.com/emails"
 
 # Parameter names, never values. The defaults match the deployed stack.
 EMAIL_FROM_PARAMETER = "/aeros/alerts/email-from"
 EMAIL_TO_PARAMETER = "/aeros/alerts/email-to"
 TELEGRAM_TOKEN_PARAMETER = "/aeros/alerts/telegram-token"
 TELEGRAM_CHAT_PARAMETER = "/aeros/alerts/telegram-chat-id"
+RESEND_KEY_PARAMETER = "/aeros/alerts/resend-api-key"
 
 
 class AlertError(RuntimeError):
@@ -57,6 +62,7 @@ class AlertSettings:
     email_to_parameter: str = EMAIL_TO_PARAMETER
     telegram_token_parameter: str = TELEGRAM_TOKEN_PARAMETER
     telegram_chat_parameter: str = TELEGRAM_CHAT_PARAMETER
+    resend_key_parameter: str = RESEND_KEY_PARAMETER
 
     @classmethod
     def from_environment(cls) -> AlertSettings | None:
@@ -77,6 +83,7 @@ class AlertSettings:
             telegram_chat_parameter=env.get(
                 "ALERT_TELEGRAM_CHAT_PARAMETER", TELEGRAM_CHAT_PARAMETER
             ),
+            resend_key_parameter=env.get("ALERT_RESEND_KEY_PARAMETER", RESEND_KEY_PARAMETER),
         )
 
 
@@ -234,26 +241,89 @@ def send_telegram(post: Post, token: str, chat_id: str, text: str) -> None:
         raise AlertError(f"Telegram refused the message: {answer.get('description', '?')}")
 
 
-def _http_post(url: str, body: dict) -> dict:
+def _http_post(
+    url: str, body: dict, headers: dict[str, str] | None = None, service: str = "Telegram"
+) -> dict:
     request = urllib.request.Request(
         url,
         data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json", "User-Agent": "aeros-alerts"},
+        # A User-Agent is required: Resend's edge refuses requests without one.
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "aeros-alerts",
+            **(headers or {}),
+        },
         method="POST",
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:
-        # Telegram's error body names the problem without echoing the token.
+        # The error body names the problem without echoing the token or the key.
         try:
-            detail = json.loads(exc.read()).get("description", "")
+            error = json.loads(exc.read())
+            detail = error.get("description") or error.get("message") or ""
         except Exception:
             detail = ""
-        raise AlertError(f"Telegram answered HTTP {exc.code} {detail}".strip()) from None
+        raise AlertError(f"{service} answered HTTP {exc.code} {detail}".strip()) from None
     except (urllib.error.URLError, TimeoutError) as exc:
         reason = getattr(exc, "reason", exc)
-        raise AlertError(f"Telegram unreachable: {type(reason).__name__}") from None
+        raise AlertError(f"{service} unreachable: {type(reason).__name__}") from None
+
+
+def resend_post(api_key: str) -> Post:
+    """A `Post` that signs its requests with the Resend API key."""
+
+    def post(url: str, body: dict) -> dict:
+        return _http_post(url, body, {"Authorization": f"Bearer {api_key}"}, "Resend")
+
+    return post
+
+
+def send_resend(post: Post, sender: str, recipients: list[str], subject: str, text: str) -> int:
+    """One message per recipient through Resend, like `send_email` does through SES."""
+    sent = 0
+    for recipient in recipients:
+        try:
+            answer = post(
+                RESEND_API,
+                {"from": sender, "to": [recipient], "subject": subject, "text": text},
+            )
+            if not answer.get("id"):
+                raise AlertError("Resend gave no message id")
+            sent += 1
+        except Exception as exc:
+            logger.error("Resend did not send to one recipient: %s", type(exc).__name__)
+    if not sent:
+        raise AlertError("Resend sent no message")
+    return sent
+
+
+#: Sends one message to a list of recipients; returns how many went out, raises if none did.
+MailSender = Callable[[list[str], str, str], int]
+
+
+def email_sender_from_parameters(
+    ssm,
+    *,
+    from_parameter: str,
+    resend_key_parameter: str,
+    ses=None,
+    make_resend_post: Callable[[str], Post] | None = None,
+) -> MailSender | None:
+    """Resend when its key parameter exists, SES otherwise; None without a sender address."""
+    sender = read_optional_parameter(ssm, from_parameter)
+    if not sender:
+        return None
+    key = read_optional_parameter(ssm, resend_key_parameter)
+    if key:
+        post = (make_resend_post or resend_post)(key)
+        return lambda to, subject, text: send_resend(post, sender, to, subject, text)
+    if ses is None:
+        import boto3
+
+        ses = boto3.client("sesv2")
+    return lambda to, subject, text: send_email(ses, sender, to, subject, text)
 
 
 def load_state(s3, bucket: str, key: str) -> dict | None:
@@ -283,18 +353,23 @@ def deliver(
     channels: dict[str, str] = {}
 
     try:
-        sender = read_optional_parameter(ssm, settings.email_from_parameter)
         to = read_optional_parameter(ssm, settings.email_to_parameter)
         recipients = [r.strip() for r in (to or "").split(",") if r.strip()]
-        if not sender or not recipients:
+        send = (
+            email_sender_from_parameters(
+                ssm,
+                from_parameter=settings.email_from_parameter,
+                resend_key_parameter=settings.resend_key_parameter,
+                ses=ses,
+            )
+            if recipients
+            else None
+        )
+        if not send:
             logger.info("e-mail channel not configured; skipping")
             channels["email"] = "skipped"
         else:
-            if ses is None:
-                import boto3
-
-                ses = boto3.client("sesv2")
-            sent = send_email(ses, sender, recipients, subject, text)
+            sent = send(recipients, subject, text)
             channels["email"] = f"sent to {sent} of {len(recipients)}"
     except Exception as exc:
         logger.error("e-mail alert failed: %s", exc)
