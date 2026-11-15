@@ -32,6 +32,7 @@ export const REFRESH_CODE_EXCLUDE = [
   "!telegram_bot.py",
   "!notifier.py",
   "!subscriber_alerts.py",
+  "!fire_alerts.py",
   "!alerts_api.py",
   "!alert_text.py",
   "!places.py",
@@ -178,9 +179,6 @@ export class RefreshStack extends Stack {
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
         ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
-        SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
-        WIND_KEY: DATA_LAYOUT.windKey,
-        FIRE_WEATHER_KEY: DATA_LAYOUT.fireWeatherKey,
       },
     });
     // The parameter uses the AWS-managed aws/ssm key, whose key policy lets
@@ -191,10 +189,6 @@ export class RefreshStack extends Stack {
     props.dataBucket.grantRead(this.handler, `${DATA_LAYOUT.harmonizedPrefix}*`);
     props.dataBucket.grantRead(this.handler, DATA_LAYOUT.alertStateKey);
     props.dataBucket.grantPut(this.handler, DATA_LAYOUT.alertStateKey);
-    // Optional extras of the subscriber messages, read when they exist.
-    props.dataBucket.grantRead(this.handler, DATA_LAYOUT.windKey);
-    props.dataBucket.grantRead(this.handler, DATA_LAYOUT.fireWeatherKey);
-    grantSubscriptionsTable(this.handler, props.subscriptionsTable);
 
     this.grantAlerts(this.handler, props);
 
@@ -211,8 +205,9 @@ export class RefreshStack extends Stack {
 
   /**
    * Every 10 minutes: read the newest GOES-19 fire scans from NOAA's public
-   * bucket, publish derived/goes_latest.json and tell people about a fire
-   * that persists in the study cells. 4,320 short runs a month stay inside
+   * bucket, publish derived/goes_latest.json and tell the fixed list and
+   * the subscribers within 50 km about a fire that persists in the study
+   * cells. 4,320 short runs a month stay inside
    * the always-free Lambda allowance, and the scans themselves are read from
    * NOAA, never copied into the data bucket.
    */
@@ -244,12 +239,17 @@ export class RefreshStack extends Stack {
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
         ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
+        SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
+        WIND_KEY: DATA_LAYOUT.windKey,
       },
     });
     props.dataBucket.grantPut(fn, DATA_LAYOUT.goesLatestKey);
     props.dataBucket.grantRead(fn, DATA_LAYOUT.cellsKey);
     props.dataBucket.grantRead(fn, DATA_LAYOUT.goesAlertStateKey);
     props.dataBucket.grantPut(fn, DATA_LAYOUT.goesAlertStateKey);
+    // The wind of the subscriber message is a bonus, read when the file exists.
+    props.dataBucket.grantRead(fn, DATA_LAYOUT.windKey);
+    grantSubscriptionsTable(fn, props.subscriptionsTable);
     this.grantAlerts(fn, props);
 
     new events.Rule(this, "GoesWatchSchedule", {

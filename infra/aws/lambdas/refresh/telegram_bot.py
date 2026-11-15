@@ -147,19 +147,19 @@ def _guide(web_url: str, language: str, status: str) -> str:
             "Hello. I am the aeros fire alert bot.",
             "",
             "What is aeros?",
-            "A system that checks every day what NASA satellites see over the Gran Chaco "
-            "(Argentina, Paraguay and Bolivia) and compares the fire they detect with what is "
-            "normal for each area at that time of year.",
+            "A system that watches the Gran Chaco (Argentina, Paraguay and Bolivia) with "
+            "satellites. The GOES-19 weather satellite looks at it every 10 minutes and "
+            "sees the heat of a fire.",
             "",
             "What will I warn you about?",
-            "When there is much more fire than usual near your town (up to about 100 km). The "
-            "alert says where, how much more fire there is, which way the wind blows and what "
-            "to do. It is an early warning: it does not confirm a fire at an exact spot and "
-            "does not replace the fire brigade.",
+            "A possible fire within about 50 km of your town: your area of the map and the "
+            "neighbouring one. The alert says how far and which way, which way the wind blows "
+            "and what to do. The location is approximate and it may be a controlled burn: it "
+            "does not confirm a fire and does not replace the fire brigade.",
             "",
             "How often?",
-            "At most one message a week, and another only if things get worse. If nothing "
-            "happens, I do not write.",
+            "Only when there is a possible fire near you, and at most one message every 12 "
+            "hours. If nothing burns, I do not write.",
             "",
             status,
             "",
@@ -175,19 +175,19 @@ def _guide(web_url: str, language: str, status: str) -> str:
         "Hola. Soy el bot de avisos de incendios de aeros.",
         "",
         "¿Qué es aeros?",
-        "Un sistema que revisa todos los días lo que ven los satélites de la NASA sobre el "
-        "Gran Chaco (Argentina, Paraguay y Bolivia) y compara el fuego detectado con lo que es "
-        "normal en cada zona para esa época del año.",
+        "Un sistema que vigila el Gran Chaco (Argentina, Paraguay y Bolivia) con satélites. "
+        "El satélite meteorológico GOES-19 lo mira cada 10 minutos y detecta el calor de "
+        "un fuego.",
         "",
         "¿Qué le voy a avisar?",
-        "Cuando cerca de su localidad (hasta unos 100 km) haya mucho más fuego de lo habitual. "
-        "El aviso le dice dónde, cuánto más fuego hay, hacia dónde sopla el viento y qué "
-        "conviene hacer. Es un aviso temprano: no confirma un incendio en un lugar exacto ni "
-        "reemplaza a los bomberos.",
+        "Un posible incendio a menos de unos 50 km de su localidad: su zona del mapa y la "
+        "vecina. El aviso le dice a qué distancia y hacia dónde, hacia dónde sopla el viento "
+        "y qué conviene hacer. La ubicación es aproximada y puede ser una quema controlada: "
+        "no confirma un incendio ni reemplaza a los bomberos.",
         "",
         "¿Cada cuánto?",
-        "Como mucho un mensaje por semana, y otro solo si la situación empeora. "
-        "Si no pasa nada, no le escribo.",
+        "Solo cuando hay un posible incendio cerca, y como mucho un mensaje cada 12 horas. "
+        "Si no se quema nada, no le escribo.",
         "",
         status,
         "",
@@ -225,11 +225,11 @@ def _zone(subscription: Subscription | None, language: str) -> str:
         town = places.label(subscription.place)
         if language == "en":
             return (
-                f"You get alerts about fire near {town} (up to about 100 km). "
+                f"You get alerts about fire near {town} (up to about 50 km). "
                 "To change town, write another name. Send /stop to end the alerts."
             )
         return (
-            f"Recibe avisos de fuego cerca de {town} (hasta unos 100 km). "
+            f"Recibe avisos de fuego cerca de {town} (hasta unos 50 km). "
             "Para cambiar de localidad, escriba otro nombre. "
             "Envíe /stop para dejar de recibirlos."
         )
@@ -248,14 +248,14 @@ def _zone(subscription: Subscription | None, language: str) -> str:
 def _confirmed(cells: int, language: str) -> str:
     if language == "en":
         return (
-            f"You are subscribed: you will get an alert here when a fire above its normal "
-            f"burns near your {cells} {'cell' if cells == 1 else 'cells'}. One message per weekly "
-            "window, and another only if it gets worse. Send /stop at any time to end the alerts."
+            "You are subscribed: you will get an alert here when the satellite sees a possible "
+            f"fire in the {'area' if cells == 1 else 'areas'} you picked, at most one message "
+            "every 12 hours. Send /stop at any time to end the alerts."
         )
     return (
-        "Listo, ya está suscripto. Le vamos a escribir acá cuando se detecte mucho más fuego "
-        f"de lo habitual cerca de {'la zona' if cells == 1 else 'las zonas'} que eligió. "
-        "Es un mensaje por semana y otro solo si la situación empeora. "
+        "Listo, ya está suscripto. Le vamos a escribir acá cuando el satélite detecte un "
+        f"posible incendio en {'la zona' if cells == 1 else 'las zonas'} que eligió, como "
+        "mucho un mensaje cada 12 horas. "
         "Envíe /stop cuando quiera dejar de recibir los avisos."
     )
 
@@ -263,13 +263,13 @@ def _confirmed(cells: int, language: str) -> str:
 def _subscribed(town: str, language: str) -> str:
     if language == "en":
         return (
-            f"Done: I will alert you when there is much more fire than usual near {town} "
-            "(up to about 100 km). One message per weekly window, and another only if it gets "
-            "worse. To change town, write another name. Send /stop to end the alerts."
+            f"Done: I will alert you when the satellite sees a possible fire near {town} "
+            "(up to about 50 km), at most one message every 12 hours. To change town, write "
+            "another name. Send /stop to end the alerts."
         )
     return (
-        f"Listo: le voy a avisar cuando haya mucho más fuego de lo habitual cerca de {town} "
-        "(hasta unos 100 km). Es un mensaje por semana y otro solo si la situación empeora. "
+        f"Listo: le voy a avisar cuando el satélite detecte un posible incendio cerca de {town} "
+        "(hasta unos 50 km), como mucho un mensaje cada 12 horas. "
         "Para cambiar de localidad, escriba otro nombre. "
         "Envíe /stop cuando quiera dejar de recibir los avisos."
     )

@@ -119,7 +119,7 @@ class FakeSSM:
         return {"Parameter": {"Value": values[Name]}}
 
 
-def run(codes, *, bucket=None, study=STUDY, s3=None, answer=None, now=NOW):
+def run(codes, *, bucket=None, study=STUDY, s3=None, answer=None, now=NOW, **extra):
     bucket = bucket or Bucket(codes, now)
     s3 = s3 or FakeS3()
     sent: list[dict] = []
@@ -134,7 +134,7 @@ def run(codes, *, bucket=None, study=STUDY, s3=None, answer=None, now=NOW):
         return frozenset(study)
 
     summary = goes_watch.handler(
-        settings=SETTINGS,
+        settings=extra.pop("settings", SETTINGS),
         s3=s3,
         ssm=FakeSSM(),
         lister=bucket.list,
@@ -142,6 +142,7 @@ def run(codes, *, bucket=None, study=STUDY, s3=None, answer=None, now=NOW):
         domain=domain,
         post=post,
         now=now,
+        **extra,
     )
     return summary, s3, sent
 
@@ -214,3 +215,35 @@ def test_nothing_is_remembered_when_no_channel_delivered():
     summary, s3, _ = run([10, 10, 10], answer={"ok": False, "description": "chat not found"})
     assert summary["alerts"]["channels"]["telegram"] == "failed"
     assert ALERT.state_key not in s3.objects
+
+
+# ---------- subscribers ----------
+
+
+def test_each_cell_says_where_its_confident_pixels_are():
+    _, s3, _ = run([10, 10, None])
+    (cell,) = s3.json(SETTINGS.output_key)["cells"]
+    assert h3.latlng_to_cell(cell["lat"], cell["lng"], 4) == cell["cell"]
+
+
+def test_a_subscriber_near_a_persistent_fire_is_told_too():
+    import subscriber_alerts
+    import subscriptions as subs
+
+    store = subs.MemoryStore()
+    service = subs.Subscriptions(store)
+    sub = service.create("telegram", None, list(STUDY), language="es")
+    service.confirm_telegram(sub.id, 777)
+    with_subscribers = goes_watch.Settings(
+        **{
+            **SETTINGS.__dict__,
+            "subscriber_settings": subscriber_alerts.SubscriberSettings(
+                bucket=BUCKET, web_url="", area=SETTINGS.area
+            ),
+        }
+    )
+    summary, _, sent = run([10, 10, None], settings=with_subscribers, subscriptions_store=store)
+    assert summary["subscribers"]["sent"] == 1
+    assert any(
+        body.get("chat_id") == "777" and "Posible incendio" in body.get("text", "") for body in sent
+    )

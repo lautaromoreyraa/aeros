@@ -89,7 +89,8 @@ def test_start_with_a_valid_link_subscribes_the_chat_and_says_so(service, outbox
     assert outcome == "confirmed"
     assert [x.address for x in service.confirmed()] == ["555"]
     ((chat, text),) = outbox.sent
-    assert chat == 555 and "subscribed" in text and "2 cells" in text and "/stop" in text
+    assert chat == 555 and "subscribed" in text and "the areas you picked" in text
+    assert "every 12 hours" in text and "/stop" in text
 
 
 def test_a_link_that_is_unknown_expired_or_already_taken_says_to_pick_the_area_again(
@@ -132,12 +133,14 @@ def test_the_guide_says_what_aeros_is_what_it_warns_about_how_often_and_how_to_s
     guide = outbox.sent[-1][1]
     for part in (
         "¿Qué es aeros?",
-        "satélites de la NASA",
+        "GOES-19",
+        "cada 10 minutos",
         "¿Qué le voy a avisar?",
-        "hasta unos 100 km",
+        "a menos de unos 50 km",
+        "puede ser una quema controlada",
         "no confirma un incendio",
         "¿Cada cuánto?",
-        "Como mucho un mensaje por semana",
+        "como mucho un mensaje cada 12 horas",
         "Para empezar, escriba el nombre de su localidad",
         "No necesita registrarse ni compartir su ubicación",
         "/zona",

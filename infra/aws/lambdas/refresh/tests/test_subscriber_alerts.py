@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import h3
 import pytest
 
-import refresh
 import subscriber_alerts as sa
 import subscriptions as s
 
@@ -61,13 +60,20 @@ def settings(**overrides):
     return sa.SubscriberSettings(**base)
 
 
-def report(window=("2026-11-08", "2026-11-14")):
+def report(cell=ORIGIN, persistent=True):
+    """A `goes_latest.json` with one cell that GOES-19 saw burning in 2 of its 3 scans."""
+    lat, lng = h3.cell_to_latlng(cell)
     return {
-        "window": list(window),
-        "days_with_data": [d for d in window],
-        "region": {"observed": 100, "expected": 90.0, "ratio": 1.1, "p_value": 0.4},
+        "scans": ["2026-11-14T05:50:00Z", "2026-11-14T05:40:00Z", "2026-11-14T05:30:00Z"],
         "cells": [
-            {"cell": ORIGIN, "observed": 30, "expected": 9.0, "ratio": 3.3, "p_value": 0.001}
+            {
+                "cell": cell,
+                "lat": round(lat, 3),
+                "lng": round(lng, 3),
+                "confident_scans": 2,
+                "last_seen": "2026-11-14T05:50:00Z",
+                "persistent": persistent,
+            }
         ],
     }
 
@@ -101,40 +107,47 @@ def parameters(**missing):
     return FakeSsm({k: v for k, v in values.items() if k not in missing.values()})
 
 
-def test_every_confirmed_subscriber_is_told_on_the_channel_they_chose(store):
+def run(store, rep=None, **overrides):
     post, calls = posts()
     ses = FakeSes()
-    summary = sa.run(
-        report(), settings(), store=store, s3=FakeS3(), ssm=parameters(), ses=ses, post=post
-    )
+    args = dict(store=store, s3=FakeS3(), ssm=parameters(), ses=ses, post=post, now=NOW)
+    args.update(overrides)
+    summary = sa.run(rep or report(), args.pop("settings", settings()), **args)
+    return summary, calls, ses
+
+
+def test_every_subscriber_near_the_fire_is_told_on_the_channel_they_chose(store):
+    summary, calls, ses = run(store)
     assert (summary["sent"], summary["failed"], summary["no_channel"]) == (2, 0, 0)
+    # The Telegram message and, right after it, the pin of the fire.
+    assert [url.rsplit("/", 1)[1] for url, _ in calls] == ["sendMessage", "sendVenue"]
     (url, body) = calls[0]
     assert url == f"https://api.telegram.org/bot{TOKEN}/sendMessage" and body["chat_id"] == "4242"
-    assert "send /stop in this chat" in body["text"]
+    assert "Possible fire near you" in body["text"] and "send /stop in this chat" in body["text"]
+    assert calls[1][1]["title"] == "Possible fire (approximate)"
     (mail,) = ses.calls
     assert mail["Destination"] == {"ToAddresses": ["ana@example.com"]}
     text = mail["Content"]["Simple"]["Body"]["Text"]["Data"]
+    assert "https://www.google.com/maps?q=" in text
     assert (
         "https://aeros.example/api/alerts/subscriptions/" in text and "/unsubscribe?token=" in text
     )
 
 
+def test_a_fire_that_did_not_persist_or_burns_elsewhere_tells_nobody(store):
+    summary, calls, _ = run(store, report(persistent=False))
+    assert summary["sent"] == 0 and calls == []
+    far = h3.latlng_to_cell(-30.0, -60.0, 4)
+    summary, calls, _ = run(store, report(far))
+    assert summary["near"] == 0 and calls == []
+
+
 def test_a_channel_without_its_parameter_is_counted_not_sent(store):
-    post, calls = posts()
-    summary = sa.run(
-        report(),
-        settings(),
-        store=store,
-        s3=FakeS3(),
-        ssm=parameters(telegram=sa.alerts.TELEGRAM_TOKEN_PARAMETER),
-        ses=FakeSes(),
-        post=post,
-    )
+    summary, calls, _ = run(store, ssm=parameters(telegram=sa.alerts.TELEGRAM_TOKEN_PARAMETER))
     assert (summary["sent"], summary["no_channel"]) == (1, 1) and calls == []
 
 
-def test_the_wind_and_fire_weather_files_are_used_when_they_exist_and_skipped_when_not(store):
-    post, calls = posts()
+def test_the_wind_file_is_used_when_it_exists_and_a_broken_one_never_stops_the_alert(store):
     grid = {"west": -69.0, "south": -35.0, "east": -53.0, "north": -16.0, "nx": 3, "ny": 3}
     wind = {
         "grid": grid,
@@ -142,45 +155,26 @@ def test_the_wind_and_fire_weather_files_are_used_when_they_exist_and_skipped_wh
         "u": [[10.0] * 9, [10.0] * 9],
         "v": [[0.0] * 9, [0.0] * 9],
     }
-    sa.run(
-        report(),
-        settings(wind_key="derived/wind.json", fire_weather_key="derived/fire_weather.json"),
-        store=store,
-        s3=FakeS3({"derived/wind.json": wind}),
-        ssm=parameters(),
-        ses=FakeSes(),
-        post=post,
-        now=NOW,
-    )
-    assert "Wind near the fire: toward the east" in calls[0][1]["text"]
-    assert "Fire weather" not in calls[0][1]["text"]  # that file does not exist: no line, no error
+    with_wind = settings(wind_key="derived/wind.json")
+    _, calls, _ = run(store, settings=with_wind, s3=FakeS3({"derived/wind.json": wind}))
+    assert "The wind blows toward the east" in calls[0][1]["text"]
 
-
-def test_a_broken_optional_file_never_stops_the_alert(store):
     class Exploding(FakeS3):
         def get_object(self, Bucket, Key):  # noqa: N803
             raise AwsError("InternalError")
 
-    post, _ = posts()
-    summary = sa.run(
-        report(),
-        settings(wind_key="derived/wind.json"),
-        store=store,
-        s3=Exploding(),
-        ssm=parameters(),
-        ses=FakeSes(),
-        post=post,
-    )
-    assert summary["sent"] == 2
+    fresh = s.MemoryStore()
+    service = s.Subscriptions(fresh, area=AREA)
+    chat = service.create("telegram", None, [ORIGIN])
+    service.confirm_telegram(chat.id, 1)
+    summary, _, _ = run(fresh, settings=with_wind, s3=Exploding())
+    assert summary["sent"] == 1
 
 
 def test_pending_sign_ups_past_their_day_are_purged_on_every_run(store):
     service = s.Subscriptions(store, now=lambda: datetime(2026, 11, 1, tzinfo=UTC), area=AREA)
     stale = service.create("telegram", None, [ORIGIN])
-    sa.run(
-        report(), settings(), store=store, s3=FakeS3(), ssm=parameters(),
-        ses=FakeSes(), post=posts()[0], now=NOW,
-    )  # fmt: skip
+    run(store)
     assert store.get(stale.id) is None
 
 
@@ -193,67 +187,3 @@ def test_the_settings_come_from_the_environment_or_are_off(monkeypatch):
     monkeypatch.setenv("WIND_KEY", "derived/wind.json")
     found = sa.SubscriberSettings.from_environment()
     assert found.area == AREA and found.wind_key == "derived/wind.json"
-    assert found.fire_weather_key is None
-
-
-# ---------- inside the daily run ----------
-
-
-def daily(store, **overrides):
-    post, calls = posts()
-    ssm = parameters()
-    base = dict(
-        bucket="data",
-        prefix="raw/firms/",
-        map_key_parameter="/aeros/firms/map-key",
-        area="-69,-35,-53,-16",
-        sources=("VIIRS_NOAA20_NRT",),
-        days_back=7,
-        early_warning_key="derived/early_warning.json",
-        subscriber_settings=settings(),
-    )
-    base.update(overrides)
-    ssm.values["/aeros/firms/map-key"] = "abcdef0123456789abcdef0123456789"
-    s3 = FakeS3()
-    summary = refresh.handler(
-        {},
-        None,
-        settings=refresh.Settings(**base),
-        s3=s3,
-        ssm=ssm,
-        fetch=lambda url: b"latitude,longitude,bright_ti4\n",
-        now=NOW,
-        early_warning=lambda downloads, days, now: report(),
-        ses=FakeSes(),
-        post=post,
-        subscriptions_store=store,
-    )
-    return summary, calls
-
-
-def test_the_daily_run_tells_the_subscribers_after_publishing_the_report(store):
-    summary, calls = daily(store)
-    assert summary["subscribers"]["sent"] == 2
-    # The Telegram message and, right after it, the pin of the zone.
-    assert [url.rsplit("/", 1)[1] for url, _ in calls] == ["sendMessage", "sendVenue"]
-
-
-def test_a_second_run_with_the_same_report_tells_nobody_again(store):
-    daily(store)
-    summary, calls = daily(store)
-    assert summary["subscribers"]["sent"] == 0 and summary["subscribers"]["unchanged"] == 2
-
-
-def test_without_subscriber_settings_the_run_does_not_touch_subscribers(store):
-    summary, calls = daily(store, subscriber_settings=None)
-    assert "subscribers" not in summary and calls == []
-
-
-def test_a_subscriber_failure_never_fails_the_run(store):
-    class Broken:
-        def all(self):
-            raise RuntimeError("dynamo down")
-
-    summary, _ = daily(Broken())
-    assert summary["subscribers"] == "failed" and summary["early_warning"]["flagged_cells"] == 1
-    assert date(2026, 11, 14) == NOW.date()

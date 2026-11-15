@@ -209,13 +209,10 @@ def test_the_subscriber_run_picks_resend_from_the_parameters():
     original = alerts.resend_post
     alerts.resend_post = lambda key: post
     try:
+        lat, lng = h3.cell_to_latlng(ORIGIN)
         report = {
-            "window": ["2026-11-08", "2026-11-14"],
-            "days_with_data": 7,
-            "region": {"observed": 100, "expected": 90.0, "ratio": 1.1, "p_value": 0.4},
-            "cells": [
-                {"cell": ORIGIN, "observed": 30, "expected": 9.0, "ratio": 3.3, "p_value": 0.001}
-            ],
+            "scans": ["2026-11-14T05:50:00Z", "2026-11-14T05:40:00Z", "2026-11-14T05:30:00Z"],
+            "cells": [{"cell": ORIGIN, "lat": lat, "lng": lng, "persistent": True}],
         }
         sa.run(report, settings, store=store, s3=object(), ssm=parameters(), ses=FakeSes())
     finally:

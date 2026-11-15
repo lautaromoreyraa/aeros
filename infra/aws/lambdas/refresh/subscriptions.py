@@ -34,8 +34,10 @@ RESOLUTION = 4
 #: A zone is a cell and its ring (7 cells); this leaves room for a few of them.
 MAX_CELLS = 60
 PENDING_TTL = timedelta(hours=24)
-#: Cells around a town that count as "near it": about 100 km.
-PLACE_RING = 2
+#: Cells around a town that count as "near it": its own panel of the map (an H3 resolution-4
+#: cell, about 25 km across) and the neighbouring ones, so about 50 km. `fire_alerts` measures
+#: the 50 km from the town itself; these cells are what the map draws.
+PLACE_RING = 1
 #: Least time between two confirmation e-mails to the same address.
 RESEND_COOLDOWN = timedelta(minutes=10)
 # Plain characters only: SES reads "Name <address>" as a display name plus an address,
@@ -217,7 +219,7 @@ class Subscriptions:
         return south <= lat <= north and west <= lng <= east
 
     def cells_around(self, lat: float, lng: float) -> tuple[str, ...]:
-        """The cells within about 100 km of a point, inside the monitored area."""
+        """The cell of a point and its neighbours (about 50 km), inside the monitored area."""
         centre = h3.latlng_to_cell(lat, lng, RESOLUTION)
         return tuple(
             c for c in h3.grid_disk(centre, PLACE_RING) if not self.area or self._inside(c)

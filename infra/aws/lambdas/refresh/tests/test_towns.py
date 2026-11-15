@@ -154,7 +154,7 @@ def service():
 def test_a_town_gives_the_cells_around_it_without_the_client_sending_any(service):
     sub = service.create("email", "ana@example.com", [], place=RESISTENCIA)
     assert sub.place == RESISTENCIA
-    assert CELL in sub.cells and len(sub.cells) > 7  # about 100 km around, not just one cell
+    assert CELL in sub.cells and len(sub.cells) == 7  # its panel and the neighbours, ~50 km
     assert all(h3.get_resolution(c) == 4 for c in sub.cells)
 
 
@@ -233,12 +233,12 @@ def report(*entries):
 
 def test_the_alert_says_how_far_the_fire_is_from_the_town_and_pins_the_nearest(service):
     service.subscribe_place(555, RESISTENCIA)
-    north = h3.latlng_to_cell(-26.5, -58.99, 4)
+    north = h3.latlng_to_cell(-27.0, -58.99, 4)
     far = h3.latlng_to_cell(-24.5, -58.99, 4)
     sent = []
     pins = []
     n.notify(
-        report(entry(far, lat=-24.5, lng=-58.99), entry(north, lat=-26.5, lng=-58.99, ratio=5.0)),
+        report(entry(far, lat=-24.5, lng=-58.99), entry(north, lat=-27.0, lng=-58.99, ratio=5.0)),
         service,
         {"telegram": lambda sub, subject, text: sent.append(text)},
         place_senders={"telegram": lambda sub, places_: pins.append(places_)},
@@ -246,7 +246,7 @@ def test_the_alert_says_how_far_the_fire_is_from_the_town_and_pins_the_nearest(s
     )
     (text,) = sent
     assert "al norte de Resistencia" in text and "° S" not in text
-    assert [p[0][:2] for p in pins] == [(-26.5, -58.99)]  # the near one, not the far one
+    assert [p[0][:2] for p in pins] == [(-27.0, -58.99)]  # the near one, not the far one
 
 
 # ---------- the bot ----------
@@ -299,7 +299,7 @@ def test_one_town_found_subscribes_the_chat_at_once(service):
 
 def test_the_bot_answers_in_english_to_an_english_app(service):
     _, outbox = run(service, message("Resistencia", "en-US"), [RESISTENCIA])
-    assert "much more fire than usual near Resistencia" in outbox.sent[0][1]
+    assert "possible fire near Resistencia" in outbox.sent[0][1]
 
 
 def test_several_towns_show_a_button_each_and_subscribe_nothing_yet(service):
@@ -373,8 +373,9 @@ def test_start_asks_for_the_town_and_never_for_a_location(service):
     text = outbox.sent[0][1]
     assert outcome == "welcome" and "escriba el nombre de su localidad" in text
     assert outbox.sent[0][2] is None  # no keyboard, no location button
-    # The only word about the location is that it is not needed.
-    assert text.count("ubicación") == 1 and "ni compartir su ubicación" in text
+    # The location comes up only to say it is not needed, never as a request.
+    assert "ni compartir su ubicación" in text
+    assert "comparta su ubicación" not in text and "envíe su ubicación" not in text
 
 
 def test_stop_ends_the_alerts_of_a_town_too(service):
