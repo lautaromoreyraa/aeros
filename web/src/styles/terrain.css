@@ -81,6 +81,19 @@
   pointer-events: auto;
 }
 
+/* The colour scale: what a column's colour means, at a glance. */
+.terrain__scale {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.terrain__ramp {
+  width: 96px;
+  height: 8px;
+  border-radius: 999px;
+}
+
 /* The dashboard of one zone, floating over the map so the terrain stays in
    view around it. */
 .terrain__panel {

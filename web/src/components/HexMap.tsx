@@ -7,6 +7,7 @@ import type { Unit } from "../api/types";
 import type { CellTotal } from "../util/aggregation";
 import { boundsOf, type Area, type LngLat } from "../util/area";
 import { type Rgb, VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
+import { cellAlpha, columnScale } from "../util/columns";
 import { formatCount, unitLabel } from "../util/format";
 import { focusPadding, leaderEnd, type Point } from "../util/mapFocus";
 import type { WindField } from "../util/wind";
@@ -48,12 +49,17 @@ interface Props {
   panel?: RefObject<HTMLElement | null>;
   /** The ground under the columns; the theme's grey canvas unless a view asks for another. */
   basemap?: Basemap;
+  /**
+   * A map read by its towns: the ground shows through the cells, place names
+   * stay over them at every zoom, and columns shrink as the camera closes in.
+   */
+  legible?: boolean;
   /** Wind streaks over the columns, at one hour of the field, with its play control. */
   wind?: { field: WindField; hour: number; playing: boolean; onToggle: () => void } | null;
 }
 
 export default function HexMap(props: Props) {
-  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, focus = null, panel, wind = null } = props;
+  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, focus = null, panel, legible = false, wind = null } = props;
   const ground = BASEMAP[props.basemap ?? theme];
   const groundId = props.basemap ?? theme;
   const ramp = props.ramp ?? VIRIDIS;
@@ -128,25 +134,29 @@ export default function HexMap(props: Props) {
   const max = useMemo(() => totals.reduce((value, cell) => Math.max(value, cell.harmonized, cell.stacked), 0), [totals]);
 
   const value = (cell: CellTotal) => (showRaw ? cell.stacked : cell.harmonized);
-  const closeUp = viewState.zoom >= LABELS_ON_TOP_ZOOM;
+  const closeUp = legible || viewState.zoom >= LABELS_ON_TOP_ZOOM;
+  // A tenth of a zoom level is fine enough for the columns to shrink along.
+  const heightScale = legible ? columnScale(Math.round(viewState.zoom * 10) / 10) : 1;
 
   const layers = useMemo(() => {
     return [
       rasterLayer(`basemap-${groundId}`, ground.base, undefined, ground.maxZoom),
       // Seen from afar, place names sit under the columns: context, never
-      // covering the data. Close up they go on top, so a town can be found.
+      // covering the data. Close up they go on top, so a town can be found;
+      // a legible map keeps them there at every zoom.
       !closeUp && rasterLayer(`labels-${groundId}`, ground.labels),
       new H3HexagonLayer<CellTotal>({
         id: "cells",
         data: totals,
         getHexagon: (cell) => cell.cell,
         extruded: true,
-        elevationScale: 1,
+        elevationScale: heightScale,
         getElevation: (cell) => sqrtScale(value(cell), max) * 60000,
         getFillColor: (cell) => {
-          const [r, g, b] = sampleRamp(ramp, sqrtScale(value(cell), max));
+          const t = sqrtScale(value(cell), max);
+          const [r, g, b] = sampleRamp(ramp, t);
           const dimmed = selected !== null && !selected.has(cell.cell);
-          return [r, g, b, dimmed ? 50 : 235];
+          return [r, g, b, legible ? (dimmed ? 36 : cellAlpha(t)) : dimmed ? 50 : 235];
         },
         material: { ambient: 0.5, diffuse: 0.6, shininess: 24 },
         pickable: !drawing,
@@ -154,12 +164,12 @@ export default function HexMap(props: Props) {
         highlightColor: [255, 255, 255, 90],
         coverage: 0.92,
         transitions: reducedMotion ? undefined : { getElevation: 600, getFillColor: 300 },
-        updateTriggers: { getElevation: [showRaw, max], getFillColor: [showRaw, max, selected, ramp] },
+        updateTriggers: { getElevation: [showRaw, max], getFillColor: [showRaw, max, selected, ramp, legible] },
       }),
       ...areaLayers(area, draft, theme),
       closeUp && rasterLayer(`labels-top-${groundId}`, ground.labels, ON_TOP),
     ];
-  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp, ground, groundId]);
+  }, [totals, selected, showRaw, area, draft, drawing, theme, max, reducedMotion, ramp, closeUp, legible, heightScale, ground, groundId]);
 
   // The line follows the camera, so it is recomputed on every view change.
   const anchorTotal = useMemo(() => totals.find((cell) => cell.cell === focus?.anchor), [totals, focus]);
@@ -169,7 +179,7 @@ export default function HexMap(props: Props) {
   if (focus?.anchor && element && panelElement && element.clientWidth > 0) {
     const rect = element.getBoundingClientRect();
     const [lat, lng] = cellToLatLng(focus.anchor);
-    const top = anchorTotal ? sqrtScale(value(anchorTotal), max) * ELEVATION : 0;
+    const top = anchorTotal ? sqrtScale(value(anchorTotal), max) * ELEVATION * heightScale : 0;
     const viewport = new WebMercatorViewport({ ...viewState, width: rect.width, height: rect.height });
     const [x, y] = viewport.project([lng, lat, top]);
     const from: Point = [x ?? 0, y ?? 0];
@@ -211,7 +221,7 @@ export default function HexMap(props: Props) {
           viewport={projection}
           cameraKey={cameraKey}
           playing={wind.playing}
-          ink={groundId === "dark" ? "light" : "dark"}
+          ink={groundId === "light" ? "dark" : "light"}
         />
       )}
       {leader && (

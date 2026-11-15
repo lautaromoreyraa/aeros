@@ -23,7 +23,7 @@ interface Props {
   cameraKey: string;
   /** `false` draws a still picture that still follows the camera. */
   playing: boolean;
-  /** Light streaks for a dark ground, dark ones for a light ground. */
+  /** The streak's own tone; it is cased in the opposite one so it reads on any ground. */
   ink: "light" | "dark";
 }
 
@@ -115,12 +115,22 @@ export function WindParticles({ field, hour, viewport, cameraKey, playing, ink }
           }
         }
       }
+      // A casing in the opposite tone under every core, so a streak reads
+      // over the cells and over the open ground alike.
       const rgb = ink === "light" ? "255, 255, 255" : "18, 28, 40";
+      const casing = ink === "light" ? "18, 28, 40" : "255, 255, 255";
       context.lineCap = "round";
       buckets.forEach((path, index) => {
         const stroke = classStroke(Math.floor(index / 4));
-        context.strokeStyle = `rgba(${rgb}, ${stroke.alpha * QUARTER_ALPHA[index % 4]!})`;
-        context.lineWidth = stroke.width;
+        const coreAlpha = (0.35 + 0.65 * stroke.alpha) * QUARTER_ALPHA[index % 4]!;
+        context.strokeStyle = `rgba(${casing}, ${coreAlpha * 0.6})`;
+        context.lineWidth = stroke.width + 0.4 + 1.8;
+        context.stroke(path);
+      });
+      buckets.forEach((path, index) => {
+        const stroke = classStroke(Math.floor(index / 4));
+        context.strokeStyle = `rgba(${rgb}, ${(0.35 + 0.65 * stroke.alpha) * QUARTER_ALPHA[index % 4]!})`;
+        context.lineWidth = stroke.width + 0.4;
         context.stroke(path);
       });
     };

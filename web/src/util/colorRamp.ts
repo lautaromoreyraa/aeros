@@ -35,6 +35,21 @@ export const FIRE: Rgb[] = [
   [252, 255, 164],
 ];
 
+/**
+ * Blue-violet to red: little fire reads cool and the most fire reads red,
+ * the way a layperson expects a danger scale to run. It is not uniform in
+ * lightness, so the map that uses it says the same thing again with the
+ * columns' height and with how solid a cell is.
+ */
+export const BLAZE: Rgb[] = [
+  [72, 80, 196],
+  [112, 72, 192],
+  [158, 62, 178],
+  [204, 52, 138],
+  [232, 46, 88],
+  [240, 42, 42],
+];
+
 /** Blue to orange through a neutral grey (PuOr-like, colour-blind safe). */
 export const DIVERGING: Rgb[] = [
   [33, 102, 172],

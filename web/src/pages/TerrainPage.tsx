@@ -15,7 +15,7 @@ import { useSectorCalendars } from "../hooks/useSectorCalendars";
 import { useWind } from "../hooks/useWind";
 import { cellTotals, yearlyTotals, type CellTotal } from "../util/aggregation";
 import type { Area, LngLat } from "../util/area";
-import { FIRE } from "../util/colorRamp";
+import { BLAZE, toCss } from "../util/colorRamp";
 import { criticalPeriod } from "../util/criticalPeriod";
 import { formatDay } from "../util/earlyWarning";
 import { daysAhead, nodesNear, summarizeDays } from "../util/fireWeather";
@@ -182,7 +182,6 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
     ...sectors.map(({ id, name, place }) => ({ id, name, place })),
   ];
   const current = zones.find((zone) => zone.id === sectorId);
-  const units = unitLabel(region.unit);
 
   const windTime = wind
     ? (() => {
@@ -200,7 +199,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
 
   return (
     <div className="terrain">
-      <section className="terrain__map" aria-label={`Terrain of ${units} per H3 cell`}>
+      <section className="terrain__map" aria-label={`Map of how much fire each area has had since ${yearOf(region.firstMonth)}`}>
         <Suspense fallback={<div className="map map--loading">Loading map…</div>}>
           <HexMap
             totals={totals}
@@ -214,7 +213,8 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             onAddVertex={NOTHING}
             theme="dark"
             reducedMotion={reducedMotion}
-            ramp={FIRE}
+            ramp={BLAZE}
+            legible
             onPick={pick}
             focus={mapFocus}
             panel={panelRef}
@@ -246,7 +246,16 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
               </option>
             ))}
           </select>
-          <p className="terrain__legend">Column height and colour: mean harmonized {units} over the whole record.</p>
+          <div className="terrain__legend terrain__scale">
+            <span>Less fire</span>
+            <span
+              className="terrain__ramp"
+              style={{ background: `linear-gradient(to right, ${BLAZE.map((stop) => toCss(stop)).join(", ")})` }}
+              aria-hidden="true"
+            />
+            <span>More fire</span>
+          </div>
+          <p className="terrain__legend">Taller and redder: more fire in that area since {yearOf(region.firstMonth)}.</p>
           {windState?.status === "error" && (
             <p className="terrain__legend" role="status">
               The wind could not be loaded: {windState.message}

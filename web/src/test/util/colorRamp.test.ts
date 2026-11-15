@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BLAZE,
   DIVERGING,
   VIRIDIS,
   luminance,
@@ -49,6 +50,20 @@ describe("scales", () => {
     const [r, g, b] = sampleRamp(DIVERGING, 0.5);
     expect(r).toBe(g);
     expect(g).toBe(b);
+  });
+
+  it("runs from blue-violet to red like a danger scale", () => {
+    const [r0, g0, b0] = BLAZE[0]!;
+    expect(b0).toBeGreaterThan(r0);
+    expect(b0).toBeGreaterThan(g0);
+    const [rn, gn, bn] = BLAZE[BLAZE.length - 1]!;
+    expect(rn).toBeGreaterThan(200);
+    expect(gn).toBeLessThan(90);
+    expect(bn).toBeLessThan(90);
+    for (let index = 1; index < BLAZE.length; index++) {
+      expect(BLAZE[index]![0]).toBeGreaterThanOrEqual(BLAZE[index - 1]![0]);
+      expect(BLAZE[index]![2]).toBeLessThanOrEqual(BLAZE[index - 1]![2]);
+    }
   });
 });
 
