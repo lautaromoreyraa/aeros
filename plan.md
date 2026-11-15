@@ -66,9 +66,21 @@ Synthetic archive with known truth (`python -m aeros demo`), kept as a method ch
 
 ```mermaid
 flowchart LR
+  subgraph GCP["GCP training gym (planned): Free Trial, disposable"]
+    GCS[("Cloud Storage: global detection store<br/>(Parquet), cell x week feature tables")]
+    BQ["BigQuery: feature joins,<br/>NOAA GSOD public weather"]
+    EE["Earth Engine:<br/>biome, land cover"]
+    TRAIN["model/ training:<br/>global historical patterns"]
+    GCS --> BQ --> TRAIN
+    EE --> BQ
+  end
   FIRMS[NASA FIRMS archive + NRT] --> PIPE[model/ pipeline]
+  PIPE -. "batch only: Parquet detection store<br/>(raw FIRMS files stay local)" .-> GCS
   PIPE --> PQ[(S3 Parquet: harmonized cells, weighted hotspots)]
   PIPE --> JSON[(S3 JSON: calendar, cells, validation, critical period, meta)]
+  TRAIN -. "batch only: aggregates,<br/>model artifacts, predictions" .-> PAT[("S3 (planned): pattern predictions,<br/>model artifacts")]
+  PAT --> NRT
+  PAT --> API
   PQ --> API[Lambda + DuckDB: /calendar, /hotspots.csv]
   JSON --> CF[CloudFront]
   API --> CF
@@ -83,7 +95,7 @@ flowchart LR
   WEB --> SUB[Lambda: /api/alerts/subscriptions]
   BOT[Telegram bot webhook] --> DDB[(DynamoDB: subscriptions)]
   SUB --> DDB
-  NRT --> NOTIFY[Notifier: who a fire can reach]
+  FAST --> NOTIFY[Fire alerts: subscribers within 50 km]
   DDB --> NOTIFY
   NOTIFY --> ALERT
   JSON --> MCP[infra/mcp: team context server on Cloudflare Workers]
@@ -110,6 +122,25 @@ flowchart LR
 - `infra/aws/test/free-tier.test.ts` checks, on the synthesized templates, that no billed or unavailable service appears, DynamoDB stays inside its allowance, alarms stay under ten, every function is arm64 and at most 512 MB, and that the scheduled functions, even if every run lasted its whole timeout, use at most three quarters of the monthly Lambda GB-seconds (GOES watch 4,320 runs at 2 minutes and 0.5 GB is 259,200 of 400,000).
 - The Free plan ends after six months or when its credits are spent; the account must then be upgraded, and the USD 1 alert is the early sign.
 
+### Cloud boundary: AWS serves, GCP learns
+
+Big data and machine learning are planned on Google Cloud's Free Trial; AWS keeps the app. No Google Cloud resource exists yet and nothing in the code depends on one.
+
+Data gravity decides placement: each cloud stores only what its own compute reads. Nothing crosses clouds on a request path — only batch artifacts do.
+
+| Side | Owns | Reads | Never does |
+|---|---|---|---|
+| GCP gym | Global detection store (Parquet), cell x week feature tables, training runs | Cloud Storage, BigQuery public datasets (NOAA GSOD), ERA5 in the public `gcp-public-data-arco-era5` bucket, Earth Engine exports | Serve the app; be required for the app to work; hold raw FIRMS files |
+| AWS serving | Harmonized aggregates, model artifacts, pattern predictions, alerts | S3 `DATA_LAYOUT`, Open-Meteo for current weather | Read Cloud Storage or BigQuery per request |
+
+Invariants (enforceable in review):
+
+1. The trained model, its predictions and all aggregates are S3 artifacts — GCP outputs land under `harmonized/` or `derived/` like any pipeline output.
+2. Training is re-runnable off GCP: the same `model/` package, and the Parquet store is rebuilt from the raw FIRMS files, which stay local. When the credit expires, retraining degrades to a slower local run, never to zero.
+3. The serving path (web, API, alerts) has no GCP dependency — if GCP disappeared today, the app works unchanged.
+4. Raw FIRMS files are never uploaded. Only the Parquet store and outputs go to GCP, and only aggregates, model artifacts and predictions go on to AWS.
+5. GCP stays inside the `gcp_free_trial` convention: Free Trial only (USD 300, 90 days, never upgraded to a paid account), one project, one US region (us-central1, us-east1 or us-west1), a budget alert at USD 10, CPU-only training. The gym is deleted, not downsized, when the credit runs out.
+
 ## 5. Team workflow
 
 - Branches `feature/<kebab-case>` cut from the tip of `develop`, one owner per branch.
@@ -125,25 +156,27 @@ flowchart LR
 |---|---|
 | Harmonization model, continuous reference, units, validation, critical period | in `develop` |
 | Web app: intro, H3 map, area selection, calendar with coverage labels and critical period, unit toggle, CSV | in `develop` (54 tests) |
-| Landing page: globe fly-in, H3 columns on Esri World Imagery with this week's flagged cells, WhatsApp and email preview of the early-warning message | on `feature/early-warning-landing`; the preview is UI only, nothing sends WhatsApp or email yet |
+| Landing page: photoreal Earth hero (Blue and Black Marble with relief, ocean glint, cloud deck and limb glow, six illustrative fire fronts in South America and Australia that flare when MODIS on Terra or VIIRS on NOAA-20 pass over them on their real polar, sun-synchronous orbits, one planet turn every three minutes, every frame a function of one timeline that HyperFrames can seek), H3 columns on Esri World Imagery with this week's flagged cells, WhatsApp and email preview of the early-warning message | in `develop`; the photoreal hero is on `feature/photoreal-earth-hero`, stacked on `feature/fire-weather-and-data-credits`; the preview is UI only, nothing sends WhatsApp or email yet |
 | AWS infrastructure inside the Free plan, calendar/CSV API, daily FIRMS refresh with early warning | in `develop` (29 CDK + 63 Lambda tests, `cdk synth` green); not deployed |
 | Team context MCP server | deployed at `mcp.aeros.lautaromoreyra.dev` (D1 migrated, `workers.dev` off); behind a Cloudflare Access application (deny by default); people and service tokens are added through Access policies |
 | Steering prompt log (`record_steering_prompt`, `steering_study`) | implemented and tested in the MCP server; not deployed |
 | CI | `verify` workflow runs model, web, MCP and AWS checks |
-| Targeted alerts, subscriptions and Telegram bot | in review on `feature/subscribe-and-notify-by-telegram` (171 Lambda + 49 CDK tests). `subscriptions.py`: double opt-in, a pending sign-up expires after a day, the Telegram chat id is set only by the bot from `/start <id>`, never by the browser. `alerts_api.py`: `POST /api/alerts/subscriptions` (answers 202 with the `https://t.me/<bot>?start=<id>` link for Telegram, e-mails a confirmation link for e-mail), `GET .../{id}/confirm?token=`, `GET .../{id}/unsubscribe?token=` and `DELETE .../{id}?token=`, behind CloudFront; the Telegram webhook is its own public function URL guarded by Telegram's secret header. `notifier.py` runs after the daily early warning and sends each confirmed subscriber the alert for the flagged cells that reach their cells, remembering what was sent only after it went out. A POST or DELETE through CloudFront needs the `x-amz-content-sha256` header (the SHA-256 of the body). Needs the AWS account to run |
-| Targeted alerts, risk-zone logic | `infra/aws/lambdas/refresh/targeting.py`: the risk zone of a flagged cell (its ring of neighbors plus the cells downwind, +-30 degrees up to min(80 km, wind km/h x 12 h x 0.1)), which subscribers it reaches, one message per subscriber per window and a resend only when it escalates (more cells, the highest ratio up by half, or the fire weather reaching high or extreme where it had not), and the message text with the fields of the interface's alert plus where the wind is going and how unusual the air is. Pure logic with tests |
+| Targeted alerts, subscriptions and Telegram bot | in `develop` (294 Lambda + 56 CDK tests). `subscriptions.py`: double opt-in, a pending sign-up expires after a day, an address gets one confirmation e-mail every ten minutes, the Telegram chat id is set only by the bot. People say their town and nothing asks for a location: in the bot they write its name (buttons when several match), on the site they search `GET /api/alerts/places?q=` (Open-Meteo geocoding, CC BY 4.0) and sign up with `place`; its map panel and the neighbouring ones (about 50 km) are derived on the server. `alerts_api.py`: `POST /api/alerts/subscriptions`, `GET .../{id}/confirm?token=`, `GET .../{id}/unsubscribe?token=` and `DELETE .../{id}?token=` behind CloudFront; the Telegram webhook is its own public function URL guarded by Telegram's secret header and must allow `message` and `callback_query`. `fire_alerts.py` runs inside the GOES-19 watch and tells each confirmed subscriber about a possible fire: a cell with confident fire in 2 of the last 3 scans within 50 km of their town (or in the cells they chose on the map), at most one message every 12 hours with every nearby fire in it, how far and which way it is from their town, the wind, one map pin on Telegram and one map link in e-mail. Subscribers do not get the weekly anomaly: it stays on the dashboard and in the fixed-list alert. The bot answers `/start` (and `/ayuda`) with a guide to what aeros is, what it warns about and how often, and `/zona` with the town a chat gets alerts about; there is no login, the chat is the identity. Messages are in plain Spanish by default and in English on request (`alert_text.py`), written for neighbours rather than analysts, with no emergency numbers and an explicit note that it is an early warning, not a confirmed fire. E-mail goes through Resend when `/aeros/alerts/resend-api-key` exists and through Amazon SES otherwise. A POST or DELETE through CloudFront needs the `x-amz-content-sha256` header (the SHA-256 of the body). Needs the AWS account to run |
+| Targeted alerts, risk-zone logic | `infra/aws/lambdas/refresh/targeting.py` and `notifier.py` (not wired to any schedule; distances, map links and the wind still come from `targeting`): the risk zone of a flagged cell (its ring of neighbors plus the cells downwind, +-30 degrees up to min(80 km, wind km/h x 12 h x 0.1)), which subscribers it reaches, one message per subscriber per window and a resend only when it escalates (more cells, the highest ratio up by half, or the fire weather reaching high or extreme where it had not), and the message text with the fields of the interface's alert plus where the wind is going and how unusual the air is. Pure logic with tests |
 | Study regions (MVP): Gran Chaco (RESOLVE Dry + Humid Chaco), Corrientes, Paraguay | `aeros run --regions all`: one translator fitted on the three, outputs per region in `<out>/<region>/` |
 | Dashboard sectors: Gran Chaco by country x ecoregion (Bolivian Chaco, Chaco Boreal, Dry Chaco, Humid Chaco) | `sectors.json` in `<out>/gran-chaco/` (also `aeros sectors --out`): each sector a set of H3 cells, no cell counted twice, 99.7 % of the Gran Chaco cells assigned; replaces the web's demo sectors |
 | Static web bundle | `aeros publish --run hotspots=<run> [--run cell_days=<run>]`: JSON only, `public/data/<region>/<unit>/`, `<region>/sectors.json`, index `regions.json`, default region also at the old `public/data/<unit>/` path; 8.8 MB for the baseline real run |
 | Detection database | `aeros build-db`: every FIRMS download in one Parquet store by platform and year, time-sorted, deduplicated (standard processing over NRT), with brightness temperatures, unified confidence, cell and region flags; `cell_days` table for ML features; `inventory`, `coverage` (missing days, silent runs) and day-by-day `comparison` reports; `aeros run --db` reads it |
 | Real FIRMS archive for the Gran Chaco | `aeros fetch`: yearly country summaries (AR, PY, BO) to the last closed year, MODIS C6.1 + VIIRS SNPP + NOAA-20; `aeros fetch-recent` (needs `FIRMS_MAP_KEY`): the current year through the area API, standard processing then NRT, and the whole NOAA-21 record, which the yearly archive does not publish |
-| GOES-19 fast fire layer | in `develop`: `aeros goes-latest` writes a snapshot, a Lambda every 10 minutes publishes `derived/goes_latest.json` (served at `/api/active-fires`, 2-minute cache) and alerts through the daily alert's channels when a study cell keeps a confident fire in 2 of the last 3 scans (once per cell, again after 12 hours); not deployed |
+| GOES-19 fast fire layer | in `develop`: `aeros goes-latest` writes a snapshot, a Lambda every 10 minutes publishes `derived/goes_latest.json` (served at `/api/active-fires`, 2-minute cache) and alerts the fixed list when a study cell keeps a confident fire in 2 of the last 3 scans (once per cell, again after 12 hours) and the subscribers within 50 km (see `fire_alerts.py`); each cell carries the mean position of its confident pixels; not deployed |
 | Wind grid | `aeros wind` writes `wind.json`: hourly 10 m wind for the next 48 hours on a 12 x 12 grid over the study box, as the two components `u` (eastward) and `v` (northward) in m/s, from the Open-Meteo forecast API (no key, CC BY 4.0). The interface draws its wind layer from it and the alert's risk zone will read the downwind direction from it; a forecast, never part of the harmonized record. Publishing it hourly from AWS waits for the account |
 | Fire weather | `aeros fire-weather` writes `fire_weather.json`: the surface Hot-Dry-Windy index (vapour pressure deficit in hPa times 10 m wind in m/s, highest hour of the day) for the next 4 days on an 8 x 8 grid over the study box, with each node's percentile against the same season of the past 10 years of ERA5, and a level (normal, elevated, high, extreme). Open-Meteo forecast and archive, no key, CC BY 4.0, so the submission credits it. A forecast model is ranked against a reanalysis: read a high rank as unusually dry and windy, not as a measured percentile. The interface shows one chip per day with the level and how many points are extreme, counting only the grid points nearest to the region's cells (the box also takes in the dry Andes): region-wide on the Early warning view and for the tapped zone in the Terrain panel, each with the Open-Meteo credit link. The static site reads the snapshot in `web/public/data/fire_weather.json` until AWS publishes it |
 | Data credits | The dashboard and landing footers credit every outside source the way it asks: NASA FIRMS with its acknowledgement (LANCE, ESDIS), GOES-19 ABI-L2-FDCF as data derived from NOAA Open Data Dissemination on AWS, Open-Meteo with its link and CC BY 4.0, and Copernicus for ERA5. The wind legend and the fire-weather chips also link Open-Meteo where its data is drawn, as its licence asks |
 | Terrain map anyone can read | on `feature/terrain-map-anyone-can-read`. Wind: every streak keeps its tail as positions on the ground, so the layer stays on the ground while the map moves and points along true compass directions with the map rotated; streaks are born where the camera looks; a play and pause button sits with the map controls, a system that asks for less motion starts paused on a still picture with arrowheads, and the choice is remembered. Colours: cells run from blue-violet (little fire) to red (the most), let the ground show through, keep place names over them at every zoom and lose height as the camera closes in; a Less fire / More fire scale replaces the analyst's legend, and the wind streaks are cased so they read over the cells. Place names: `web/scripts/places.mjs` builds `web/public/data/places.json`, the towns of the study box from GeoNames (CC BY 4.0, credited in the footers); a tapped cell takes the name of the biggest town inside it or, failing that, its distance and direction from the nearest known town, in the alert text's own wording |
+| Past fires on the map | Dashboard view "Past fires": the satellite record of the two fires the pitch tells, replayed on Esri World Imagery with a timeline and the key moments (tapping one shows the map as it was then). Los Angeles, January 2025 (Palisades and Eaton): every MODIS and VIIRS pass from the FIRMS United States 2025 files, H3 resolution 8. Corrientes, December 2021 to March 2022: one step per day of VIIRS S-NPP and NOAA-20 from the detection database, H3 resolution 6, with a retrospective run of the early warning's region rule (in alert from 2021-12-18). Built by `model/scripts/build_case_studies.py` into `web/public/data/case-studies/`, processed H3 counts only |
 | AWS deploy | ready, waiting for the account: `cdk bootstrap`, `cdk deploy`, the FIRMS MAP_KEY and the Telegram parameters in Parameter Store, the Telegram `setWebhook`, and the model outputs uploaded to the data bucket. Reserved concurrency is off by default so the deploy works on a new account |
-| Biome as a model feature, Theil–Sen trend | optional |
+| Biome as a model feature, Theil–Sen trend | optional; the biome can come from the Earth Engine export of the GCP gym |
+| Global ML gym (GCP) | planned; nothing depends on GCP yet. The boundary is in section 4 and follows the decision "Google Cloud (Free Trial) for big data and ML; AWS keeps the app side". GCP holds what training reads (the global detection store in Parquet, cell x week features, NOAA GSOD via BigQuery, biome via Earth Engine); AWS holds what the app serves; raw FIRMS files stay local. An alert combines the learned pattern, the current NRT reading and the Open-Meteo weather. Steps, claimable in order: (1) global FIRMS archive downloaded locally: the yearly all-countries files 2000-2025 for MODIS, Suomi NPP and NOAA-20 (48 zips, 9.3 GB) into `data/raw/firms-global/`, the last twelve months from Archive Download orders; (2) `aeros build-db` worldwide and the Parquet store uploaded to Cloud Storage; (3) BigQuery feature table cell x week with the weather join; (4) Earth Engine biome export per H3 cell; (5) train in the gym, land the model and its pattern predictions in S3 `derived/`; (6) the NRT refresh reads the predictions — no live GCP call |
 
 ## 7. Submission checklist (Space Apps)
 

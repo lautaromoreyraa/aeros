@@ -55,6 +55,8 @@ export interface CalendarRecord {
   median_same_month: number | null;
   anomaly: number | null;
   anomaly_ratio: number | null;
+  /** The newest month, still being observed: no comparison with the usual. */
+  in_progress?: boolean;
   source: HarmonizedSource | string;
 }
 

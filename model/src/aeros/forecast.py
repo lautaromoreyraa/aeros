@@ -20,6 +20,7 @@ at years before the target's year, and validation keeps whole years out.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -42,16 +43,33 @@ FEATURES = [
     "season_cos",
     "horizon",
 ]
+# Fuel dryness and fire weather of the issue week (see `aeros.power`). They are
+# known when the forecast is issued, never taken from the target week. Only the
+# weather is used by default; see `aeros.pipeline.CHOSEN_WITH_CONDITIONS`.
+SOIL = ["soil_wet", "soil_wet_anom"]
+WEATHER = ["hdw_week", "hdw_anom"]
+CONDITIONS = SOIL + WEATHER
 
 
 def _week_of_year(weeks: pd.Series) -> pd.Series:
     return weeks.dt.isocalendar().week.clip(upper=52).astype(int)
 
 
-def weekly_series(harmonized: pd.DataFrame) -> pd.DataFrame:
-    """Dense cell x week table of harmonized counts (gaps before Terra dropped)."""
+def weekly_series(harmonized: pd.DataFrame, last_day: date | None = None) -> pd.DataFrame:
+    """Dense cell x week table of harmonized counts (gaps before Terra dropped).
+
+    `last_day` is the last day with detections. A last week that ends after it
+    holds only some of its days; its counts are scaled up to seven days, so the
+    forecast is not issued from a week that looks quieter only because it is
+    not over. Without `last_day` every week counts as complete.
+    """
     table = harmonized[["cell", "week", "harmonized_n"]].dropna()
     table = table.rename(columns={"harmonized_n": "y"})
+    if last_day is not None and not table.empty:
+        last_week = table["week"].max()
+        observed = (pd.Timestamp(last_day) - last_week).days + 1
+        if 0 < observed < 7:
+            table.loc[table["week"] == last_week, "y"] *= 7.0 / observed
     table["woy"] = _week_of_year(table["week"])
     table["year"] = table["week"].dt.year
     return table.sort_values(["cell", "week"]).reset_index(drop=True)
@@ -67,8 +85,12 @@ def _climatology(table: pd.DataFrame) -> pd.DataFrame:
     return yearly[["cell", "woy", "year", "climatology", "climatology_prev_year"]]
 
 
-def build_examples(table: pd.DataFrame) -> pd.DataFrame:
-    """One row per (cell, issue week, horizon) with the target `h` weeks later."""
+def build_examples(table: pd.DataFrame, conditions: pd.DataFrame | None = None) -> pd.DataFrame:
+    """One row per (cell, issue week, horizon) with the target `h` weeks later.
+
+    With `conditions` (cell x week, from `aeros.power`), each row also gets the
+    fuel and weather columns of its issue week.
+    """
     wide = table.pivot(index="week", columns="cell", values="y").sort_index()
     wide = wide.asfreq("7D")  # keeps missing weeks as NaN instead of collapsing them
 
@@ -110,6 +132,19 @@ def build_examples(table: pd.DataFrame) -> pd.DataFrame:
         examples = examples.merge(everything.reset_index(), on=["cell", "woy"], how="left")
         examples.loc[future, "climatology"] = examples.loc[future, "_all"]
         examples = examples.drop(columns="_all")
+        # The same week of the year before, as training rows have it; without it
+        # every live row would take the trees' "missing" branch, which only the
+        # first year of each cell ever trained.
+        before = table.groupby(["cell", "woy", "year"])["y"].sum().rename("_prev").reset_index()
+        before["year"] += 1
+        examples = examples.merge(before, on=["cell", "woy", "year"], how="left")
+        fill = future & examples["climatology_prev_year"].isna()
+        examples.loc[fill, "climatology_prev_year"] = examples.loc[fill, "_prev"]
+        examples = examples.drop(columns="_prev")
+    if conditions is not None:
+        known = conditions.rename(columns={"week": "issue_week"})
+        known = known[["cell", "issue_week", *[c for c in CONDITIONS if c in known]]]
+        examples = examples.merge(known, on=["cell", "issue_week"], how="left")
     day = examples["target_week"].dt.day_of_year + 3
     examples["season_sin"] = np.sin(2 * np.pi * day / 365.25)
     examples["season_cos"] = np.cos(2 * np.pi * day / 365.25)
@@ -119,12 +154,13 @@ def build_examples(table: pd.DataFrame) -> pd.DataFrame:
 @dataclass
 class Forecaster:
     model: HistGradientBoostingRegressor
+    features: list[str] = field(default_factory=lambda: list(FEATURES))
     dispersion: float = 1.0
     systematic: float = 0.0
     scores: dict = field(default_factory=dict)
 
     def predict(self, examples: pd.DataFrame) -> np.ndarray:
-        return np.clip(self.model.predict(examples[FEATURES]), 0.0, None)
+        return np.clip(self.model.predict(examples[self.features]), 0.0, None)
 
 
 def _new_model() -> HistGradientBoostingRegressor:
@@ -151,24 +187,27 @@ def _scores(frame: pd.DataFrame, pred: np.ndarray) -> dict[str, float]:
     }
 
 
-def evaluate(examples: pd.DataFrame, test_from_year: int) -> tuple[dict, Forecaster]:
+def evaluate(
+    examples: pd.DataFrame, test_from_year: int, features: list[str] | None = None
+) -> tuple[dict, Forecaster]:
     """Fit on years before `test_from_year`, score on that year onward.
 
     Returns scores for the model and both yardsticks, per horizon, plus a
     forecaster refitted on every year with known targets.
     """
+    features = list(features or FEATURES)
     known = examples.dropna(subset=["target"])
     train = known[known["year"] < test_from_year]
     test = known[known["year"] >= test_from_year]
     if train.empty or test.empty:
         raise ValueError(f"test year {test_from_year} leaves an empty split")
 
-    model = _new_model().fit(train[FEATURES], train["target"])
-    pred = np.clip(model.predict(test[FEATURES]), 0.0, None)
+    model = _new_model().fit(train[features], train["target"])
+    pred = np.clip(model.predict(test[features]), 0.0, None)
     climatology = test["climatology"].fillna(test["lag0"]).to_numpy()
     persistence = test["lag0"].to_numpy()
 
-    report: dict = {"test_from_year": test_from_year, "by_horizon": {}}
+    report: dict = {"test_from_year": test_from_year, "features": features, "by_horizon": {}}
     for h in HORIZONS:
         mask = (test["horizon"] == h).to_numpy()
         part = test[mask]
@@ -180,7 +219,8 @@ def evaluate(examples: pd.DataFrame, test_from_year: int) -> tuple[dict, Forecas
     y = test["target"].to_numpy()
     by_month = test.assign(month=test["target_week"].dt.to_period("M").dt.to_timestamp())
     final = Forecaster(
-        model=_new_model().fit(known[FEATURES], known["target"]),
+        model=_new_model().fit(known[features], known["target"]),
+        features=features,
         dispersion=models.dispersion(y, pred),
         systematic=models.systematic(by_month, y, pred),
     )

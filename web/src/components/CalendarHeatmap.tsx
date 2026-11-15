@@ -39,6 +39,7 @@ export function colorFor(record: CalendarRecord, view: CalendarView, max: number
 function describe(record: CalendarRecord, view: CalendarView, unit: Unit): string {
   const month = `${MONTH_LABELS[record.month_of_year - 1]} ${record.year} (${COVERAGE_LABELS[coverageOf(record.source)].toLowerCase()})`;
   if (view === "anomaly") {
+    if (record.in_progress) return `${month}: in progress, not compared with the usual yet`;
     return record.anomaly_ratio === null
       ? `${month}: no usual value to compare with`
       : `${month}: ${formatRatio(record.anomaly_ratio)} the usual ${MONTH_LABELS[record.month_of_year - 1]}`;

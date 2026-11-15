@@ -13,7 +13,7 @@ import { alertDecision, formatDay } from "../util/earlyWarning";
 import { unitLabel } from "../util/format";
 import { demoSectors } from "../util/sectors";
 
-const EarthScene = lazy(() => import("../components/EarthScene"));
+const EarthScene = lazy(() => import("../components/earth/EarthScene"));
 const SatelliteTerrain = lazy(() => import("../components/SatelliteTerrain"));
 
 const NO_FLAGS: ReadonlySet<string> = new Set();
@@ -86,12 +86,6 @@ export function LandingPage({ region, warning, onEnter }: Props) {
   const mapMounted = useInView(terrainRef, { rootMargin: "0px 0px 60% 0px", once: true });
   const risen = useInView(terrainRef, { threshold: 0.35, once: true });
 
-  const columns = useMemo(() => {
-    if (!region) return [];
-    const totals = region.cells.cells.map((cell) => cell.values.reduce((sum, row) => sum + row[1], 0));
-    const max = Math.max(1, ...totals);
-    return region.centers.map((center, index) => ({ center: center.center, weight: Math.sqrt((totals[index] ?? 0) / max) }));
-  }, [region]);
   const totals = useMemo(
     () => (region ? cellTotals(region.cells, 0, region.lastMonth - region.firstMonth) : []),
     [region],
@@ -127,12 +121,11 @@ export function LandingPage({ region, warning, onEnter }: Props) {
           className={["hero", still && "hero--still", lit && "is-lit"].filter(Boolean).join(" ")}
           aria-labelledby="hero-title"
         >
+          {/* The globe draws its own illustrative fires, so it starts without waiting for the record. */}
           <Suspense fallback={<div className="hero__canvas hero__canvas--fallback" />}>
-            {region && (
-              <div className="hero__canvas">
-                <EarthScene cells={columns} still={still} paused={!heroVisible} onFirstScan={light} />
-              </div>
-            )}
+            <div className="hero__canvas">
+              <EarthScene still={still} paused={!heroVisible} onFirstScan={light} />
+            </div>
           </Suspense>
           <div className="hero__veil" />
           <div className="hero__copy">
@@ -237,17 +230,11 @@ export function LandingPage({ region, warning, onEnter }: Props) {
               Get the warning for your area
             </h2>
             <p>
-              Choose a zone or share your location, and the channel to be told on. You get a confirmation first and
-              an alert only when your area, or the one next to it, burns well above its normal.
+              Find your town or share your location, and choose Telegram or e-mail. You confirm first, then you hear
+              about a possible fire within about 50 km of it, at most once every 12 hours.
             </p>
           </div>
-          {region && (
-            <AlertSignup
-              sectors={sectors}
-              regionCells={region.cells.cells.map((cell) => cell.cell)}
-              resolution={region.cells.resolution}
-            />
-          )}
+          <AlertSignup />
         </section>
 
         <section className="landing__end" aria-labelledby="end-title">
@@ -262,8 +249,17 @@ export function LandingPage({ region, warning, onEnter }: Props) {
 
       <footer className="landing__footer">
         <p>
-          Hotspot counts are model outputs aggregated to H3 cells. The early warning is statistical, not an official
-          fire alert. Earth imagery: NASA Visible Earth, Blue Marble and Black Marble.
+          Hotspot counts are model outputs aggregated to H3 cells; the fires on the opening globe are illustrative. The
+          early warning is statistical, not an official fire alert. Earth imagery: NASA Visible Earth, Blue Marble and
+          Black Marble, with relief from Blue Marble Next Generation; clouds from{" "}
+          <a className="credit-link" href="https://www.solarsystemscope.com/textures/">
+            Solar System Scope
+          </a>
+          , under{" "}
+          <a className="credit-link" href="https://creativecommons.org/licenses/by/4.0/">
+            CC BY 4.0
+          </a>
+          , resized.
         </p>
         <DataCredits />
       </footer>

@@ -1,8 +1,9 @@
 /**
  * Every outside source behind the app, credited the way each one asks:
  * FIRMS with NASA's acknowledgement, GOES as derived NOAA data (never as
- * NOAA's own product), Open-Meteo with its link and licence, and Copernicus
- * for the ERA5 reanalysis the fire-weather ranks are measured against, and
+ * NOAA's own product), Open-Meteo with its link and licence, Copernicus
+ * for the ERA5 reanalysis the fire-weather ranks are measured against,
+ * NASA POWER for the past fire weather the forecast learns from, and
  * GeoNames for the towns a cell is named after.
  */
 export function DataCredits() {
@@ -46,6 +47,13 @@ export function DataCredits() {
           CC BY 4.0
         </a>
         .
+      </p>
+      <p>
+        Past fire weather for the forecast: these data were obtained from the{" "}
+        <a className="credit-link" href="https://power.larc.nasa.gov/">
+          NASA Langley Research Center (LaRC) POWER Project
+        </a>{" "}
+        funded through the NASA Earth Science/Applied Science Program.
       </p>
     </div>
   );

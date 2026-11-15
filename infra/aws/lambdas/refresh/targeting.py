@@ -106,6 +106,16 @@ _COMPASS = (
 )
 
 
+def offset_en(km: float, bearing_deg: float, label: str) -> str:
+    """ "About 75 km north-east of Resistencia": how far, and which way, from the person."""
+    where = "the area you chose" if label == "zone" else label
+    if km < 5:
+        return f"Very close to {where}."
+    step = 5 if km < 100 else 10
+    point = _COMPASS[round(bearing_deg / 45) % 8]
+    return f"About {step * round(km / step)} km {point} of {where}."
+
+
 def describe_wind(wind: Wind) -> str:
     """ "toward the south-east at 28 km/h": where the wind is going, which is where smoke goes."""
     point = _COMPASS[round(wind.blows_to / 45) % 8]
@@ -245,6 +255,38 @@ def reach(
     return matches
 
 
+def reference_points(subscriber) -> tuple[list[tuple[float, float]], str]:
+    """Where "near" is measured from: the town the person named, else the cells chosen on the map.
+
+    The label is the town's name, or "zone" for the cells of the map.
+    """
+    place = getattr(subscriber, "place", None)
+    if place:
+        return [(float(place["lat"]), float(place["lng"]))], str(place["name"])
+    return [h3.cell_to_latlng(c) for c in subscriber.cells], "zone"
+
+
+def offset_from(subscriber, entry: Mapping) -> tuple[float, float, str]:
+    """(kilometres, compass bearing, label) from the person's town or zone to a flagged cell."""
+    points, label = reference_points(subscriber)
+    lat, lng = place_of(entry)
+    km, origin = min((distance_km(lat, lng, *p), p) for p in points)
+    return km, bearing(*origin, lat, lng), label
+
+
+def nearest_first(match: Match) -> Match:
+    """The same match with its zones ordered by how close they burn to the subscriber's cells.
+
+    The first zone is the one a person wants to see on a map: the fire closest to where they
+    live, not the biggest one in the region. Ties go to the stronger signal.
+    """
+
+    def key(entry: Mapping) -> tuple[float, float]:
+        return round(offset_from(match.subscriber, entry)[0], 1), -(entry.get("ratio") or 0.0)
+
+    return Match(match.subscriber, tuple(sorted(match.flagged, key=key)))
+
+
 def window_id(report: Mapping) -> str:
     start, end = (report.get("window") or ["?", "?"])[:2]
     return f"{start}/{end}"
@@ -330,6 +372,18 @@ def _ratio(value: float | None) -> str:
     return f"{value:.0f}×" if value >= 10 else f"{value:.1f}×"
 
 
+def place_of(entry: Mapping) -> tuple[float, float]:
+    """Where a flagged cell burns: the mean of its detections, or the cell's centre without it."""
+    if entry.get("lat") is not None and entry.get("lng") is not None:
+        return float(entry["lat"]), float(entry["lng"])
+    return h3.cell_to_latlng(entry["cell"])
+
+
+def map_link(lat: float, lng: float) -> str:
+    """A link every phone opens in its map app."""
+    return f"https://www.google.com/maps?q={lat:.3f},{lng:.3f}"
+
+
 def _place(lat: float, lng: float) -> str:
     return f"{abs(lat):.1f}° {'S' if lat < 0 else 'N'}, {abs(lng):.1f}° {'W' if lng < 0 else 'E'}"
 
@@ -360,6 +414,9 @@ def format_message(
     unsubscribe: str = "",
     wind: Wind | None = None,
     fire_weather: Mapping | None = None,
+    map_links: bool = False,
+    max_places: int = MAX_PLACES,
+    distances: Mapping[str, tuple[float, float, str]] | None = None,
 ) -> tuple[str, str]:
     """(subject, text) with the fields of the interface's alert message, for one subscriber.
 
@@ -376,8 +433,8 @@ def format_message(
     subject = f"Early warning: {' and '.join(parts)}"
 
     lines = [subject, f"Window: {_day(start)} – {_day(end)}"]
-    for entry in match.flagged[:MAX_PLACES]:
-        lat, lng = h3.cell_to_latlng(entry["cell"])
+    for entry in match.flagged[:max_places]:
+        lat, lng = place_of(entry)
         expected = entry["expected"]
         shown = f"{expected:.1f}" if expected < 10 else _count(expected)
         name = sector_of.get(entry["cell"], "Gran Chaco")
@@ -385,8 +442,12 @@ def format_message(
             f"- {name}, {_place(lat, lng)}: {_ratio(entry.get('ratio'))} the usual "
             f"({_count(entry['observed'])} hotspots, {shown} expected)"
         )
-    if areas > MAX_PLACES:
-        lines.append(f"+ {areas - MAX_PLACES} more")
+        if distances and entry["cell"] in distances:
+            lines.append(f"  {offset_en(*distances[entry['cell']])}")
+        if map_links:
+            lines.append(f"  Approximate location: {map_link(lat, lng)}")
+    if areas > max_places:
+        lines.append(f"+ {areas - max_places} more")
     if wind is not None and wind.speed_kmh >= 1:
         lines.append(f"Wind near the fire: {describe_wind(wind)}.")
     if fire_weather and _severity(fire_weather["level"]) > 0:

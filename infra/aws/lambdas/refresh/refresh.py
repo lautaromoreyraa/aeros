@@ -33,7 +33,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 import alerts
-import subscriber_alerts
 from early_warning import WINDOW_DAYS, window
 
 logger = logging.getLogger()
@@ -72,7 +71,6 @@ class Settings:
     cells_key: str | None = None
     hotspots_key: str | None = None
     alert_settings: alerts.AlertSettings | None = None
-    subscriber_settings: subscriber_alerts.SubscriberSettings | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -101,11 +99,6 @@ class Settings:
             cells_key=os.environ.get("CELLS_KEY"),
             hotspots_key=os.environ.get("HOTSPOTS_KEY"),
             alert_settings=alerts.AlertSettings.from_environment() if early_warning_key else None,
-            subscriber_settings=(
-                subscriber_alerts.SubscriberSettings.from_environment()
-                if early_warning_key
-                else None
-            ),
         )
 
 
@@ -127,7 +120,6 @@ def handler(
     early_warning: EarlyWarning | None = None,
     ses=None,
     post: alerts.Post | None = None,
-    subscriptions_store=None,
 ) -> dict:
     settings = settings or Settings.from_environment()
     if s3 is None or ssm is None:
@@ -208,29 +200,7 @@ def handler(
                     # must not fail the run and trigger download retries.
                     logger.exception("alert notification failed")
                     summary["alerts"] = "failed"
-            if settings.subscriber_settings:
-                # Independent of the fixed-list alert: subscribers have their own memory.
-                try:
-                    summary["subscribers"] = subscriber_alerts.run(
-                        report,
-                        settings.subscriber_settings,
-                        store=subscriptions_store or _dynamo_store(),
-                        s3=s3,
-                        ssm=ssm,
-                        ses=ses,
-                        post=post,
-                        now=now,
-                    )
-                except Exception:
-                    logger.exception("subscriber notification failed")
-                    summary["subscribers"] = "failed"
     return summary
-
-
-def _dynamo_store():
-    from dynamo_store import DynamoStore
-
-    return DynamoStore.from_environment()
 
 
 def _early_warning_from_s3(settings: Settings) -> EarlyWarning:
