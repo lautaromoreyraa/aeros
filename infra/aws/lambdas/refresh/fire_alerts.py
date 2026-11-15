@@ -119,18 +119,22 @@ def notify(
         )
         lat, lng = targeting.place_of(near[0])
         nearest = targeting.offset_from(subscriber, near[0])
-        subject, text = alert_text.fire_message(
-            [(entry, targeting.offset_from(subscriber, entry)) for entry in near],
-            subscriber.language,
-            scans=len(report.get("scans") or []),
-            now=when,
-            wind=targeting.wind_at(wind_field, lat, lng, when),
-            web_url=web_url,
-            unsubscribe=stop,
-            pins=pin_sender is not None,
-            map_links=subscriber.channel == "email",
-            max_fires=FIRES_SHOWN,
-        )
+        if subscriber.channel == "sms":
+            # The long message carries a map link the phone cannot open.
+            subject, text = "", alert_text.fire_sms(subscriber.language, nearest[2])
+        else:
+            subject, text = alert_text.fire_message(
+                [(entry, targeting.offset_from(subscriber, entry)) for entry in near],
+                subscriber.language,
+                scans=len(report.get("scans") or []),
+                now=when,
+                wind=targeting.wind_at(wind_field, lat, lng, when),
+                web_url=web_url,
+                unsubscribe=stop,
+                pins=pin_sender is not None,
+                map_links=subscriber.channel == "email",
+                max_fires=FIRES_SHOWN,
+            )
         try:
             sender(subscriber, subject, text)
         except Exception as exc:

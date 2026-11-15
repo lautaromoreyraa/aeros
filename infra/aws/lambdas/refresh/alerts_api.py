@@ -46,6 +46,7 @@ from urllib.parse import quote
 import alerts
 import fire_check
 import places
+import sms
 import telegram_bot
 from alert_text import pick_language
 from subscriptions import (
@@ -72,6 +73,7 @@ Reply = Callable[..., None]  # (chat_id, text, reply_markup=None)
 Find = Callable[[str, str], list[dict]]  # (query, language) -> towns
 Answer = Callable[[str], None]
 SendMail = Callable[[str, str, str], None]  # address, subject, text
+SendSms = Callable[[str, str], None]  # address, text
 CheckFire = Callable[[float, float], dict]  # (lat, lon) -> fire_check answer
 
 
@@ -82,6 +84,10 @@ class Dependencies:
     #: Without it the Telegram sign-up returns no deep link (the bot is not set up yet).
     bot_username: str | None = None
     send_mail: SendMail | None = None
+    #: Without it an SMS sign-up is refused: nothing is stored for a text that never left.
+    send_sms: SendSms | None = None
+    #: Twilio auth token, only for checking the signature of an inbound text.
+    twilio_token: str | None = None
     reply: Reply | None = None
     #: Looks a town up by name; without it the bot cannot sign anyone up by town.
     find: Find | None = None
@@ -225,6 +231,8 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
             place=request.get("place") if isinstance(request.get("place"), dict) else None,
         )
     except Cooldown:
+        if channel == "sms":
+            return _json(429, {"error": "a confirmation text was just sent; wait a few minutes"})
         return _json(429, {"error": "a confirmation e-mail was just sent; wait a few minutes"})
     except InvalidSubscription as exc:
         return _json(400, {"error": str(exc)})
@@ -233,6 +241,19 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
     if subscription.channel == "telegram":
         if deps.bot_username:
             answer["confirm_url"] = f"https://t.me/{deps.bot_username}?start={subscription.id}"
+        return _json(202, answer)
+
+    if subscription.channel == "sms":
+        if deps.send_sms is None:
+            deps.subscriptions.store.delete(subscription.id)
+            return _json(503, {"error": "SMS alerts are not available yet"})
+        try:
+            assert deps.send_sms is not None and subscription.address
+            deps.send_sms(subscription.address, sms.confirmation(subscription.language))
+        except Exception as exc:
+            deps.subscriptions.store.delete(subscription.id)
+            logger.error("confirmation text failed: %s", type(exc).__name__)
+            return _json(503, {"error": "could not send the confirmation text"})
         return _json(202, answer)
 
     try:
@@ -437,6 +458,7 @@ def _api_dependencies() -> Dependencies:
             web_url=os.environ.get("ALERT_WEB_URL", ""),
             bot_username=_parameter(ssm, "ALERT_TELEGRAM_BOT_PARAMETER"),
             send_mail=send_mail if send else None,
+            send_sms=_sms_sender(ssm),
             check_fire=_fire_checker(area),  # type: ignore[arg-type]
         )
     return _cache["api"]
@@ -480,3 +502,65 @@ def handler(event, context):
 def webhook(event, context):
     """Function URL entry of the Telegram webhook."""
     return webhook_handler(event, context)
+
+
+def _sms_sender(ssm) -> SendSms | None:
+    account = _parameter(ssm, "TWILIO_ACCOUNT_SID_PARAMETER")
+    token = _parameter(ssm, "TWILIO_AUTH_TOKEN_PARAMETER")
+    from_number = _parameter(ssm, "TWILIO_FROM_PARAMETER")
+    if not (account and token and from_number):
+        return None
+
+    def send(address: str, text: str) -> None:
+        sms.send_sms(account, token, from_number, address, text)
+
+    return send
+
+
+def _request_url(event: Mapping) -> str:
+    """The URL Twilio signed: the function URL, including any query string."""
+    context = event.get("requestContext") or {}
+    domain = context.get("domainName") or ""
+    path = event.get("rawPath") or "/"
+    query = event.get("rawQueryString") or ""
+    url = f"https://{domain}{path}"
+    return f"{url}?{query}" if query else url
+
+
+def _header(headers: Mapping, name: str) -> str:
+    wanted = name.lower()
+    for key, value in headers.items():
+        if str(key).lower() == wanted:
+            return str(value)
+    return ""
+
+
+def sms_webhook_handler(event: Mapping, context=None, *, deps: Dependencies | None = None) -> dict:
+    """Inbound SMS. A bad signature is refused; a storage error raises so Twilio retries."""
+    deps = deps or _sms_dependencies()
+    params = sms.form_params(_body(event))
+    signature = _header(event.get("headers") or {}, "x-twilio-signature")
+    if not sms.signature_is_valid(_request_url(event), params, signature, deps.twilio_token):
+        return _json(403, {"error": "forbidden"})
+    result, language = deps.subscriptions.answer_sms(params.get("From", ""), params.get("Body", ""))
+    return {
+        "statusCode": 200,
+        "headers": {"content-type": "text/xml; charset=utf-8", "cache-control": "no-store"},
+        "body": sms.twiml(sms.reply_text(result, language)),
+    }
+
+
+def _sms_dependencies() -> Dependencies:
+    if "sms" not in _cache:
+        import boto3
+
+        _cache["sms"] = Dependencies(
+            _subscriptions(),
+            twilio_token=_parameter(boto3.client("ssm"), "TWILIO_AUTH_TOKEN_PARAMETER"),
+        )
+    return _cache["sms"]
+
+
+def sms_webhook(event, context):
+    """Function URL entry of the Twilio inbound SMS webhook."""
+    return sms_webhook_handler(event, context)

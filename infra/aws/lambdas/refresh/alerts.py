@@ -46,6 +46,9 @@ EMAIL_TO_PARAMETER = "/aeros/alerts/email-to"
 TELEGRAM_TOKEN_PARAMETER = "/aeros/alerts/telegram-token"
 TELEGRAM_CHAT_PARAMETER = "/aeros/alerts/telegram-chat-id"
 RESEND_KEY_PARAMETER = "/aeros/alerts/resend-api-key"
+TWILIO_ACCOUNT_SID_PARAMETER = "/aeros/alerts/twilio-account-sid"
+TWILIO_AUTH_TOKEN_PARAMETER = "/aeros/alerts/twilio-auth-token"
+TWILIO_FROM_PARAMETER = "/aeros/alerts/twilio-from"
 
 
 class AlertError(RuntimeError):

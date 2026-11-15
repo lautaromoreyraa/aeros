@@ -273,6 +273,9 @@ export class WebStack extends Stack {
         ALERT_EMAIL_FROM_PARAMETER: ALERT_PARAMETERS.emailFrom,
         ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
         ALERT_TELEGRAM_BOT_PARAMETER: SUBSCRIPTION_PARAMETERS.telegramBot,
+        TWILIO_ACCOUNT_SID_PARAMETER: ALERT_PARAMETERS.twilioAccountSid,
+        TWILIO_AUTH_TOKEN_PARAMETER: ALERT_PARAMETERS.twilioAuthToken,
+        TWILIO_FROM_PARAMETER: ALERT_PARAMETERS.twilioFrom,
         // GET /api/alerts/fire-check reads what the satellites saw around a reported point.
         DATA_BUCKET: props.dataBucket.bucketName,
         GOES_LATEST_KEY: DATA_LAYOUT.goesLatestKey,
@@ -284,6 +287,9 @@ export class WebStack extends Stack {
     grantParameters(this, fn, [
       ALERT_PARAMETERS.emailFrom,
       ALERT_PARAMETERS.resendKey,
+      ALERT_PARAMETERS.twilioAccountSid,
+      ALERT_PARAMETERS.twilioAuthToken,
+      ALERT_PARAMETERS.twilioFrom,
       SUBSCRIPTION_PARAMETERS.telegramBot,
     ]);
     if (props.alertEmailIdentity) {

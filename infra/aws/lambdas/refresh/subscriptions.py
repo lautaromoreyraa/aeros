@@ -3,7 +3,8 @@
 A subscription keeps a channel, an address and the cells chosen, and nothing
 else about the person. It is born pending and only counts once confirmed, with
 a double opt-in on every channel: the person presses Start in the Telegram bot,
-or follows the link e-mailed to the address. A pending one expires after a day,
+follows the link e-mailed to the address, or replies YES to the SMS. A pending one
+expires after a day,
 so a mistyped or malicious address never lingers.
 
 Telegram is the delicate one. The browser cannot know a chat id, and accepting
@@ -27,9 +28,10 @@ from typing import Protocol
 
 import h3
 
+import sms as sms_channel
 from alert_text import DEFAULT_LANGUAGE, pick_language
 
-CHANNELS = ("telegram", "email")
+CHANNELS = ("telegram", "email", "sms")
 RESOLUTION = 4
 #: A zone is a cell and its ring (7 cells); this leaves room for a few of them.
 MAX_CELLS = 60
@@ -45,6 +47,8 @@ RESEND_COOLDOWN = timedelta(minutes=10)
 _EMAIL = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$")
 _CHAT_ID = re.compile(r"^-?\d{1,20}$")
 _ZONE = re.compile(r"^[A-Za-z0-9_-]{1,60}$")
+# E.164: a leading + and 8 to 15 digits, the first of them not zero.
+_PHONE = re.compile(r"^\+[1-9]\d{7,14}$")
 
 
 class InvalidSubscription(ValueError):
@@ -128,6 +132,12 @@ def _same(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode(), b.encode())
 
 
+def normalize_phone(raw: str | None) -> str | None:
+    """E.164, or None. Spaces, dots, dashes and brackets are ignored."""
+    text = re.sub(r"[\s().-]", "", raw or "")
+    return text if _PHONE.match(text) else None
+
+
 class Subscriptions:
     def __init__(
         self,
@@ -157,7 +167,7 @@ class Subscriptions:
         place: Mapping | None = None,
     ) -> Subscription:
         if channel not in CHANNELS:
-            raise InvalidSubscription("channel must be telegram or email")
+            raise InvalidSubscription("channel must be telegram, email or sms")
         clean_place = self._valid_place(place) if place is not None else None
         if clean_place and not cells:
             cells = self.cells_around(clean_place["lat"], clean_place["lng"])
@@ -170,12 +180,15 @@ class Subscriptions:
                 raise InvalidSubscription("a valid e-mail address is needed")
             # A new request for the same address replaces its older pending ones, but not
             # within minutes of the last: nobody may use this to flood a mailbox.
-            now = self._now()
-            for old in self.store.all():
-                if old.channel == "email" and old.address == address and old.status == "pending":
-                    if now - datetime.fromisoformat(old.created_at) < RESEND_COOLDOWN:
-                        raise Cooldown
-                    self.store.delete(old.id)
+            self._replace_pending("email", address)
+        elif channel == "sms":
+            address = normalize_phone(address)
+            if address is None:
+                raise InvalidSubscription(
+                    "a phone number in international form is needed, like +5493624000000"
+                )
+            # Same cooldown as e-mail: each confirmation is a billed SMS.
+            self._replace_pending("sms", address)
         else:
             address = None  # set by the bot, never by the browser
 
@@ -195,6 +208,15 @@ class Subscriptions:
         )
         self.store.put(subscription)
         return subscription
+
+    def _replace_pending(self, channel: str, address: str) -> None:
+        """A new request for the same address replaces an older pending one, after a pause."""
+        now = self._now()
+        for old in self.store.all():
+            if old.channel == channel and old.address == address and old.status == "pending":
+                if now - datetime.fromisoformat(old.created_at) < RESEND_COOLDOWN:
+                    raise Cooldown
+                self.store.delete(old.id)
 
     def _valid_cells(self, cells: Sequence[str]) -> tuple[str, ...]:
         if isinstance(cells, str) or not cells:
@@ -267,6 +289,57 @@ class Subscriptions:
             raise NotFound("this link is not valid or has expired")
         if found.status == "confirmed":
             return found
+        return self._confirm(found)
+
+    def answer_sms(self, address: str, body: str) -> tuple[str, str]:
+        """What a reply from this phone means, and the language to answer in.
+
+        YES confirms the pending sign-up of the number that replied, never a
+        number typed by someone else. STOP removes every SMS subscription of
+        that number. The result is one of confirmed, already, stopped, unknown
+        or ignored.
+        """
+        phone = normalize_phone(address)
+        if phone is None:
+            return "ignored", DEFAULT_LANGUAGE
+        language = self._sms_language(phone)
+        if sms_channel.is_stop(body):
+            return ("stopped" if self._drop_phone(phone) else "unknown"), language
+        if sms_channel.is_yes(body):
+            pending = [
+                live
+                for sub in self.store.all()
+                if sub.channel == "sms" and sub.address == phone
+                for live in [self._live(sub.id)]
+                if live is not None and live.status == "pending"
+            ]
+            if pending:
+                pending.sort(key=lambda item: item.created_at)
+                confirmed = self._confirm(pending[-1])
+                return "confirmed", confirmed.language
+            if any(
+                sub.channel == "sms" and sub.address == phone and sub.status == "confirmed"
+                for sub in self.store.all()
+            ):
+                return "already", language
+            return "unknown", language
+        return "ignored", language
+
+    def _sms_language(self, phone: str) -> str:
+        found = [
+            sub for sub in self.store.all() if sub.channel == "sms" and sub.address == phone
+        ]
+        if not found:
+            return DEFAULT_LANGUAGE
+        return max(found, key=lambda item: item.created_at).language
+
+    def _drop_phone(self, phone: str) -> int:
+        gone = [sub for sub in self.store.all() if sub.channel == "sms" and sub.address == phone]
+        for sub in gone:
+            self.store.delete(sub.id)
+        return len(gone)
+
+    def _confirm(self, found: Subscription) -> Subscription:
         confirmed = replace(
             found,
             status="confirmed",

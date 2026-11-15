@@ -6,12 +6,14 @@
  *
  * Telegram needs no address: the answer carries a `confirm_url` to the bot, and
  * pressing Start there is the confirmation. E-mail gets a confirmation link.
+ * SMS gets a text and is confirmed by replying YES, so it works without mobile data.
  */
 
-export type Channel = "telegram" | "email";
+export type Channel = "telegram" | "sms" | "email";
 
 export const CHANNELS: { value: Channel; label: string }[] = [
   { value: "telegram", label: "Telegram" },
+  { value: "sms", label: "SMS" },
   { value: "email", label: "Email" },
 ];
 
@@ -43,6 +45,13 @@ export function placeLabel(place: Place): string {
   return parts.filter((part, index) => parts.indexOf(part) === index).join(", ");
 }
 
+export function normalizePhone(raw: string): { address: string } | { error: string } {
+  const digits = raw.trim().replace(/[\s().-]/g, "");
+  return /^\+[1-9]\d{7,14}$/.test(digits)
+    ? { address: digits }
+    : { error: "Enter the number with its country code, starting with +." };
+}
+
 export function normalizeEmail(raw: string): { address: string } | { error: string } {
   const value = raw.trim();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -70,7 +79,7 @@ export function subscriptionRequest(
   language: "es" | "en",
   address?: string,
 ): SubscriptionRequest {
-  return { channel, place, language, ...(channel === "email" && address && { address }) };
+  return { channel, place, language, ...((channel === "email" || channel === "sms") && address && { address }) };
 }
 
 /** Only a t.me link is ever offered as the Telegram confirmation. */

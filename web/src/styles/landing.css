@@ -600,9 +600,9 @@
   background: rgb(34 158 217 / 0.16);
 }
 
-.signup__channel--whatsapp:has(input:checked) {
-  border-color: #25d366;
-  background: rgb(37 211 102 / 0.14);
+.signup__channel--sms:has(input:checked) {
+  border-color: #e6c35c;
+  background: rgb(230 195 92 / 0.16);
 }
 
 .signup__channel--email:has(input:checked) {

@@ -164,10 +164,10 @@ function expectFireCheckReadsOnly(statements: any[]): void {
 }
 
 describe("Telegram webhook", () => {
-  it("is the one public function URL, and says why", () => {
+  it("is a public function URL, and says why", () => {
     const urls = Object.values(refresh.findResources("AWS::Lambda::Url")) as any[];
-    expect(urls).toHaveLength(1);
-    expect(urls[0].Properties.AuthType).toBe("NONE");
+    expect(urls).toHaveLength(2);
+    expect(urls.every((url) => url.Properties.AuthType === "NONE")).toBe(true);
     refresh.hasResourceProperties("AWS::Lambda::Function", {
       Handler: "alerts_api.webhook",
       MemorySize: 256,
@@ -184,6 +184,7 @@ describe("Telegram webhook", () => {
       Principal: "*",
     });
     refresh.hasOutput("TelegramWebhookUrl", {});
+    refresh.hasOutput("SmsWebhookUrl", {});
   });
 
   it("reads the bot token and the webhook secret, and nothing else", () => {
