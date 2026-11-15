@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -103,6 +104,13 @@ def run(
     return Result(panel.frame, harmonized, report, report.winner, resolution, unit)
 
 
+def last_detection_day(detections: pd.DataFrame) -> date | None:
+    """The UTC day of the newest detection: the forecast's last observed day."""
+    if detections.empty or "acq_datetime" not in detections:
+        return None
+    return detections["acq_datetime"].max().tz_convert("UTC").date()
+
+
 @dataclass
 class ForecastChoice:
     examples: pd.DataFrame
@@ -144,6 +152,7 @@ def fit_forecast(
     harmonized: pd.DataFrame,
     conditions: pd.DataFrame | None = None,
     compare_all: bool = False,
+    last_day: date | None = None,
 ) -> ForecastChoice:
     """Fits the forecast and scores it against the fire history alone.
 
@@ -155,7 +164,7 @@ def fit_forecast(
     on. The choice is fixed rather than taken from that one window, because a
     pick on a single window chases its noise.
     """
-    examples = forecast.build_examples(forecast.weekly_series(harmonized), conditions)
+    examples = forecast.build_examples(forecast.weekly_series(harmonized, last_day), conditions)
     years = sorted(examples["year"].unique())
     test_from = int(years[-3] if len(years) > 4 else years[-1])
     if conditions is None:
@@ -195,7 +204,11 @@ def _write_outputs(
     _write_json(out_dir / "calendar_region.json", _calendar_records(region))
     _write_json(out_dir / "cells_monthly.json", _cells_monthly(harmonized, resolution))
     _write_json(out_dir / "critical_period.json", burn_calendar.critical_period(region))
-    _write_json(out_dir / "forecast.json", fit_forecast(harmonized, conditions).to_json(unit))
+    last_day = last_detection_day(detections)
+    _write_json(
+        out_dir / "forecast.json",
+        fit_forecast(harmonized, conditions, last_day=last_day).to_json(unit),
+    )
     _write_json(out_dir / "validation.json", report.as_dict())
     _write_json(
         out_dir / "morning.json",
