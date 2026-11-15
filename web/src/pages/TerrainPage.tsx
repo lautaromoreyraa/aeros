@@ -3,8 +3,8 @@ import { gridDisk } from "h3-js";
 import type { EarlyWarning, Unit } from "../api/types";
 import { AnnualChart } from "../components/AnnualChart";
 import { CalendarHeatmap, countScaleMax, type CalendarView } from "../components/CalendarHeatmap";
-import { FireWeatherDays } from "../components/FireWeatherDays";
 import { Legend } from "../components/Legend";
+import { TerrainFacts } from "../components/TerrainFacts";
 import { MonthTimeline } from "../components/MonthTimeline";
 import { SectorOverview } from "../components/SectorOverview";
 import type { MapFocus } from "../components/HexMap";
@@ -20,15 +20,14 @@ import type { Area, LngLat } from "../util/area";
 import { BLAZE, toCss } from "../util/colorRamp";
 import { criticalPeriod } from "../util/criticalPeriod";
 import type { AlertDecision } from "../util/earlyWarning";
-import { formatDay } from "../util/earlyWarning";
 import { daysAhead, nodesNear, summarizeDays } from "../util/fireWeather";
+import { terrainBrief, worstLevel } from "../util/terrainBrief";
 import { unitLabel } from "../util/format";
 import { monthKey, monthOfYear, yearOf } from "../util/months";
 import { COUNTRY_NAMES, placeLabel, placeNear } from "../util/places";
 import { eraComparison, recordAt } from "../util/sectorKpis";
 import { WHOLE_REGION, cellsOfSector, demoSectors } from "../util/sectors";
 import { hourIndexAt } from "../util/wind";
-import { cellWeekSummary } from "../util/cellWeekSummary";
 
 const HexMap = lazy(() => import("../components/HexMap"));
 
@@ -134,13 +133,25 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
     [sectors],
   );
   const fireWeather = useFireWeather();
-  /** The next days of fire weather over the open zone: its worst forecast point each day. */
-  const zoneWeather = useMemo(() => {
+  /**
+   * Worst fire weather still ahead, over the tapped cell or the open zone.
+   * A forecast whose days are all past does not move the decision.
+   */
+  const weatherLevel = useMemo(() => {
     if (sectorId === null || fireWeather.status !== "ready" || !fireWeather.data) return null;
     const field = fireWeather.data;
-    const points = region.centers.filter((cell) => !selected || selected.has(cell.cell)).map((cell) => cell.center);
-    return { field, ...daysAhead(summarizeDays(field, nodesNear(field.grid, points)), new Date().toISOString().slice(0, 10)) };
-  }, [sectorId, fireWeather, selected, region.centers]);
+    const anchorCenter = anchor ? region.centers.find((cell) => cell.cell === anchor)?.center : undefined;
+    const points =
+      tapped && anchorCenter
+        ? [anchorCenter]
+        : region.centers.filter((cell) => !selected || selected.has(cell.cell)).map((cell) => cell.center);
+    const ahead = daysAhead(
+      summarizeDays(field, nodesNear(field.grid, points)),
+      new Date().toISOString().slice(0, 10),
+    );
+    if (ahead.stale) return null;
+    return worstLevel(ahead.days.map((day) => day.level));
+  }, [sectorId, fireWeather, tapped, anchor, selected, region.centers]);
 
   const close = useCallback(() => {
     setSectorId(null);
@@ -198,15 +209,16 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
   // A tapped cell is named after the town people know it by; a zone picked
   // from the list keeps the zone's own name.
   const here = tapped && anchor && places ? placeNear(places, anchor) : null;
-
-  // Plain-language week summary for the tapped cell.
-  const anchorCenter = anchor
-    ? (region.centers.find((c) => c.cell === anchor)?.center ?? null)
-    : null;
-  const weekSummary =
-    earlyWarning && anchor && anchorCenter
-      ? cellWeekSummary(anchor, earlyWarning, alertDecision, anchorCenter)
-      : null;
+  // A tap is that cell. A zone from the list is its busiest flagged cell.
+  const briefCells = useMemo(() => {
+    if (tapped && anchor) return [anchor];
+    if (selected) return [...selected];
+    return region.centers.map((cell) => cell.cell);
+  }, [tapped, anchor, selected, region.centers]);
+  const brief = useMemo(
+    () => terrainBrief({ cellIds: briefCells, report: earlyWarning, decision: alertDecision, weather: weatherLevel }),
+    [briefCells, earlyWarning, alertDecision, weatherLevel],
+  );
   const describe = useCallback(
     (cell: string) => {
       const near = places ? placeNear(places, cell) : null;
@@ -327,58 +339,7 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
               </button>
             </div>
 
-            {tapped && weekSummary && (
-              <section className="terrain__week" aria-label="This week">
-                <h3 className="terrain__week-title">
-                  This week ({weekSummary.windowLabel})
-                </h3>
-                {weekSummary.flagged ? (
-                  <>
-                    <p className="terrain__week-status terrain__week-status--alert">
-                      {weekSummary.observedLabel} where {weekSummary.expectedLabel} is usual
-                      — about <strong>{weekSummary.ratioLabel}</strong> the usual.
-                    </p>
-                    <p className="terrain__week-evidence summary__note">
-                      Based on {weekSummary.dataDaysLabel} with satellite data
-                      {weekSummary.satellitesLabel ? ` (${weekSummary.satellitesLabel})` : ""}
-                      {" · "}
-                      {weekSummary.oddsLabel}
-                      {" · "}
-                      <a
-                        className="credit-link"
-                        href={weekSummary.firmsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Check this spot on NASA FIRMS
-                      </a>
-                    </p>
-                  </>
-                ) : (
-                  <p className="terrain__week-status">
-                    Nothing unusual here this week.
-                  </p>
-                )}
-              </section>
-            )}
-
-            {zoneWeather && (
-              <div className="terrain__weather">
-                <p className="summary__note">
-                  {zoneWeather.stale
-                    ? `Fire weather forecast of ${formatDay(zoneWeather.field.generated_at.slice(0, 10))}`
-                    : "Fire weather in this zone, next days"}
-                </p>
-                <FireWeatherDays days={zoneWeather.days} label={`Fire weather in ${current.name} by day`} />
-                <p className="summary__note">
-                  Against the same days of {zoneWeather.field.climatology.years[0]}–
-                  {zoneWeather.field.climatology.years[1]}.{" "}
-                  <a className="credit-link" href="https://open-meteo.com/">
-                    Weather data by Open-Meteo.com
-                  </a>
-                </p>
-              </div>
-            )}
+            <TerrainFacts brief={brief} />
 
             {calendars.status === "error" && (
               <p className="field-error" role="alert">
@@ -386,7 +347,9 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
               </p>
             )}
 
-            <div className="tabs tabs--panel" role="tablist" aria-label="Dashboard">
+            <details className="terrain__history">
+              <summary>History of this place</summary>
+            <div className="tabs tabs--panel" role="tablist" aria-label="History">
               {TABS.map((option) => (
                 <button
                   key={option.value}
@@ -439,6 +402,7 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
                 </>
               )}
             </div>
+            </details>
           </aside>
         )}
       </section>
