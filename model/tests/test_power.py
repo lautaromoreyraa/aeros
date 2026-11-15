@@ -142,3 +142,39 @@ def test_forecast_without_conditions_uses_the_history_alone():
     assert choice.chosen == "history"
     assert choice.forecaster.features == forecast.FEATURES
     assert "source" not in choice.to_json("hotspots")["features"]
+
+
+def test_live_forecast_rows_have_every_feature_the_trees_learned():
+    cells = ["8481a1bffffffff", "8481a13ffffffff"]
+    weeks = pd.date_range("2010-01-04", "2016-12-26", freq="7D")
+    harmonized = _history(weeks, cells, {(c, w): w.month in (8, 9) for c in cells for w in weeks})
+    examples = forecast.build_examples(forecast.weekly_series(harmonized))
+    live = examples[examples["issue_week"] == examples["issue_week"].max()]
+    assert live["target"].isna().all()
+    assert not live[forecast.FEATURES].isna().any().any()
+    # The year before of the same week, as the training rows get it.
+    row = live[(live["cell"] == cells[0]) & (live["horizon"] == 1)].iloc[0]
+    woy, year = int(row["woy"]), int(row["year"])
+    series = forecast.weekly_series(harmonized)
+    expected = series[
+        (series["cell"] == cells[0]) & (series["woy"] == woy) & (series["year"] == year - 1)
+    ]["y"].sum()
+    assert row["climatology_prev_year"] == expected
+
+
+def test_a_week_that_is_not_over_is_scaled_to_seven_days():
+    harmonized = pd.DataFrame(
+        {
+            "cell": ["a", "a"],
+            "week": pd.to_datetime(["2026-11-02", "2026-11-09"]),
+            "harmonized_n": [70.0, 60.0],
+        }
+    )
+    from datetime import date
+
+    full = forecast.weekly_series(harmonized)
+    partial = forecast.weekly_series(harmonized, last_day=date(2026, 11, 14))
+    assert full["y"].tolist() == [70.0, 60.0]
+    assert partial["y"].tolist() == [70.0, 70.0]  # 6 of 7 days seen
+    over = forecast.weekly_series(harmonized, last_day=date(2026, 11, 15))
+    assert over["y"].tolist() == [70.0, 60.0]
