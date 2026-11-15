@@ -27,6 +27,8 @@ from typing import Protocol
 
 import h3
 
+from alert_text import DEFAULT_LANGUAGE, pick_language
+
 CHANNELS = ("telegram", "email")
 RESOLUTION = 4
 #: A zone is a cell and its ring (7 cells); this leaves room for a few of them.
@@ -69,6 +71,8 @@ class Subscription:
     confirmed_at: str | None = None
     #: What the notifier told this subscriber in the current window.
     memory: dict | None = None
+    #: "es" or "en": the language of every message this person gets.
+    language: str = DEFAULT_LANGUAGE
 
     def to_dict(self) -> dict:
         return {**self.__dict__, "cells": list(self.cells)}
@@ -136,6 +140,7 @@ class Subscriptions:
         address: str | None,
         cells: Sequence[str],
         zone_id: str | None = None,
+        language: str | None = None,
     ) -> Subscription:
         if channel not in CHANNELS:
             raise InvalidSubscription("channel must be telegram or email")
@@ -164,6 +169,7 @@ class Subscriptions:
             address=address,
             cells=chosen,
             zone_id=zone_id,
+            language=pick_language(language),
             status="pending",
             token=self._make_token(),
             created_at=now.isoformat(timespec="seconds"),
@@ -228,7 +234,9 @@ class Subscriptions:
             if same and other.id != kept.id and other.status == "confirmed":
                 self.store.delete(other.id)
 
-    def confirm_telegram(self, subscription_id: str, chat_id: int | str) -> Subscription | None:
+    def confirm_telegram(
+        self, subscription_id: str, chat_id: int | str, language: str | None = None
+    ) -> Subscription | None:
         """The bot saw `/start <id>` from `chat_id`: that chat is the subscriber."""
         chat = str(chat_id)
         if not _CHAT_ID.match(chat):
@@ -242,6 +250,8 @@ class Subscriptions:
         confirmed = replace(
             found,
             address=chat,
+            # The app of the person who pressed Start says their language better than the site did.
+            language=pick_language(language) if language else found.language,
             status="confirmed",
             confirmed_at=self._now().isoformat(timespec="seconds"),
             expires_at=None,

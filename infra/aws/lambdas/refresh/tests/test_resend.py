@@ -180,7 +180,7 @@ def test_a_subscriber_gets_the_alert_by_resend_through_the_notifier():
     post = Resend()
     store = s.MemoryStore()
     service = s.Subscriptions(store)
-    sub = service.create("email", "ana@example.com", [ORIGIN])
+    sub = service.create("email", "ana@example.com", [ORIGIN], language="en")
     service.confirm_with_token(sub.id, sub.token)
     send = build(parameters(), post=post)
     report = {

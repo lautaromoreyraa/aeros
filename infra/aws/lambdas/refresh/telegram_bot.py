@@ -25,6 +25,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from alert_text import pick_language
 from subscriptions import Subscriptions
 
 logger = logging.getLogger()
@@ -49,6 +50,8 @@ class Command:
     kind: str  # "start", "stop", "help" or "ignore"
     chat_id: int | None = None
     payload: str = ""
+    #: What Telegram says the language of the person's app is, like "es-AR".
+    language: str | None = None
 
 
 def parse(update: Mapping) -> Command:
@@ -64,28 +67,70 @@ def parse(update: Mapping) -> Command:
         {"start": "start", "stop": "stop"}.get(name, "help"),
         chat["id"],
         payload if _PAYLOAD.match(payload) else "",
+        (message.get("from") or {}).get("language_code"),
     )
 
 
-def _welcome(web_url: str) -> str:
-    where = f" at {web_url}" if web_url else ""
+def _where(web_url: str, language: str) -> str:
+    if not web_url:
+        return ""
+    return f" en {web_url}" if language == "es" else f" at {web_url}"
+
+
+def _welcome(web_url: str, language: str) -> str:
+    where = _where(web_url, language)
+    if language == "en":
+        return (
+            "aeros fire alerts for the Gran Chaco. To get alerts for your area, pick it on the "
+            f"map{where} and press the Telegram button there. Send /stop to end your alerts."
+        )
     return (
-        "aeros fire alerts for the Gran Chaco. To get alerts for your area, pick it on the "
-        f"map{where} and press the Telegram button there. Send /stop to end your alerts."
+        "Avisos de incendios de aeros para el Gran Chaco. Para recibir avisos de su zona, "
+        f"elíjala en el mapa{where} y toque el botón de Telegram. "
+        "Envíe /stop cuando quiera dejar de recibirlos."
     )
 
 
-def _confirmed(cells: int) -> str:
+def _confirmed(cells: int, language: str) -> str:
+    if language == "en":
+        return (
+            f"You are subscribed: you will get an alert here when a fire above its normal "
+            f"burns near your {cells} {'cell' if cells == 1 else 'cells'}. One message per weekly "
+            "window, and another only if it gets worse. Send /stop at any time to end the alerts."
+        )
     return (
-        f"You are subscribed: you will get an alert here when a fire above its normal "
-        f"burns near your {cells} {'cell' if cells == 1 else 'cells'}. One message per weekly "
-        "window, and another only if it gets worse. Send /stop at any time to end the alerts."
+        "Listo, ya está suscripto. Le vamos a escribir acá cuando se detecte mucho más fuego "
+        f"de lo habitual cerca de {'la zona' if cells == 1 else 'las zonas'} que eligió. "
+        "Es un mensaje por semana y otro solo si la situación empeora. "
+        "Envíe /stop cuando quiera dejar de recibir los avisos."
     )
 
 
-def _expired(web_url: str) -> str:
+def _expired(web_url: str, language: str) -> str:
+    if language == "en":
+        where = f": {web_url}" if web_url else ""
+        return f"That link is not valid or has expired. Pick your area again on the site{where}"
     where = f": {web_url}" if web_url else ""
-    return f"That link is not valid or has expired. Pick your area again on the site{where}"
+    return f"Ese enlace no es válido o ya venció. Vuelva a elegir su zona en el sitio{where}"
+
+
+def _stopped(ended: int, language: str) -> str:
+    if language == "en":
+        if not ended:
+            return "You had no active alerts here."
+        return f"Done: {ended} {'alert' if ended == 1 else 'alerts'} ended. You will not get more."
+    if not ended:
+        return "No tenía avisos activos en este chat."
+    return "Listo, dejó de recibir avisos. No le vamos a escribir más."
+
+
+def _help(language: str) -> str:
+    if language == "en":
+        return "Send /start after picking your area on the site, or /stop to end your alerts."
+    return (
+        "Elija su zona en el sitio y toque el botón de Telegram, "
+        "o envíe /stop para dejar de recibir avisos."
+    )
 
 
 def handle(
@@ -101,28 +146,22 @@ def handle(
         return "ignored"
     chat = command.chat_id
     assert chat is not None
+    language = pick_language(command.language)
 
     if command.kind == "start" and command.payload:
-        confirmed = subscriptions.confirm_telegram(command.payload, chat)
+        confirmed = subscriptions.confirm_telegram(command.payload, chat, command.language)
         if confirmed is None:
-            outcome, text = "expired", _expired(web_url)
+            outcome, text = "expired", _expired(web_url, language)
         else:
-            outcome, text = "confirmed", _confirmed(len(confirmed.cells))
+            # The reply uses what the subscription now says, which is this person's app language.
+            outcome, text = "confirmed", _confirmed(len(confirmed.cells), confirmed.language)
     elif command.kind == "start":
-        outcome, text = "welcome", _welcome(web_url)
+        outcome, text = "welcome", _welcome(web_url, language)
     elif command.kind == "stop":
         ended = subscriptions.unsubscribe_chat(chat)
-        outcome = "stopped"
-        text = (
-            f"Done: {ended} {'alert' if ended == 1 else 'alerts'} ended. You will not get more."
-            if ended
-            else "You had no active alerts here."
-        )
+        outcome, text = "stopped", _stopped(ended, language)
     else:
-        outcome, text = (
-            "help",
-            "Send /start after picking your area on the site, or /stop to end your alerts.",
-        )
+        outcome, text = "help", _help(language)
 
     try:
         send(chat, text)

@@ -33,6 +33,7 @@ export const REFRESH_CODE_EXCLUDE = [
   "!notifier.py",
   "!subscriber_alerts.py",
   "!alerts_api.py",
+  "!alert_text.py",
 ];
 
 function logGroupFor(scope: Construct, id: string): logs.LogGroup {

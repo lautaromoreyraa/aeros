@@ -62,8 +62,8 @@ def service():
     return s.Subscriptions(s.MemoryStore())
 
 
-def subscribe(service, channel, cells, address=None):
-    sub = service.create(channel, address, cells)
+def subscribe(service, channel, cells, address=None, language="en"):
+    sub = service.create(channel, address, cells, language=language)
     if channel == "telegram":
         return service.confirm_telegram(sub.id, address or "42")
     return service.confirm_with_token(sub.id, sub.token)
@@ -263,3 +263,34 @@ def test_the_email_sender_sends_one_message_to_the_address():
     assert call["FromEmailAddress"] == "alerts@aeros.example"
     assert call["Destination"] == {"ToAddresses": ["ana@example.com"]}
     assert call["Content"]["Simple"]["Subject"]["Data"] == "the subject"
+
+
+# ---------- in Spanish ----------
+
+
+def test_each_subscriber_reads_the_alert_in_their_own_language(service):
+    subscribe(service, "telegram", [ORIGIN], "11", language="es")
+    subscribe(service, "telegram", [ORIGIN], "22", language="en")
+    outbox = Outbox()
+    run(service, report((ORIGIN, 3.3)), outbox)
+    by_chat = {addr: text for _, addr, _, text in outbox.sent}
+    assert "Aviso temprano de incendios" in by_chat["11"]
+    assert "Para dejar de recibir estos avisos: envíe /stop en este chat" in by_chat["11"]
+    assert (
+        "Window:" in by_chat["22"] and "Stop these alerts: send /stop in this chat" in by_chat["22"]
+    )
+
+
+def test_the_e_mail_alert_is_in_plain_spanish_with_its_own_stop_link(service):
+    mail = subscribe(service, "email", [ORIGIN], "ana@example.com", language="es")
+    outbox = Outbox()
+    run(
+        service,
+        report((ORIGIN, 3.3)),
+        outbox,
+        unsubscribe_url=lambda sub: f"https://aeros.example/stop/{sub.id}/{sub.token}",
+    )
+    (_, _, subject, text) = outbox.sent[0]
+    assert subject.startswith("Aviso de incendios: actividad de fuego muy por encima de lo normal")
+    assert f"https://aeros.example/stop/{mail.id}/{mail.token}" in text
+    assert "hotspot" not in text.lower()

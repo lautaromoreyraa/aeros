@@ -165,6 +165,7 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
             request.get("address") if isinstance(request.get("address"), str) else None,
             request.get("cells") if isinstance(request.get("cells"), list) else [],
             request.get("zone_id") if isinstance(request.get("zone_id"), str) else None,
+            request.get("language") if isinstance(request.get("language"), str) else None,
         )
     except Cooldown:
         return _json(429, {"error": "a confirmation e-mail was just sent; wait a few minutes"})
@@ -194,34 +195,65 @@ def _confirmation_message(web_url: str, subscription: Subscription) -> tuple[str
         f"{web_url.rstrip('/')}{PREFIX}/{quote(subscription.id)}/confirm"
         f"?token={quote(subscription.token)}"
     )
-    where = f" on {web_url}" if web_url else ""
+    if subscription.language == "en":
+        where = f" on {web_url}" if web_url else ""
+        return (
+            "Confirm your aeros fire alerts",
+            "Someone asked for aeros fire alerts to be sent to this address"
+            f"{where}. If it was you, confirm here (the link works for 24 hours):\n\n{link}\n\n"
+            "If it was not you, ignore this message: nothing is sent until you confirm.",
+        )
+    where = f" desde {web_url}" if web_url else ""
     return (
-        "Confirm your aeros fire alerts",
-        "Someone asked for aeros fire alerts to be sent to this address"
-        f"{where}. If it was you, confirm here (the link works for 24 hours):\n\n{link}\n\n"
-        "If it was not you, ignore this message: nothing is sent until you confirm.",
+        "Confirme sus avisos de incendios de aeros",
+        f"Alguien pidió recibir en este correo los avisos de incendios de aeros{where}. "
+        f"Si fue usted, confirme acá (el enlace sirve por 24 horas):\n\n{link}\n\n"
+        "Si no fue usted, ignore este mensaje: no se le va a enviar nada hasta que confirme.",
     )
+
+
+# Text of the pages the e-mail links open, by language. A link that fails does not say whose
+# language to use, so those pages carry both.
+_PAGES = {
+    "es": {
+        "confirmed": (
+            "Ya está suscripto",
+            "Le vamos a mandar un correo cuando se detecte mucho más fuego de lo habitual cerca "
+            "de su zona. Cada mensaje trae un enlace para dejar de recibirlos.",
+        ),
+        "stopped": ("Avisos cancelados", "No le vamos a mandar más avisos a esta dirección."),
+    },
+    "en": {
+        "confirmed": (
+            "You are subscribed",
+            "You will get an e-mail when a fire above its normal burns near your area. "
+            "Every message has a link to stop them.",
+        ),
+        "stopped": ("Alerts stopped", "You will not get more alerts at this address."),
+    },
+}
+_INVALID = (
+    "Enlace no válido / Link not valid",
+    "Este enlace no es válido o ya venció. / This link is not valid or has expired.",
+)
 
 
 def _confirm(deps: Dependencies, subscription_id: str, token: str) -> dict:
     try:
-        deps.subscriptions.confirm_with_token(subscription_id, token)
+        confirmed = deps.subscriptions.confirm_with_token(subscription_id, token)
     except NotFound:
-        return _page(404, "Link not valid", "This link is not valid or has expired.")
-    return _page(
-        200,
-        "You are subscribed",
-        "You will get an e-mail when a fire above its normal burns near your area. "
-        "Every message has a link to stop them.",
-    )
+        return _page(404, *_INVALID)
+    return _page(200, *_PAGES[confirmed.language]["confirmed"])
 
 
 def _unsubscribe(deps: Dependencies, subscription_id: str, token: str, *, html: bool) -> dict:
+    # Read the language first: after the unsubscribe there is nothing left to read it from.
+    found = deps.subscriptions.store.get(subscription_id)
     gone = deps.subscriptions.unsubscribe(subscription_id, token)
     if html:
-        if gone:
-            return _page(200, "Alerts stopped", "You will not get more alerts at this address.")
-        return _page(404, "Link not valid", "This link is not valid or the alerts already stopped.")
+        if gone and found:
+            return _page(200, *_PAGES[found.language]["stopped"])
+        return _page(404, *_INVALID)
     return _json(204 if gone else 404, {} if gone else {"error": "not found"})
 
 

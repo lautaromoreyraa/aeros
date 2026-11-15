@@ -78,7 +78,13 @@ def answer(response):
 
 
 def create(deps, **fields):
-    body = {"channel": "email", "address": "ana@example.com", "cells": [ORIGIN], **fields}
+    body = {
+        "channel": "email",
+        "address": "ana@example.com",
+        "cells": [ORIGIN],
+        "language": "en",
+        **fields,
+    }
     return call(deps, "POST", a.PREFIX, body=body)
 
 
@@ -256,8 +262,14 @@ def hook(deps, update, secret=SECRET, header="X-Telegram-Bot-Api-Secret-Token"):
     return a.webhook_handler(event, deps=deps)
 
 
-def start(chat_id, payload):
-    return {"message": {"chat": {"id": chat_id, "type": "private"}, "text": f"/start {payload}"}}
+def start(chat_id, payload, language="en"):
+    return {
+        "message": {
+            "chat": {"id": chat_id, "type": "private"},
+            "from": {"language_code": language},
+            "text": f"/start {payload}",
+        }
+    }
 
 
 def test_the_webhook_refuses_a_missing_or_wrong_secret_and_does_nothing(deps, chat):
@@ -299,3 +311,45 @@ def test_a_storage_failure_is_not_a_200_so_telegram_retries(deps):
     deps.subscriptions.store = Broken()
     with pytest.raises(RuntimeError):
         hook(deps, start(7, "someid"))
+
+
+# ---------- in Spanish, for the people of the region ----------
+
+
+def test_a_sign_up_without_a_language_gets_the_confirmation_e_mail_in_spanish(deps, mailbox):
+    body = {"channel": "email", "address": "ana@example.com", "cells": [ORIGIN]}
+    response = call(deps, "POST", a.PREFIX, body=body)
+    assert response["statusCode"] == 202
+    (_, subject, text) = mailbox.sent[0]
+    assert subject == "Confirme sus avisos de incendios de aeros"
+    assert "Si fue usted, confirme acá" in text and "ignore este mensaje" in text
+    assert deps.subscriptions.store.get(answer(response)["id"]).language == "es"
+
+
+def test_the_language_of_the_browser_decides_the_e_mail_and_the_pages(deps, mailbox):
+    english = answer(create(deps, language="en-US"))
+    sub = deps.subscriptions.store.get(english["id"])
+    assert mailbox.sent[0][1] == "Confirm your aeros fire alerts" and sub.language == "en"
+    page = call(deps, "GET", f"{a.PREFIX}/{sub.id}/confirm", query={"token": sub.token})
+    assert "You are subscribed" in page["body"]
+
+    spanish = deps.subscriptions.store.get(
+        answer(create(deps, address="luis@example.com", language="es-AR"))["id"]
+    )
+    page = call(deps, "GET", f"{a.PREFIX}/{spanish.id}/confirm", query={"token": spanish.token})
+    assert "Ya está suscripto" in page["body"]
+    page = call(deps, "GET", f"{a.PREFIX}/{spanish.id}/unsubscribe", query={"token": spanish.token})
+    assert "Avisos cancelados" in page["body"] and page["statusCode"] == 200
+
+
+def test_a_link_that_fails_carries_both_languages(deps):
+    page = call(deps, "GET", f"{a.PREFIX}/unknown/confirm", query={"token": "t"})
+    assert "Enlace no válido" in page["body"] and "Link not valid" in page["body"]
+    assert page["statusCode"] == 404
+
+
+def test_the_telegram_confirmation_follows_the_app_language(deps, chat):
+    sub = deps.subscriptions.create("telegram", None, [ORIGIN])
+    hook(deps, start(7, sub.id, language="es-BO"))
+    assert "ya está suscripto" in chat.said[0][1]
+    assert deps.subscriptions.store.get(sub.id).language == "es"

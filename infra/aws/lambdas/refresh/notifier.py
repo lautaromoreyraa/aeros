@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 
 import h3
 
+import alert_text
 import alerts
 import targeting
 from subscriptions import Subscription, Subscriptions
@@ -107,14 +108,16 @@ def notify(
             continue
 
         lat, lng = h3.cell_to_latlng(match.flagged[0]["cell"])
+        language = getattr(subscriber, "language", alert_text.DEFAULT_LANGUAGE)
         stop = (
-            TELEGRAM_STOP
+            alert_text.telegram_stop(language)
             if subscriber.channel == "telegram"
             else (unsubscribe_url(subscriber) if unsubscribe_url else "")
         )
-        subject, text = targeting.format_message(
+        subject, text = alert_text.format_message(
             match,
             report,
+            language,
             region_ratio=region_ratio,
             sector_of=sector_of,
             web_url=web_url,

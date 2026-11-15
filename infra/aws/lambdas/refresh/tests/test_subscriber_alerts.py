@@ -76,9 +76,9 @@ def report(window=("2026-11-08", "2026-11-14")):
 def store():
     store = s.MemoryStore()
     service = s.Subscriptions(store, area=AREA)
-    chat = service.create("telegram", None, [ORIGIN])
+    chat = service.create("telegram", None, [ORIGIN], language="en")
     service.confirm_telegram(chat.id, 4242)
-    mail = service.create("email", "ana@example.com", [ORIGIN])
+    mail = service.create("email", "ana@example.com", [ORIGIN], language="en")
     service.confirm_with_token(mail.id, mail.token)
     return store
 

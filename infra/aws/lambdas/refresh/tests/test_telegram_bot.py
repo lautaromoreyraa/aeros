@@ -9,8 +9,11 @@ NEIGHBOR = h3.grid_ring(ORIGIN, 1)[0]
 SECRET = "s3cret-value"
 
 
-def update(text, chat_id=42, chat_type="private"):
-    return {"update_id": 1, "message": {"text": text, "chat": {"id": chat_id, "type": chat_type}}}
+def update(text, chat_id=42, chat_type="private", language="en"):
+    message = {"text": text, "chat": {"id": chat_id, "type": chat_type}}
+    if language:
+        message["from"] = {"language_code": language}
+    return {"update_id": 1, "message": message}
 
 
 class Outbox:
@@ -49,11 +52,11 @@ def test_the_secret_must_be_configured_and_match_exactly():
 
 
 def test_commands_are_read_with_their_payload():
-    assert bot.parse(update("/start abc_DEF-123")) == bot.Command("start", 42, "abc_DEF-123")
-    assert bot.parse(update("/start@AerosBot abc")) == bot.Command("start", 42, "abc")
-    assert bot.parse(update("/START")) == bot.Command("start", 42, "")
-    assert bot.parse(update("/stop")) == bot.Command("stop", 42, "")
-    assert bot.parse(update("/whatever")) == bot.Command("help", 42, "")
+    assert bot.parse(update("/start abc_DEF-123")) == bot.Command("start", 42, "abc_DEF-123", "en")
+    assert bot.parse(update("/start@AerosBot abc")) == bot.Command("start", 42, "abc", "en")
+    assert bot.parse(update("/START")) == bot.Command("start", 42, "", "en")
+    assert bot.parse(update("/stop")) == bot.Command("stop", 42, "", "en")
+    assert bot.parse(update("/whatever")) == bot.Command("help", 42, "", "en")
 
 
 def test_a_payload_that_is_not_a_link_token_is_dropped():
@@ -136,3 +139,39 @@ def test_a_reply_that_fails_does_not_undo_the_subscription_or_leak_the_error(ser
         and "123456" not in caplog.text
         and "SECRET" not in caplog.text
     )
+
+
+# ---------- in Spanish ----------
+
+
+def test_the_bot_answers_in_the_language_of_the_persons_app(service, outbox):
+    assert bot.handle(update("/start", language="es-AR"), service, outbox) == "welcome"
+    assert "Avisos de incendios de aeros" in outbox.sent[-1][1]
+    assert "Envíe /stop" in outbox.sent[-1][1]
+    bot.handle(update("/start", language="en-GB"), service, outbox)
+    assert "aeros fire alerts" in outbox.sent[-1][1]
+    bot.handle(update("/start", language=None), service, outbox)
+    assert "Avisos de incendios" in outbox.sent[-1][1]  # unknown language: Spanish
+
+
+def test_confirming_in_spanish_stores_the_language_for_every_alert(service, outbox):
+    sub = service.create("telegram", None, [ORIGIN])
+    assert bot.handle(update(f"/start {sub.id}", language="es-PY"), service, outbox) == "confirmed"
+    assert "ya está suscripto" in outbox.sent[-1][1]
+    assert service.store.get(sub.id).language == "es"
+
+
+def test_an_old_link_is_explained_in_spanish(service, outbox):
+    assert bot.handle(update("/start nope", language="es"), service, outbox) == "expired"
+    assert "no es válido o ya venció" in outbox.sent[-1][1]
+
+
+def test_stop_and_help_in_spanish(service, outbox):
+    sub = service.create("telegram", None, [ORIGIN])
+    service.confirm_telegram(sub.id, 42)
+    bot.handle(update("/stop", language="es"), service, outbox)
+    assert "dejó de recibir avisos" in outbox.sent[-1][1]
+    bot.handle(update("/stop", language="es"), service, outbox)
+    assert "No tenía avisos activos" in outbox.sent[-1][1]
+    bot.handle(update("/ayuda", language="es"), service, outbox)
+    assert "Elija su zona" in outbox.sent[-1][1]
