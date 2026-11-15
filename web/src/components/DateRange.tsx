@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../i18n/I18nContext";
 import { clampMonth, formatMonth, parseMonth } from "../util/months";
 
 interface Props {
@@ -9,19 +10,20 @@ interface Props {
   onChange: (start: number, end: number) => void;
 }
 
-const PRESETS = [
-  { label: "All years", years: null },
-  { label: "VIIRS era", from: "2012-01" },
-  { label: "Last 5 years", years: 5 },
-] as const;
-
 /**
  * Month range. Native month inputs, so phones get their own picker; browsers
  * without one fall back to a text field that accepts YYYY-MM.
  */
 export function DateRange({ start, end, min, max, onChange }: Props) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState({ start: formatMonth(start), end: formatMonth(end) });
   useEffect(() => setDraft({ start: formatMonth(start), end: formatMonth(end) }), [start, end]);
+
+  const presets = [
+    { label: t.dateRange.allYears, years: null },
+    { label: t.dateRange.viirsEra, from: "2012-01" },
+    { label: t.dateRange.last5Years, years: 5 },
+  ] as const;
 
   const commit = (next: { start: string; end: string }) => {
     const a = parseMonth(next.start);
@@ -42,12 +44,12 @@ export function DateRange({ start, end, min, max, onChange }: Props) {
     <section className="panel" aria-labelledby="range-title">
       <div className="panel__head">
         <h2 id="range-title" className="panel__title">
-          Dates
+          {t.dateRange.title}
         </h2>
       </div>
       <div className="range">
         <label className="field">
-          <span>From</span>
+          <span>{t.dateRange.from}</span>
           <input
             type="month"
             min={formatMonth(min)}
@@ -57,7 +59,7 @@ export function DateRange({ start, end, min, max, onChange }: Props) {
           />
         </label>
         <label className="field">
-          <span>To</span>
+          <span>{t.dateRange.to}</span>
           <input
             type="month"
             min={formatMonth(min)}
@@ -68,7 +70,7 @@ export function DateRange({ start, end, min, max, onChange }: Props) {
         </label>
       </div>
       <div className="chips">
-        {PRESETS.map((preset) => (
+        {presets.map((preset) => (
           <button
             key={preset.label}
             type="button"

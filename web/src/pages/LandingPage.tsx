@@ -7,6 +7,7 @@ import { useInView } from "../hooks/useInView";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { Loadable } from "../hooks/useOutlook";
 import type { LoadedRegion } from "../hooks/useRegion";
+import { useI18n } from "../i18n/I18nContext";
 import { cellTotals } from "../util/aggregation";
 import { alertMessage } from "../util/alertMessage";
 import { alertDecision, formatDay } from "../util/earlyWarning";
@@ -71,6 +72,7 @@ interface Props {
  * the same artifacts as the dashboard it leads to.
  */
 export function LandingPage({ region, warning, onEnter }: Props) {
+  const { lang, toggleLang, t } = useI18n();
   const still = usePrefersReducedMotion();
   const heroRef = useRef<HTMLElement>(null);
   const terrainRef = useRef<HTMLElement>(null);
@@ -110,9 +112,21 @@ export function LandingPage({ region, warning, onEnter }: Props) {
           </svg>
           <span>aeros</span>
         </span>
-        <button type="button" className="landing__cta landing__cta--quiet" onClick={onEnter}>
-          Open the dashboard
-        </button>
+        <div className="landing__nav-actions">
+          <button
+            type="button"
+            className="button button--ghost landing__lang-switch"
+            onClick={toggleLang}
+            aria-label={t.shell.switchLang}
+          >
+            <span className={lang === "es" ? "lang-badge is-active" : "lang-badge"}>ES</span>
+            <span className="lang-divider">/</span>
+            <span className={lang === "en" ? "lang-badge is-active" : "lang-badge"}>EN</span>
+          </button>
+          <button type="button" className="landing__cta landing__cta--quiet" onClick={onEnter}>
+            {t.landing.openDashboard}
+          </button>
+        </div>
       </header>
 
       <main>
@@ -134,20 +148,20 @@ export function LandingPage({ region, warning, onEnter }: Props) {
                 aeros
               </span>
               <span className="hero__claim wf" style={wf("claim")}>
-                Fire early warning
+                {t.landing.heroClaim}
               </span>
             </h1>
             <p className="hero__lede">
               <span className="wf" style={wf("lede1")}>
-                26 years of MODIS and VIIRS fire on a single scale.
+                {t.landing.heroLede1}
               </span>{" "}
               <span className="wf" style={wf("lede2")}>
-                An agent reads GOES-19 every 10 minutes to warn you.
+                {t.landing.heroLede2}
               </span>
             </p>
             <div className="hero__actions">
               <button type="button" className="landing__cta wf" style={wf("primary")} onClick={onEnter}>
-                Open the dashboard
+                {t.landing.openDashboard}
               </button>
               <a
                 className="landing__cta landing__cta--telegram wf"
@@ -156,10 +170,10 @@ export function LandingPage({ region, warning, onEnter }: Props) {
                 {...(TELEGRAM_EXTERNAL && { target: "_blank", rel: "noopener" })}
               >
                 <TelegramIcon />
-                Get alerts on Telegram
+                {t.landing.telegramCta}
               </a>
               <a className="hero__more wf" style={wf("more")} href="#record">
-                See the record
+                {t.landing.seeRecord}
               </a>
             </div>
           </div>
@@ -182,19 +196,15 @@ export function LandingPage({ region, warning, onEnter }: Props) {
           </div>
           <div className="record__copy">
             <h2 id="record-title" className="landing__heading">
-              {RECORD_YEARS} years of fire, on the ground it burned
+              {t.landing.recordHeading(RECORD_YEARS)}
             </h2>
             <p>
-              Each column is one H3 cell; its height and colour, the harmonized{" "}
-              {region ? unitLabel(region.unit) : "hotspots"} of the whole record. MODIS and VIIRS were joined on one
-              scale to raise early warnings that help fire brigades, land managers and local governments tell a worse
-              season from a change of satellite, plan for the critical months and act where an area burns above its
-              normal.
+              {t.landing.recordBody(region ? unitLabel(region.unit) : lang === "es" ? "focos" : "hotspots")}
             </p>
             {flagged.size > 0 && report && (
               <p className="record__flag">
-                <span className="record__swatch" aria-hidden="true" /> Outlined: burning well above normal,{" "}
-                {formatDay(report.window[0])} – {formatDay(report.window[1])}.
+                <span className="record__swatch" aria-hidden="true" />{" "}
+                {t.landing.recordFlag(formatDay(report.window[0]), formatDay(report.window[1]))}
               </p>
             )}
           </div>
@@ -203,23 +213,20 @@ export function LandingPage({ region, warning, onEnter }: Props) {
         <section className="warn" aria-labelledby="warn-title">
           <div className="warn__copy">
             <h2 id="warn-title" className="landing__heading">
-              When an area burns past its normal, you hear about it
+              {t.landing.warnHeading}
             </h2>
             <p>
-              Every morning aeros compares the last seven days of VIIRS detections with the same days of earlier
-              years. When an area burns well above that, the warning goes out by Telegram, SMS or email to the
-              people who signed up for that area and the ones next to it: where, how much more than usual, and how
-              many of those days the satellites actually saw.
+              {t.landing.warnBody}
             </p>
           </div>
           {message && report ? (
             <>
               <AlertPreview message={message} generatedAt={report.generated_at} />
-              <p className="warn__note">Preview built from the report of {formatDay(report.generated_at.slice(0, 10))}.</p>
+              <p className="warn__note">{t.landing.warnPreviewNote(formatDay(report.generated_at.slice(0, 10)))}</p>
             </>
           ) : (
             <p className="warn__note">
-              {warning.status === "loading" ? "Loading this week's report…" : "No early-warning report has been published yet."}
+              {warning.status === "loading" ? t.landing.warnLoading : t.landing.warnEmpty}
             </p>
           )}
         </section>
@@ -227,15 +234,10 @@ export function LandingPage({ region, warning, onEnter }: Props) {
         <section id="alerts" className="alerts" aria-labelledby="alerts-title">
           <div className="warn__copy">
             <h2 id="alerts-title" className="landing__heading">
-              Get the warning for your area
+              {t.landing.alertsHeading}
             </h2>
             <p>
-              Find your town or share your location, and choose Telegram, SMS or e-mail. Internet reaches Telegram and
-              e-mail. Cellular signal without mobile data reaches SMS. Where there are no towers, one gateway that
-              still has a connection can put the same short text on a LoRa radio at the post. The website does not
-              transmit that radio. On Telegram and e-mail you confirm first; by SMS a phone number is enough, and a
-              text tells you that you are subscribed. Then you hear about a possible fire within about 50 km, at
-              most once every 12 hours.
+              {t.landing.alertsBody}
             </p>
           </div>
           <AlertSignup />
@@ -243,27 +245,17 @@ export function LandingPage({ region, warning, onEnter }: Props) {
 
         <section className="landing__end" aria-labelledby="end-title">
           <h2 id="end-title" className="landing__heading">
-            See where it is burning now
+            {t.landing.endHeading}
           </h2>
           <button type="button" className="landing__cta" onClick={onEnter}>
-            Open the dashboard
+            {t.landing.openDashboard}
           </button>
         </section>
       </main>
 
       <footer className="landing__footer">
         <p>
-          Hotspot counts are model outputs aggregated to H3 cells; the fires on the opening globe are illustrative. The
-          early warning is statistical, not an official fire alert. Earth imagery: NASA Visible Earth, Blue Marble and
-          Black Marble, with relief from Blue Marble Next Generation; clouds from{" "}
-          <a className="credit-link" href="https://www.solarsystemscope.com/textures/">
-            Solar System Scope
-          </a>
-          , under{" "}
-          <a className="credit-link" href="https://creativecommons.org/licenses/by/4.0/">
-            CC BY 4.0
-          </a>
-          , resized.
+          {t.landing.footer}
         </p>
         <DataCredits />
       </footer>

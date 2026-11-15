@@ -5,9 +5,11 @@ it holds confident fire pixels in at least two of the last three scans. This
 module turns those cells into one message per subscriber:
 
 * a fire is near a person when it burns within FIRE_RADIUS_KM of the town they
-  named, measured from the mean position of its confident pixels. 50 km is a
-  panel of the dashboard (an H3 resolution-4 cell, about 25 km across) and the
-  neighbouring one, so a person can find the fire on the map they know;
+  named, measured from the mean position of its confident pixels. The default
+  is 50 km, the radius the team chose so a warning can be tied to a
+  neighboring plot;
+* a person who configured an explicit `radius_km` on their place hears about
+  fires within that custom distance;
 * a person who chose cells on the map instead hears about fires in those cells;
 * one message every QUIET_HOURS at most, with every fire near them in it: in
   the burning season a busy afternoon must not become a message every 10
@@ -35,7 +37,9 @@ from subscriptions import Subscription, Subscriptions
 
 logger = logging.getLogger()
 
-FIRE_RADIUS_KM = 50.0
+DEFAULT_FIRE_RADIUS_KM = 50.0
+#: Proximity radius in km for localized alerts; defaults to 50 km.
+FIRE_RADIUS_KM = DEFAULT_FIRE_RADIUS_KM
 QUIET_HOURS = 12
 #: Fires listed in one message; the rest are counted.
 FIRES_SHOWN = 3
@@ -46,15 +50,32 @@ Sender = Callable[[Subscription, str, str], None]
 PinSender = Callable[[Subscription, float, float, str, str], None]
 
 
-def fires_near(subscription: Subscription, cells: list[Mapping]) -> list[Mapping]:
+def target_radius_km(subscription: Subscription, default: float = FIRE_RADIUS_KM) -> float:
+    """Returns the effective alert radius in km for a subscriber."""
+    place = getattr(subscription, "place", None)
+    if isinstance(place, Mapping) and "radius_km" in place:
+        try:
+            return float(place["radius_km"])
+        except (ValueError, TypeError):
+            pass
+    return default
+
+
+def fires_near(
+    subscription: Subscription,
+    cells: list[Mapping],
+    *,
+    radius_km: float | None = None,
+) -> list[Mapping]:
     """The persistent cells near a subscriber, the closest first."""
+    limit_km = radius_km if radius_km is not None else target_radius_km(subscription)
     found: list[tuple[float, Mapping]] = []
     for entry in cells:
         if not entry.get("persistent"):
             continue
         km = targeting.offset_from(subscription, entry)[0]
         if subscription.place:
-            if km <= FIRE_RADIUS_KM:
+            if km <= limit_km:
                 found.append((km, entry))
         elif entry["cell"] in subscription.cells:
             found.append((km, entry))
@@ -82,6 +103,7 @@ def notify(
     web_url: str = "",
     unsubscribe_url: Callable[[Subscription], str] | None = None,
     now: datetime | None = None,
+    radius_km: float | None = None,
 ) -> dict:
     """Sends each subscriber the fires near them; returns what happened, in counts."""
     when = now or datetime.now(UTC)
@@ -99,7 +121,7 @@ def notify(
         return summary
 
     for subscriber in subscribers:
-        near = fires_near(subscriber, cells)
+        near = fires_near(subscriber, cells, radius_km=radius_km)
         if not near:
             continue
         summary["near"] += 1

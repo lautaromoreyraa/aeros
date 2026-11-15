@@ -1,4 +1,5 @@
 import { type FormEvent, useId, useState } from "react";
+import { useI18n } from "../i18n/I18nContext";
 import { EMERGENCY, type FireCheck, describe, fireCheckUrl, parsePoint } from "../util/fireReport";
 
 /** Base URL of the alert service; reports stay closed until it is set. */
@@ -17,6 +18,7 @@ type Status =
  * ground. The point is sent once for the answer and is not stored.
  */
 export function FireReport() {
+  const { lang, t } = useI18n();
   const id = useId();
   const [typed, setTyped] = useState("");
   const [hint, setHint] = useState<string | null>(null);
@@ -35,14 +37,14 @@ export function FireReport() {
   };
 
   const locate = () => {
-    if (!("geolocation" in navigator)) return setHint("This browser cannot share a location; type the point instead.");
-    setHint("Finding your location…");
+    if (!("geolocation" in navigator)) return setHint(t.fireReport.noGeolocation);
+    setHint(t.fireReport.findingLocation);
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         setHint(null);
         void check(coords.latitude, coords.longitude);
       },
-      () => setHint("The location was not shared; type the point instead."),
+      () => setHint(t.fireReport.locationDenied),
       { enableHighAccuracy: true, timeout: 10000 },
     );
   };
@@ -50,17 +52,17 @@ export function FireReport() {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const point = parsePoint(typed);
-    if (!point) return setHint("Write the point as latitude, longitude, like -25.3, -60.9.");
+    if (!point) return setHint(t.fireReport.formatHint);
     setHint(null);
     void check(point.lat, point.lon);
   };
 
-  const answer = status.kind === "done" ? describe(status.result, new Date()) : null;
+  const answer = status.kind === "done" ? describe(status.result, new Date(), lang) : null;
 
   return (
     <div className="report">
       <p className="report__brigade" role="note">
-        <strong>See fire? Call the fire brigade first:</strong>{" "}
+        <strong>{t.fireReport.brigadeNote}</strong>{" "}
         {EMERGENCY.map((entry, index) => (
           <span key={entry.country}>
             {index > 0 && " · "}
@@ -73,27 +75,27 @@ export function FireReport() {
       </p>
       <form className="report__form" onSubmit={submit} noValidate>
         <button type="button" className="button" onClick={locate} disabled={!ALERTS_API || status.kind === "checking"}>
-          Use my location
+          {t.fireReport.useLocation}
         </button>
         <label className="report__point" htmlFor={`${id}-point`}>
-          <span className="visually-hidden">Point, as latitude and longitude</span>
+          <span className="visually-hidden">{lang === "es" ? "Punto, latitud y longitud" : "Point, as latitude and longitude"}</span>
           <input
             id={`${id}-point`}
             inputMode="decimal"
-            placeholder="or type -25.3, -60.9"
+            placeholder={t.fireReport.pointPlaceholder}
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
           />
         </label>
         <button type="submit" className="button" disabled={!ALERTS_API || status.kind === "checking"}>
-          {status.kind === "checking" ? "Checking…" : "Check"}
+          {status.kind === "checking" ? t.fireReport.checking : t.fireReport.checkBtn}
         </button>
       </form>
       {hint && <p className="summary__note">{hint}</p>}
-      {!ALERTS_API && <p className="summary__note">Reports open when the alert service goes live.</p>}
+      {!ALERTS_API && <p className="summary__note">{t.fireReport.serviceUnavailable}</p>}
       {status.kind === "error" && (
         <p className="report__error" role="alert">
-          {status.message} Try again in a few minutes.
+          {status.message} {t.fireReport.tryAgainLater}
         </p>
       )}
       {answer && status.kind === "done" && (
@@ -103,7 +105,9 @@ export function FireReport() {
             <p key={line}>{line}</p>
           ))}
           <p className="summary__note">
-            A satellite early warning, not an emergency service. Your location is used for this answer and not stored.
+            {lang === "es"
+              ? "Una alerta temprana satelital, no un servicio de emergencias. Su ubicación se utiliza para esta respuesta y no se almacena."
+              : "A satellite early warning, not an emergency service. Your location is used for this answer and not stored."}
           </p>
         </div>
       )}
