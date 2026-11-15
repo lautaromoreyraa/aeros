@@ -25,7 +25,7 @@ interface Props {
 }
 
 /**
- * The same early-warning message as it lands in a WhatsApp chat and in an
+ * The same early-warning message as it lands in a text message and in an
  * inbox. Both are rendered from {@link AlertMessage}, the text the banner
  * stands behind, so the two channels can never disagree.
  */
@@ -33,14 +33,14 @@ export function AlertPreview({ message, generatedAt }: Props) {
   const more = message.more > 0 ? `and ${message.more} more ${message.more === 1 ? "area" : "areas"}` : null;
   return (
     <div className="alert-preview">
-      <figure className="phone" aria-label="WhatsApp message">
+      <figure className="phone" aria-label="SMS message">
         <div className="phone__bar">
           <span className="phone__avatar">
             <HexMark />
           </span>
           <span>
             <strong>aeros early warning</strong>
-            <small>WhatsApp</small>
+            <small>SMS</small>
           </span>
         </div>
         <div className="phone__chat">

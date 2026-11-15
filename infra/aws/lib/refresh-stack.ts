@@ -37,6 +37,8 @@ export const REFRESH_CODE_EXCLUDE = [
   "!alerts_api.py",
   "!alert_text.py",
   "!places.py",
+  "!sms.py",
+  // radio_relay.py stays off this list: it runs beside a field radio, not in Lambda.
 ];
 
 function logGroupFor(scope: Construct, id: string): logs.LogGroup {
@@ -62,6 +64,22 @@ export const ALERT_PARAMETERS = {
   telegramChatId: "/aeros/alerts/telegram-chat-id",
   /** Resend API key (SecureString). When it exists e-mail goes through Resend, else SES. */
   resendKey: "/aeros/alerts/resend-api-key",
+  /**
+   * Twilio Programmable SMS, created by hand. The account SID and the From
+   * number are String; the auth token is a SecureString. Missing any one of
+   * them turns the SMS channel off.
+   */
+  twilioAccountSid: "/aeros/alerts/twilio-account-sid",
+  twilioAuthToken: "/aeros/alerts/twilio-auth-token",
+  twilioFrom: "/aeros/alerts/twilio-from",
+  /**
+   * MVP SMS gateway: an Android phone running httpSMS. The API key and the
+   * webhook signing key are SecureString; the From number is the SIM, String.
+   * When the key and the From number exist, SMS uses this phone instead of Twilio.
+   */
+  httpsmsApiKey: "/aeros/alerts/httpsms-api-key",
+  httpsmsFrom: "/aeros/alerts/httpsms-from",
+  httpsmsSigningKey: "/aeros/alerts/httpsms-signing-key",
 } as const;
 
 /**
@@ -198,6 +216,11 @@ export class RefreshStack extends Stack {
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
         ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
+        TWILIO_ACCOUNT_SID_PARAMETER: ALERT_PARAMETERS.twilioAccountSid,
+        TWILIO_AUTH_TOKEN_PARAMETER: ALERT_PARAMETERS.twilioAuthToken,
+        TWILIO_FROM_PARAMETER: ALERT_PARAMETERS.twilioFrom,
+        HTTPSMS_API_KEY_PARAMETER: ALERT_PARAMETERS.httpsmsApiKey,
+        HTTPSMS_FROM_PARAMETER: ALERT_PARAMETERS.httpsmsFrom,
       },
     });
     // The parameter uses the AWS-managed aws/ssm key, whose key policy lets
@@ -213,6 +236,7 @@ export class RefreshStack extends Stack {
 
     this.goesWatch = this.goesWatchFunction(props, logGroupFor(this, "GoesWatchLogs"));
     this.telegramWebhook = this.telegramWebhookFunction(props, logGroupFor(this, "TelegramWebhookLogs"));
+    this.smsWebhookFunction(props, logGroupFor(this, "SmsWebhookLogs"));
 
     // 06:00 UTC: after the night passes over South America are in the NRT feed.
     new events.Rule(this, "DailyRefresh", {
@@ -258,6 +282,11 @@ export class RefreshStack extends Stack {
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
         ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
+        TWILIO_ACCOUNT_SID_PARAMETER: ALERT_PARAMETERS.twilioAccountSid,
+        TWILIO_AUTH_TOKEN_PARAMETER: ALERT_PARAMETERS.twilioAuthToken,
+        TWILIO_FROM_PARAMETER: ALERT_PARAMETERS.twilioFrom,
+        HTTPSMS_API_KEY_PARAMETER: ALERT_PARAMETERS.httpsmsApiKey,
+        HTTPSMS_FROM_PARAMETER: ALERT_PARAMETERS.httpsmsFrom,
         SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
         WIND_KEY: DATA_LAYOUT.windKey,
       },
@@ -332,9 +361,51 @@ export class RefreshStack extends Stack {
     return fn;
   }
 
+  /**
+   * Inbound SMS. httpSMS posts a signed CloudEvent when the Android phone
+   * receives a reply; Twilio posts a signed form. Neither can sign requests
+   * for CloudFront, so this is a public function URL and a bad signature is
+   * refused. Without the matching parameter the handler refuses that sender.
+   */
+  private smsWebhookFunction(props: RefreshStackProps, logGroup: logs.LogGroup): lambda.Function {
+    const fn = new lambda.Function(this, "SmsWebhookHandler", {
+      description: "SMS webhook: httpSMS replies, or Twilio, confirm and end subscriptions",
+      runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.ARM_64,
+      handler: "alerts_api.sms_webhook",
+      code: lambda.Code.fromAsset(REFRESH_LAMBDA_DIR, { exclude: REFRESH_CODE_EXCLUDE }),
+      layers: [this.layer],
+      memorySize: 256,
+      timeout: Duration.seconds(15),
+      logGroup,
+      environment: {
+        SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
+        FIRMS_AREA: props.firmsArea,
+        TWILIO_AUTH_TOKEN_PARAMETER: ALERT_PARAMETERS.twilioAuthToken,
+        HTTPSMS_SIGNING_KEY_PARAMETER: ALERT_PARAMETERS.httpsmsSigningKey,
+      },
+    });
+    grantSubscriptionsTable(fn, props.subscriptionsTable);
+    grantParameters(this, fn, [
+      ALERT_PARAMETERS.twilioAuthToken,
+      ALERT_PARAMETERS.httpsmsSigningKey,
+    ]);
+    const url = fn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+    fn.addPermission("PublicSmsInvokeViaUrl", {
+      principal: new iam.AnyPrincipal(),
+      action: "lambda:InvokeFunction",
+      invokedViaFunctionUrl: true,
+    });
+    new CfnOutput(this, "SmsWebhookUrl", {
+      value: url.url,
+      description: "httpSMS webhook URL for message.phone.received, or the Twilio Messaging webhook",
+    });
+    return fn;
+  }
+
   /** Exactly what sending an alert needs, for whichever function sends it. */
   private grantAlerts(fn: lambda.Function, props: RefreshStackProps): void {
-    // Exactly the four alert parameters, read with GetParameter only. Like the
+    // The alert parameters, read with GetParameter only. Like the
     // MAP_KEY they use the AWS-managed aws/ssm key, so no KMS grant is needed.
     fn.addToRolePolicy(
       new iam.PolicyStatement({

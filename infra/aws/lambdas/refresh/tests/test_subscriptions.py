@@ -75,7 +75,7 @@ def test_cells_are_deduplicated_and_must_be_valid_inside_the_area(service):
 
 
 def test_the_channel_the_address_and_the_zone_are_validated(service):
-    with pytest.raises(s.InvalidSubscription, match="telegram or email"):
+    with pytest.raises(s.InvalidSubscription, match="telegram, email or sms"):
         service.create("whatsapp", "+54911", [ORIGIN])
     for bad in (
         None,
@@ -118,6 +118,28 @@ def test_an_address_cannot_be_mailed_again_within_the_cooldown(service, clock):
 def test_addresses_that_ses_would_read_as_a_name_plus_an_address_are_refused(service, address):
     with pytest.raises(s.InvalidSubscription):
         service.create("email", address, [ORIGIN])
+
+
+def test_an_sms_number_is_stored_in_international_form_and_confirmed_by_reply(service, clock):
+    sub = service.create("sms", "+54 9 (362) 400-0000", [ORIGIN], language="es")
+    assert sub.address == "+5493624000000" and sub.status == "pending"
+    with pytest.raises(s.Cooldown):
+        service.create("sms", "+5493624000000", [ORIGIN])
+    assert service.answer_sms("+5493624000000", "Sí, dale") == ("confirmed", "es")
+    assert service.confirmed()[0].id == sub.id
+    assert service.answer_sms("+5493624000000", "YES") == ("already", "es")
+    assert service.answer_sms("+5493624000000", "STOP") == ("stopped", "es")
+    assert service.confirmed() == []
+    clock.advance(minutes=10)
+    again = service.create("sms", "+5493624000000", [NEIGHBOR])
+    assert service.answer_sms("not-a-number", "YES")[0] == "ignored"
+    assert service.store.get(again.id).status == "pending"
+
+
+def test_a_short_or_local_phone_number_is_refused(service):
+    for bad in (None, "", "3624000000", "+0123", "+549", "++5493624000000"):
+        with pytest.raises(s.InvalidSubscription, match="international"):
+            service.create("sms", bad, [ORIGIN])
 
 
 def test_confirming_a_new_subscription_replaces_the_old_one_of_the_same_chat(service):

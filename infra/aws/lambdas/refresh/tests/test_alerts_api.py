@@ -169,6 +169,145 @@ def test_a_failed_confirmation_e_mail_leaves_no_pending_sign_up(deps):
     assert "SES" not in response["body"]
 
 
+def test_an_sms_sign_up_sends_a_text_with_no_link_and_stores_the_number(deps):
+    sent = []
+    deps.send_sms = lambda address, text: sent.append((address, text))
+    response = create(deps, channel="sms", address="+54 9 362 400 0000", language="en")
+    assert response["statusCode"] == 202
+    stored = deps.subscriptions.store.get(answer(response)["id"])
+    assert stored.address == "+5493624000000" and stored.status == "pending"
+    assert sent[0][0] == "+5493624000000" and "YES" in sent[0][1] and "http" not in sent[0][1]
+
+
+def test_sms_is_unavailable_when_twilio_is_not_configured(deps):
+    assert create(deps, channel="sms", address="+5493624000000")["statusCode"] == 503
+    assert deps.subscriptions.store.all() == []
+
+
+def test_a_signed_yes_confirms_the_number_and_a_bad_signature_does_nothing(deps):
+    import hashlib
+    import hmac
+    from urllib.parse import urlencode
+
+    import sms
+
+    deps.send_sms = lambda address, text: None
+    created = answer(create(deps, channel="sms", address="+5493624000000"))
+    token = "twilio-secret"
+    deps.twilio_token = token
+    params = {"From": "+5493624000000", "Body": "YES", "MessageSid": "SM1"}
+    url = "https://sms.example/twilio"
+    payload = url + "".join(key + params[key] for key in sorted(params))
+    digest = hmac.new(token.encode(), payload.encode(), hashlib.sha1).digest()
+    signature = base64.b64encode(digest).decode()
+    event = {
+        "rawPath": "/twilio",
+        "rawQueryString": "",
+        "requestContext": {"domainName": "sms.example"},
+        "headers": {"X-Twilio-Signature": signature},
+        "body": urlencode(params),
+        "isBase64Encoded": False,
+    }
+    response = a.sms_webhook_handler(event, deps=deps)
+    assert response["statusCode"] == 200 and "text/xml" in response["headers"]["content-type"]
+    assert deps.subscriptions.store.get(created["id"]).status == "confirmed"
+    event["headers"] = {"X-Twilio-Signature": "nope"}
+    refused = a.sms_webhook_handler(event, deps=deps)
+    assert refused["statusCode"] == 403
+    assert sms.signature_is_valid(url, params, signature, token)
+
+
+def _bearer(key: str, payload: dict | None = None) -> str:
+    import hashlib
+    import hmac
+    import json
+
+    def part(value: dict) -> str:
+        raw = base64.urlsafe_b64encode(json.dumps(value).encode()).decode()
+        return raw.rstrip("=")
+
+    header = part({"alg": "HS256", "typ": "JWT"})
+    body = part(payload or {"sub": "httpsms"})
+    digest = hmac.new(key.encode(), f"{header}.{body}".encode(), hashlib.sha256).digest()
+    signature = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+    return f"Bearer {header}.{body}.{signature}"
+
+
+def test_a_signed_httpsms_reply_confirms_the_number_and_a_bad_token_does_nothing(deps):
+    deps.send_sms = lambda address, text: None
+    created = answer(create(deps, channel="sms", address="+5493624000000"))
+    deps.httpsms_signing_key = "signing-key"
+    event = {
+        "headers": {"Authorization": _bearer("signing-key")},
+        "body": json.dumps(
+            {
+                "type": "message.phone.received",
+                "data": {"contact": "+5493624000000", "content": "SI"},
+            }
+        ),
+        "isBase64Encoded": False,
+    }
+    response = a.sms_webhook_handler(event, deps=deps)
+    assert response["statusCode"] == 200
+    assert deps.subscriptions.store.get(created["id"]).status == "confirmed"
+    event["headers"] = {"Authorization": _bearer("other-key")}
+    event["body"] = json.dumps(
+        {
+            "type": "message.phone.received",
+            "data": {"contact": "+5493624000000", "content": "STOP"},
+        }
+    )
+    assert a.sms_webhook_handler(event, deps=deps)["statusCode"] == 403
+    assert deps.subscriptions.store.get(created["id"]).status == "confirmed"
+
+
+def test_an_httpsms_delivery_event_is_acknowledged_and_changes_nothing(deps):
+    deps.send_sms = lambda address, text: None
+    created = answer(create(deps, channel="sms", address="+5493624000000"))
+    deps.httpsms_signing_key = "signing-key"
+    event = {
+        "headers": {"Authorization": _bearer("signing-key")},
+        "body": json.dumps({"type": "message.phone.sent", "data": {"contact": "+5493624000000"}}),
+        "isBase64Encoded": False,
+    }
+    assert a.sms_webhook_handler(event, deps=deps)["statusCode"] == 200
+    assert deps.subscriptions.store.get(created["id"]).status == "pending"
+
+
+def test_httpsms_posts_the_text_and_a_refusal_does_not_reveal_the_api_key(monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+    from email.message import Message
+
+    import sms
+
+    seen = {}
+
+    def post(url, key, payload):
+        seen["url"] = url
+        seen["payload"] = payload
+        return {}
+
+    sms.send_httpsms("secret-key", "+5491100000000", "+5493624000000", "hola", post=post)
+    assert seen["url"] == sms.HTTPSMS_API
+    assert seen["payload"] == {
+        "content": "hola",
+        "from": "+5491100000000",
+        "to": "+5493624000000",
+    }
+
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(
+            sms.HTTPSMS_API, 401, "no", Message(), io.BytesIO(b"secret-key")
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    with pytest.raises(sms.SmsError, match="HTTP 401") as caught:
+        sms.send_httpsms("secret-key", "+5491100000000", "+5493624000000", "hola")
+    assert "secret-key" not in str(caught.value)
+
+
 def test_email_is_unavailable_when_the_sender_is_not_configured(deps):
     deps.send_mail = None
     assert create(deps)["statusCode"] == 503

@@ -397,3 +397,33 @@ def format_message(
         distances=distances,
         **options,
     )
+
+
+def fire_sms(language: str, where: str = "") -> str:
+    """One short text. No link and no map: the phone may have no mobile data.
+
+    Stays inside two SMS segments. A long place name is dropped rather than
+    letting the carrier split a paragraph.
+    """
+    place = f" {where.strip()}" if where.strip() else ""
+    if language == "en":
+        text = (
+            f"Aeros: possible fire{place}. GOES-19 sees heat; it may be a controlled burn. "
+            "Reply STOP to end."
+        )
+        if len(text) <= 140:
+            return text
+        return (
+            "Aeros: possible fire near you. GOES-19 sees heat; it may be a controlled burn. "
+            "Reply STOP to end."
+        )
+    text = (
+        f"Aeros: posible incendio{place}. GOES-19 ve calor; puede ser quema controlada. "
+        "Responda STOP para salir."
+    )
+    if len(text) <= 140:
+        return text
+    return (
+        "Aeros: posible incendio cerca. GOES-19 ve calor; puede ser quema controlada. "
+        "Responda STOP para salir."
+    )
