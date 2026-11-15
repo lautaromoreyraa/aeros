@@ -435,7 +435,12 @@ def notify(
     summary: dict = {"decision": kind}
     if kind == "none":
         if state and state.get("active"):
-            save_state(s3, bucket, settings.state_key, {"active": False})
+            if report.get("region") is None:
+                # No data in the window (or no climatology) says nothing about the fire:
+                # closing the episode would announce the same fire as new once data is back.
+                logger.info("no regional result in this report; the open alert stays open")
+            else:
+                save_state(s3, bucket, settings.state_key, {"active": False})
         return summary
     if kind == "repeat":
         logger.info("alert unchanged since the last notification; not sending")

@@ -288,3 +288,14 @@ def test_a_broken_alert_path_does_not_fail_the_refresh():
     )
     assert summary["alerts"] == "failed"
     assert summary["early_warning"]["flagged_cells"] == 3
+
+
+def test_a_window_without_data_keeps_the_open_episode_open():
+    _, s3, _, _ = notify(report())
+    no_data = {**report(), "days_with_data": [], "region": None, "cells": []}
+    summary, s3, *_ = notify(no_data, state=s3.state())
+    assert summary == {"decision": "none"}
+    assert s3.state()["active"] is True
+    # The same fire once data is back is not announced as new.
+    summary, *_ = notify(report(), state=s3.state())
+    assert summary["decision"] == "repeat"
