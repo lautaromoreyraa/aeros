@@ -8,6 +8,7 @@ import "./styles/explorer.css";
 import "./styles/outlook.css";
 import "./styles/landing.css";
 import "./styles/terrain.css";
+import "./styles/past-fires.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 import { DataCredits } from "../components/DataCredits";
 
-export type Section = "calendar" | "terrain" | "warning" | "forecast";
+export type Section = "calendar" | "terrain" | "warning" | "forecast" | "past";
 
 const SECTIONS: { value: Section; label: string }[] = [
   { value: "calendar", label: "Calendar" },
   { value: "terrain", label: "Terrain" },
   { value: "warning", label: "Early warning" },
   { value: "forecast", label: "Forecast" },
+  { value: "past", label: "Past fires" },
 ];
 
 interface Props {

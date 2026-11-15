@@ -10,6 +10,7 @@ import { EarlyWarningPage } from "./pages/EarlyWarningPage";
 import { ExplorerPage } from "./pages/ExplorerPage";
 import { ForecastPage } from "./pages/ForecastPage";
 import { LandingPage } from "./pages/LandingPage";
+import { PastFiresPage } from "./pages/PastFiresPage";
 import { TerrainPage } from "./pages/TerrainPage";
 import { alertDecision } from "./util/earlyWarning";
 
@@ -125,6 +126,8 @@ export default function App() {
                 selection={selection}
               />
             )}
+            {/* The past fires bring their own data, so they need no region loaded. */}
+            {section === "past" && <PastFiresPage />}
           </AppShell>
         </div>
       )}
