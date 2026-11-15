@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -61,7 +62,10 @@ def search(
     Each is {"name", "region", "country", "lat", "lng"}; the most relevant first.
     """
     text = " ".join(str(query).split())[:MAX_QUERY]
-    if len(text) < 2:
+    # "Villa Ángela, Chaco": the geocoder knows the name only; the rest narrows the answers.
+    name, _, hint = text.partition(",")
+    name = name.strip()
+    if len(name) < 2:
         return []
     lang = "en" if language == "en" else "es"
     key = (text.lower(), lang)
@@ -69,7 +73,7 @@ def search(
         return _cache[key]
 
     url = f"{GEOCODING}?" + urllib.parse.urlencode(
-        {"name": text, "count": 20, "language": lang, "format": "json"}
+        {"name": name, "count": 20, "language": lang, "format": "json"}
     )
     west, south, east, north = area
     found: list[dict] = []
@@ -96,11 +100,21 @@ def search(
         if identity not in seen:
             seen.add(identity)
             found.append(place)
+    tokens = _fold(hint).split()
+    if tokens:
+        narrowed = [p for p in found if all(tok in _fold(label(p)) for tok in tokens)]
+        found = narrowed or found  # a hint that matches nothing is ignored, not an empty answer
     found = found[:MAX_RESULTS]
     if len(_cache) >= _CACHE_SIZE:
         _cache.clear()
     _cache[key] = found
     return found
+
+
+def _fold(text: str) -> str:
+    """Lower case without accents: "Ángela" and "angela" are the same word to a person."""
+    plain = unicodedata.normalize("NFD", text.lower())
+    return "".join(ch for ch in plain if unicodedata.category(ch) != "Mn")
 
 
 def label(place: dict) -> str:

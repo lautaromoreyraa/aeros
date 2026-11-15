@@ -102,6 +102,25 @@ def test_only_the_name_typed_leaves_and_it_is_cut_and_encoded():
     assert len(geocoder.urls[0].split("name=")[1].split("&count")[0]) < 200
 
 
+def test_a_province_after_a_comma_narrows_the_answers_and_is_not_sent():
+    geocoder = Geocoder(
+        row("General Jose de San Martin", -26.54, -59.34, "Provincia del Chaco", "Argentina"),
+        row("General José de San Martín", -34.5, -58.5, "Buenos Aires", "Argentina"),
+    )
+    found = places.search("General José de San Martín, chaco", "es", AREA, get=geocoder)
+    assert [f["region"] for f in found] == ["Provincia del Chaco"]
+    assert "%2C" not in geocoder.urls[0] and "chaco" not in geocoder.urls[0].lower()
+
+
+def test_a_hint_that_matches_nothing_is_ignored_and_accents_do_not_matter():
+    geocoder = Geocoder(row("Villa Ángela", -27.57, -60.72, "Chaco", "Argentina"))
+    assert len(places.search("Villa Angela, Mars", "es", AREA, get=geocoder)) == 1
+    places._cache.clear()
+    assert len(places.search("Villa Angela, CHACÓ", "es", AREA, get=geocoder)) == 1
+    assert places._fold("Ángela ÑANDÚ") == "angela nandu"
+    assert places.search(", chaco", "es", AREA, get=geocoder) == []
+
+
 def test_a_repeated_search_does_not_ask_again():
     geocoder = Geocoder(row("Formosa", -26.18, -58.17, "Formosa", "Argentina"))
     places.search("Formosa", "es", AREA, get=geocoder)
