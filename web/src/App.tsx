@@ -81,7 +81,13 @@ export default function App() {
             alerting={decision.active}
             banner={
               report && decision.active && section !== "warning" ? (
-                <AlertBanner report={report} decision={decision} onOpen={() => setSection("warning")} />
+                <AlertBanner
+                  report={report}
+                  decision={decision}
+                  resolution={state.data?.cells.resolution}
+                  onSeeOnMap={() => setSection("terrain")}
+                  onOpen={() => setSection("warning")}
+                />
               ) : null
             }
             theme={resolved}

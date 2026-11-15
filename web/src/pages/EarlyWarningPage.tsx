@@ -92,7 +92,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
     <div className="outlook">
       <div className="outlook__lead">
         {decision.active ? (
-          <AlertBanner report={report} decision={decision} />
+          <AlertBanner report={report} decision={decision} resolution={region.cells.resolution} />
         ) : (
           <div className="calm-banner" role="status">
             <p>
