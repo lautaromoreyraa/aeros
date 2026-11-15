@@ -181,12 +181,17 @@ def check(
     goes_fresh = False
     goes_now = goes_any = None
     if goes:
+        # Fresh means the newest scan is recent, not that the watch ran lately: the
+        # watch looks hours back when NOAA is late. Older layers carry no scan list.
+        stamp = max(goes.get("scans") or [], default=None) or goes.get("generated_at")
         try:
-            generated = datetime.fromisoformat(str(goes["generated_at"]).replace("Z", "+00:00"))
-        except (KeyError, ValueError):
-            generated = None
-        goes_fresh = generated is not None and now - generated <= timedelta(
-            minutes=GOES_MAX_AGE_MINUTES
+            newest = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            newest = None
+        goes_fresh = (
+            newest is not None
+            and not goes.get("stale")
+            and now - newest <= timedelta(minutes=GOES_MAX_AGE_MINUTES)
         )
         cells = goes.get("cells") or []
         candidates = [

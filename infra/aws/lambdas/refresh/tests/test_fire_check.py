@@ -19,7 +19,7 @@ CSV_HEADER = (
 def goes(cells, generated=NOW - timedelta(minutes=8)):
     return {
         "generated_at": generated.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "scans": ["2026-11-15T17:50:00Z"],
+        "scans": [(generated - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")],
         "cells": cells,
     }
 
@@ -264,3 +264,12 @@ def test_what_was_seen_still_counts_when_the_other_source_is_missing():
     assert f.check(*HERE, NOW, None, f.parse_nrt(body), 1)["verdict"] == "seen_recently"
     seen = f.check(*HERE, NOW, goes([goes_cell(-25.05, -61.02)]), [], 0)
     assert seen["verdict"] == "seen_now"
+
+
+def test_goes_freshness_follows_the_newest_scan_and_the_stale_flag():
+    cell = [goes_cell(-25.05, -61.02)]
+    late = {**goes(cell), "scans": ["2026-11-15T16:00:00Z"]}
+    assert f.check(*HERE, NOW, late, [], 3)["verdict"] == "seen_recently"
+    flagged = {**goes(cell), "stale": True}
+    assert f.check(*HERE, NOW, flagged, [], 3)["verdict"] == "seen_recently"
+    assert f.check(*HERE, NOW, goes(cell), [], 3)["verdict"] == "seen_now"
