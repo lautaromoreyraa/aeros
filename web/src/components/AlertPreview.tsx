@@ -75,7 +75,7 @@ export function AlertPreview({ message, generatedAt }: Props) {
         </dl>
         <div className="mail__body">
           <p>
-            Satellite passes over the Gran Chaco from {message.window} show{" "}
+            Satellite passes from {message.window} show{" "}
             {message.active ? "fire well above what these days usually bring:" : "no area burning above its normal."}
           </p>
           {message.places.length > 0 && (

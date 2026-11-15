@@ -39,7 +39,7 @@ describe("alertMessage", () => {
 
   it("falls back to the region name for a cell outside every sector", () => {
     const result = message(report({ cells: [{ cell: CELL, observed: 10, expected: 2, ratio: 5, p_value: 1e-6 }] }), []);
-    expect(result.places[0]).toMatch(/^Gran Chaco, /);
+    expect(result.places[0]).toMatch(/^Study region, /);
   });
 
   it("puts the region first when it alerts too, and counts the places left out", () => {

@@ -89,7 +89,7 @@ export interface Anomaly {
  * own "normal"; the median rather than the mean keeps one extreme year from
  * dragging everyone else's reference.
  */
-export function leaveOneOutAnomalies(rows: AnomalyInput[]): Anomaly[] {
+export function leaveOneOutAnomalies(rows: AnomalyInput[], openIndex: number | null = null): Anomaly[] {
   const byMonth = new Map<number, number[]>();
   rows.forEach((row, index) => {
     const list = byMonth.get(row.month_of_year) ?? [];
@@ -99,9 +99,14 @@ export function leaveOneOutAnomalies(rows: AnomalyInput[]): Anomaly[] {
   const result: Anomaly[] = rows.map(() => ({ median_same_month: null, anomaly: null, anomaly_ratio: null }));
   for (const indices of byMonth.values()) {
     for (const index of indices) {
-      const others = indices.filter((other) => other !== index).map((other) => rows[other]!.harmonized);
+      // The month in progress is no one's reference, and is shown its usual but not compared.
+      const others = indices.filter((other) => other !== index && other !== openIndex).map((other) => rows[other]!.harmonized);
       const reference = median(others);
       const value = rows[index]!.harmonized;
+      if (index === openIndex) {
+        result[index] = { median_same_month: reference, anomaly: null, anomaly_ratio: null };
+        continue;
+      }
       result[index] = {
         median_same_month: reference,
         anomaly: reference === null ? null : value - reference,
@@ -110,6 +115,30 @@ export function leaveOneOutAnomalies(rows: AnomalyInput[]): Anomaly[] {
     }
   }
   return result;
+}
+
+/** Index of the newest month of a chronological series, or null when empty. */
+function lastIndex(rows: { year: number; month_of_year: number }[]): number | null {
+  let best: number | null = null;
+  rows.forEach((row, index) => {
+    const previous = best === null ? null : rows[best]!;
+    if (!previous || row.year * 12 + row.month_of_year > previous.year * 12 + previous.month_of_year) best = index;
+  });
+  return best;
+}
+
+/**
+ * The newest month of the record is the one the data is still arriving for:
+ * the pipeline runs during it, so it holds a part of its days. Compared with
+ * whole months it would always look "below the usual", and it would pull the
+ * usual of that month down for every other year. It keeps its count, loses
+ * its comparison, and is flagged so the page can say so.
+ */
+export function closeOpenMonth(records: CalendarRecord[]): CalendarRecord[] {
+  const open = lastIndex(records);
+  if (open === null) return records;
+  const anomalies = leaveOneOutAnomalies(records, open);
+  return records.map((record, index) => ({ ...record, ...anomalies[index]!, in_progress: index === open }));
 }
 
 /**
@@ -142,8 +171,9 @@ export function aggregateCalendar(
       source,
     };
   });
-  const anomalies = leaveOneOutAnomalies(base);
-  return base.map((record, index) => ({ ...record, ...anomalies[index]! }));
+  const open = lastIndex(base);
+  const anomalies = leaveOneOutAnomalies(base, open);
+  return base.map((record, index) => ({ ...record, ...anomalies[index]!, in_progress: index === open }));
 }
 
 /** Per-cell total over a month range, for the extruded map layer. */

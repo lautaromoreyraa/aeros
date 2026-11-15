@@ -1,13 +1,14 @@
 import { Suspense, lazy, useMemo } from "react";
 import type { EarlyWarning } from "../api/types";
 import { AlertBanner } from "../components/AlertBanner";
+import { FireReport } from "../components/FireReport";
 import { FireWeatherDays } from "../components/FireWeatherDays";
 import type { RiskCell } from "../components/RiskMap";
 import { useFireWeather } from "../hooks/useFireWeather";
 import type { Loadable } from "../hooks/useOutlook";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { ratioColor } from "../util/forecast";
-import { alertDecision, daysBetween, formatDay, formatPValue, windowCoverage } from "../util/earlyWarning";
+import { alertDecision, calmMessage, daysBetween, formatDay, formatPValue, windowCoverage } from "../util/earlyWarning";
 import { daysAhead, nodesNear, summarizeDays } from "../util/fireWeather";
 import { formatCount, formatPlace, formatRatio } from "../util/format";
 import { cellCenters } from "../util/geo";
@@ -80,6 +81,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
     );
 
   const coverage = windowCoverage(report);
+  const calm = calmMessage(report, coverage);
   const days = report.days ?? daysBetween(report.window[0], report.window[1]).map((date) => ({
     date,
     status: coverage.gapDates.includes(date) ? "gap" : "ok",
@@ -96,10 +98,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
         ) : (
           <div className="calm-banner" role="status">
             <p>
-              <strong>{report.region ? "No unusual fire activity." : "Not enough data to judge."}</strong>{" "}
-              {report.region
-                ? `Hotspots from ${formatDay(report.window[0])} to ${formatDay(report.window[1])} are within the range of earlier years, region-wide and in every cell.`
-                : "No satellite day in this window returned detections, so nothing can be said about fire activity yet."}
+              <strong>{calm.title}</strong> {calm.text}
             </p>
           </div>
         )}
@@ -141,6 +140,14 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
           )}
         </section>
 
+        <section className="panel" aria-labelledby="report-title">
+          <h2 id="report-title" className="panel__title">
+            Seeing a fire?
+          </h2>
+          <p className="summary__note">Share where you are and see what the satellites saw around you.</p>
+          <FireReport />
+        </section>
+
         {weather && (
           <section className="panel" aria-labelledby="fire-weather-title">
             <div className="panel__head">
@@ -169,7 +176,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
         {report.region && (
           <section className="panel" aria-labelledby="ew-region-title">
             <h2 id="ew-region-title" className="panel__title">
-              Gran Chaco study region
+              Study region
             </h2>
             <p className="summary__total">
               {formatCount(report.region.observed)}

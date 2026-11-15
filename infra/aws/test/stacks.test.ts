@@ -375,13 +375,13 @@ describe("FIRMS refresh and early warning", () => {
         );
       } else {
         expect(json).toMatch(
-          /\/harmonized\/\*|\/harmonized\/harmonized_cells\.parquet|\/state\/(goes_)?alerts\.json|\/derived\/(wind|fire_weather)\.json/,
+          /\/harmonized\/\*|\/harmonized\/harmonized_cells\.parquet|\/state\/(goes_)?alerts\.json|\/derived\/(wind|fire_weather|goes_latest)\.json|\/raw\/firms\/nrt\/\*/,
         );
       }
     }
   });
 
-  it("reads exactly the four alert parameters with GetParameter only", () => {
+  it("reads exactly the five alert parameters with GetParameter only", () => {
     refresh.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
@@ -391,10 +391,11 @@ describe("FIRMS refresh and early warning", () => {
           ALERT_EMAIL_TO_PARAMETER: "/aeros/alerts/email-to",
           ALERT_TELEGRAM_TOKEN_PARAMETER: "/aeros/alerts/telegram-token",
           ALERT_TELEGRAM_CHAT_PARAMETER: "/aeros/alerts/telegram-chat-id",
+          ALERT_RESEND_KEY_PARAMETER: "/aeros/alerts/resend-api-key",
         }),
       },
     });
-    // The daily refresh and the GOES watch read the four; the webhook reads its own two.
+    // The daily refresh and the GOES watch read the five; the webhook reads its own two.
     const alertReads = statements(refresh).filter((s) =>
       JSON.stringify(s.Resource).includes("parameter/aeros/alerts/email-to"),
     );
@@ -402,7 +403,13 @@ describe("FIRMS refresh and early warning", () => {
     for (const read of alertReads) {
       expect(actionsOf(read)).toEqual(["ssm:GetParameter"]);
       const json = JSON.stringify(read.Resource);
-      for (const name of ["email-from", "email-to", "telegram-token", "telegram-chat-id"]) {
+      for (const name of [
+        "email-from",
+        "email-to",
+        "telegram-token",
+        "telegram-chat-id",
+        "resend-api-key",
+      ]) {
         expect(json).toContain(`:parameter/aeros/alerts/${name}`);
       }
       expect(json).not.toContain("*");

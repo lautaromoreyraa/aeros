@@ -231,3 +231,28 @@ def test_what_the_notifier_told_a_subscriber_is_kept_and_survives_serialization(
     assert stored.memory == memory
     assert s.Subscription.from_dict(stored.to_dict()) == stored
     service.remember("unknown", memory)  # nothing to remember it for: not an error
+
+
+# ---------- language ----------
+
+
+def test_the_language_is_spanish_by_default_and_english_when_asked(service):
+    assert service.create("email", "a@example.com", [ORIGIN]).language == "es"
+    assert service.create("email", "b@example.com", [ORIGIN], language="en-GB").language == "en"
+    assert service.create("email", "c@example.com", [ORIGIN], language="pt-BR").language == "es"
+
+
+def test_the_app_language_of_whoever_presses_start_wins_over_the_sites(service):
+    sub = service.create("telegram", None, [ORIGIN], language="es")
+    assert service.confirm_telegram(sub.id, 42, "en-US").language == "en"
+    other = service.create("telegram", None, [ORIGIN], language="en")
+    assert service.confirm_telegram(other.id, 43).language == "en"  # no language said: kept
+
+
+def test_a_subscription_stored_before_languages_existed_reads_as_spanish():
+    old = {
+        "id": "i", "channel": "email", "address": "a@example.com", "cells": [ORIGIN],
+        "zone_id": None, "status": "confirmed", "token": "t", "created_at": "n",
+        "expires_at": None, "confirmed_at": None, "memory": None,
+    }  # fmt: skip
+    assert s.Subscription.from_dict(old).language == "es"

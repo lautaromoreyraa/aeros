@@ -82,7 +82,7 @@ describe("subscriptions table", () => {
     const users: Array<[Template, string]> = [
       [web, "alerts_api.handler"],
       [refresh, "alerts_api.webhook"],
-      [refresh, "refresh.handler"],
+      [refresh, "goes_watch.handler"],
     ];
     for (const [template, handler] of users) {
       const found = statementsOfHandler(template, handler).filter((s) =>
@@ -119,13 +119,14 @@ describe("alert subscriptions API", () => {
     expect(urls.every((u) => u.Properties.AuthType === "AWS_IAM")).toBe(true);
   });
 
-  it("reads only the sender and bot-name parameters", () => {
+  it("reads only the sender, the Resend key and the bot name", () => {
     const reads = statementsOfHandler(web, "alerts_api.handler").filter((s) =>
       actionsOf(s).includes("ssm:GetParameter"),
     );
     expect(reads).toHaveLength(1);
     const json = JSON.stringify(reads[0]!.Resource);
     expect(json).toContain(":parameter/aeros/alerts/email-from");
+    expect(json).toContain(":parameter/aeros/alerts/resend-api-key");
     expect(json).toContain(":parameter/aeros/alerts/telegram-bot");
     expect(json).not.toContain("telegram-token");
     expect(json).not.toContain("*");
@@ -145,10 +146,22 @@ describe("alert subscriptions API", () => {
     expect(JSON.stringify(ses[0]!.Resource)).toContain(":identity/alerts.example.org");
   });
 
-  it("can never touch the data bucket", () => {
-    expect(JSON.stringify(statementsOfHandler(web, "alerts_api.handler"))).not.toContain("s3:");
+  it("reads only the GOES layer and the NRT files of the data bucket, for fire reports", () => {
+    expectFireCheckReadsOnly(statementsOfHandler(web, "alerts_api.handler"));
   });
 });
+
+/** A fire report reads two kinds of object with GetObject, and nothing else of S3. */
+function expectFireCheckReadsOnly(statements: any[]): void {
+  const s3 = statements.filter((s) => actionsOf(s).some((a: string) => a.startsWith("s3:")));
+  expect(s3).toHaveLength(1);
+  expect(actionsOf(s3[0]!)).toEqual(["s3:GetObject"]);
+  const json = JSON.stringify(s3[0]!.Resource);
+  expect(json).toContain("/derived/goes_latest.json");
+  expect(json).toContain("/raw/firms/nrt/*");
+  expect(json).not.toContain("harmonized");
+  expect(json).not.toContain("state/");
+}
 
 describe("Telegram webhook", () => {
   it("is the one public function URL, and says why", () => {
@@ -185,7 +198,7 @@ describe("Telegram webhook", () => {
     expect(json).not.toContain("*");
     const all = JSON.stringify(statementsOfHandler(refresh, "alerts_api.webhook"));
     expect(all).not.toContain("ses:");
-    expect(all).not.toContain("s3:");
+    expectFireCheckReadsOnly(statementsOfHandler(refresh, "alerts_api.webhook"));
   });
 
   it("creates no secret: the parameters are made by hand", () => {
@@ -194,18 +207,25 @@ describe("Telegram webhook", () => {
   });
 });
 
-describe("the daily refresh notifies subscribers", () => {
-  it("knows the table and the optional wind and fire-weather files", () => {
+describe("the GOES watch notifies subscribers", () => {
+  it("knows the table and the optional wind file", () => {
     refresh.hasResourceProperties("AWS::Lambda::Function", {
-      Handler: "refresh.handler",
+      Handler: "goes_watch.handler",
       Environment: {
         Variables: Match.objectLike({
           SUBSCRIPTIONS_TABLE: Match.anyValue(),
           WIND_KEY: "derived/wind.json",
-          FIRE_WEATHER_KEY: "derived/fire_weather.json",
         }),
       },
     });
+  });
+
+  it("leaves the daily refresh to the fixed list", () => {
+    const daily = Object.values(
+      refresh.findResources("AWS::Lambda::Function", { Properties: { Handler: "refresh.handler" } }),
+    );
+    expect(daily).toHaveLength(1);
+    expect(daily[0]!.Properties.Environment.Variables.SUBSCRIPTIONS_TABLE).toBeUndefined();
   });
 });
 

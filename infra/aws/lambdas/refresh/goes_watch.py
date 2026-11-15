@@ -24,6 +24,9 @@ What may raise an alert:
 A cell is told once and again only after QUIET_HOURS without being told, so a
 fire that burns all afternoon is one message, not eighteen. The memory is a
 small JSON object in the data bucket, written only after a channel delivered.
+
+Subscribers are told too (see `fire_alerts`): each one about the persistent
+cells within 50 km of their town, at most once every 12 hours.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import alerts
+import subscriber_alerts
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -52,6 +56,8 @@ RESOLUTION = 4
 SCANS = 3
 PERSISTENCE = 2
 QUIET_HOURS = 12
+#: A newest scan older than this is not "right now": NOAA or the satellite is late.
+STALE_MINUTES = 30
 TOP_CELLS = 5
 
 # Mask codes of fire pixels; the 3x codes are the same categories after the
@@ -106,6 +112,8 @@ class Settings:
     output_key: str
     cells_key: str | None
     alert_settings: alerts.AlertSettings | None
+    #: Subscribers hear about a fire near them; None when the table is not configured.
+    subscriber_settings: subscriber_alerts.SubscriberSettings | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -124,6 +132,7 @@ class Settings:
             output_key=os.environ["GOES_LATEST_KEY"],
             cells_key=os.environ.get("CELLS_KEY") or None,
             alert_settings=base,
+            subscriber_settings=subscriber_alerts.SubscriberSettings.from_environment(),
         )
 
 
@@ -229,9 +238,14 @@ def summarize(
     cells = []
     for cell, group in by_cell.items():
         confident_scans = {p.scan_start for p in group if p.confident}
+        # Where it burns: the mean of the confident pixels, which a subscriber's distance and
+        # map pin use instead of the centre of a 25 km cell.
+        located = [p for p in group if p.confident] or group
         cells.append(
             {
                 "cell": cell,
+                "lat": round(sum(p.latitude for p in located) / len(located), 3),
+                "lng": round(sum(p.longitude for p in located) / len(located), 3),
                 "pixels": len(group),
                 "confident_pixels": sum(p.confident for p in group),
                 "confident_scans": len(confident_scans),
@@ -309,6 +323,7 @@ def handler(
     domain: Domain | None = None,
     post: alerts.Post | None = None,
     now: datetime | None = None,
+    subscriptions_store=None,
 ) -> dict:
     settings = settings or Settings.from_environment()
     if s3 is None or ssm is None:
@@ -342,6 +357,12 @@ def handler(
 
     area = ",".join(f"{v:g}" for v in settings.area)
     report = summarize(pixels, scans, study, area, now)
+    # `latest_scans` looks up to three hours back, so the newest scan can be old when
+    # GOES or NOAA are late. The layer is still published, marked, but nobody is told
+    # "active fire right now" from it.
+    newest = max(s.start for s in scans)
+    report["newest_scan_age_minutes"] = int((now - newest).total_seconds() // 60)
+    report["stale"] = now - newest > timedelta(minutes=STALE_MINUTES)
     s3.put_object(
         Bucket=settings.bucket,
         Key=settings.output_key,
@@ -353,7 +374,14 @@ def handler(
         "scans": report["scans"],
         "pixels": report["pixels"],
         "persistent_cells": sum(c["persistent"] for c in report["cells"]),
+        "stale": report["stale"],
     }
+    if report["stale"]:
+        logger.warning(
+            "newest GOES scan is %d minutes old; publishing without alerts",
+            report["newest_scan_age_minutes"],
+        )
+        return summary
     if settings.alert_settings and summary["persistent_cells"]:
         try:
             summary["alerts"] = notify(
@@ -362,7 +390,29 @@ def handler(
         except Exception:
             logger.exception("GOES alert failed")
             summary["alerts"] = "failed"
+    if settings.subscriber_settings and summary["persistent_cells"]:
+        # Independent of the fixed list: each subscriber has their own memory.
+        try:
+            summary["subscribers"] = subscriber_alerts.run(
+                report,
+                settings.subscriber_settings,
+                store=subscriptions_store or _dynamo_store(),
+                s3=s3,
+                ssm=ssm,
+                ses=ses,
+                post=post,
+                now=now,
+            )
+        except Exception:
+            logger.exception("subscriber fire alert failed")
+            summary["subscribers"] = "failed"
     return summary
+
+
+def _dynamo_store():
+    from dynamo_store import DynamoStore
+
+    return DynamoStore.from_environment()
 
 
 def notify(report: dict, settings: Settings, *, s3, ssm, ses, post, now: datetime) -> dict:

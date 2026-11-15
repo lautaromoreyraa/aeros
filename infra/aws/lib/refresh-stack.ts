@@ -30,9 +30,13 @@ export const REFRESH_CODE_EXCLUDE = [
   "!subscriptions.py",
   "!dynamo_store.py",
   "!telegram_bot.py",
+  "!fire_check.py",
   "!notifier.py",
   "!subscriber_alerts.py",
+  "!fire_alerts.py",
   "!alerts_api.py",
+  "!alert_text.py",
+  "!places.py",
 ];
 
 function logGroupFor(scope: Construct, id: string): logs.LogGroup {
@@ -56,6 +60,8 @@ export const ALERT_PARAMETERS = {
   emailTo: "/aeros/alerts/email-to",
   telegramToken: "/aeros/alerts/telegram-token",
   telegramChatId: "/aeros/alerts/telegram-chat-id",
+  /** Resend API key (SecureString). When it exists e-mail goes through Resend, else SES. */
+  resendKey: "/aeros/alerts/resend-api-key",
 } as const;
 
 /**
@@ -79,6 +85,24 @@ const TABLE_ACTIONS = [
 export function grantSubscriptionsTable(fn: lambda.Function, table: dynamodb.ITable): void {
   fn.addToRolePolicy(
     new iam.PolicyStatement({ actions: TABLE_ACTIONS, resources: [table.tableArn] }),
+  );
+}
+
+/**
+ * A fire report reads the GOES layer and the FIRMS NRT files, and nothing else
+ * of the data bucket: no listing, no writes, no harmonized tables.
+ */
+export function grantFireCheck(fn: lambda.Function, bucket: s3.IBucket): void {
+  // GetObject alone, not grantRead: that adds List and GetBucket on the whole bucket.
+  // Without ListBucket a missing file reads as AccessDenied, which fire_check takes as absent.
+  fn.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ["s3:GetObject"],
+      resources: [
+        bucket.arnForObjects(DATA_LAYOUT.goesLatestKey),
+        bucket.arnForObjects(`${DATA_LAYOUT.rawFirmsPrefix}nrt/*`),
+      ],
+    }),
   );
 }
 
@@ -173,9 +197,7 @@ export class RefreshStack extends Stack {
         ALERT_EMAIL_TO_PARAMETER: ALERT_PARAMETERS.emailTo,
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
-        SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
-        WIND_KEY: DATA_LAYOUT.windKey,
-        FIRE_WEATHER_KEY: DATA_LAYOUT.fireWeatherKey,
+        ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
       },
     });
     // The parameter uses the AWS-managed aws/ssm key, whose key policy lets
@@ -186,10 +208,6 @@ export class RefreshStack extends Stack {
     props.dataBucket.grantRead(this.handler, `${DATA_LAYOUT.harmonizedPrefix}*`);
     props.dataBucket.grantRead(this.handler, DATA_LAYOUT.alertStateKey);
     props.dataBucket.grantPut(this.handler, DATA_LAYOUT.alertStateKey);
-    // Optional extras of the subscriber messages, read when they exist.
-    props.dataBucket.grantRead(this.handler, DATA_LAYOUT.windKey);
-    props.dataBucket.grantRead(this.handler, DATA_LAYOUT.fireWeatherKey);
-    grantSubscriptionsTable(this.handler, props.subscriptionsTable);
 
     this.grantAlerts(this.handler, props);
 
@@ -206,8 +224,9 @@ export class RefreshStack extends Stack {
 
   /**
    * Every 10 minutes: read the newest GOES-19 fire scans from NOAA's public
-   * bucket, publish derived/goes_latest.json and tell people about a fire
-   * that persists in the study cells. 4,320 short runs a month stay inside
+   * bucket, publish derived/goes_latest.json and tell the fixed list and
+   * the subscribers within 50 km about a fire that persists in the study
+   * cells. 4,320 short runs a month stay inside
    * the always-free Lambda allowance, and the scans themselves are read from
    * NOAA, never copied into the data bucket.
    */
@@ -238,12 +257,18 @@ export class RefreshStack extends Stack {
         ALERT_EMAIL_TO_PARAMETER: ALERT_PARAMETERS.emailTo,
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_CHAT_PARAMETER: ALERT_PARAMETERS.telegramChatId,
+        ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
+        SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
+        WIND_KEY: DATA_LAYOUT.windKey,
       },
     });
     props.dataBucket.grantPut(fn, DATA_LAYOUT.goesLatestKey);
     props.dataBucket.grantRead(fn, DATA_LAYOUT.cellsKey);
     props.dataBucket.grantRead(fn, DATA_LAYOUT.goesAlertStateKey);
     props.dataBucket.grantPut(fn, DATA_LAYOUT.goesAlertStateKey);
+    // The wind of the subscriber message is a bonus, read when the file exists.
+    props.dataBucket.grantRead(fn, DATA_LAYOUT.windKey);
+    grantSubscriptionsTable(fn, props.subscriptionsTable);
     this.grantAlerts(fn, props);
 
     new events.Rule(this, "GoesWatchSchedule", {
@@ -266,7 +291,7 @@ export class RefreshStack extends Stack {
     logGroup: logs.LogGroup,
   ): lambda.Function {
     const fn = new lambda.Function(this, "TelegramWebhookHandler", {
-      description: "Telegram bot webhook: confirms and ends alert subscriptions",
+      description: "Telegram bot webhook: alert subscriptions and fire reports",
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: "alerts_api.webhook",
@@ -281,9 +306,14 @@ export class RefreshStack extends Stack {
         ALERT_WEB_URL: props.webUrl,
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_WEBHOOK_SECRET_PARAMETER: SUBSCRIPTION_PARAMETERS.telegramWebhookSecret,
+        // A shared location is a fire report: the bot reads what the satellites saw there.
+        DATA_BUCKET: props.dataBucket.bucketName,
+        GOES_LATEST_KEY: DATA_LAYOUT.goesLatestKey,
+        RAW_PREFIX: DATA_LAYOUT.rawFirmsPrefix,
       },
     });
     grantSubscriptionsTable(fn, props.subscriptionsTable);
+    grantFireCheck(fn, props.dataBucket);
     grantParameters(this, fn, [
       ALERT_PARAMETERS.telegramToken,
       SUBSCRIPTION_PARAMETERS.telegramWebhookSecret,

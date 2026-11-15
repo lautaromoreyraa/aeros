@@ -1,37 +1,80 @@
-export type Channel = "telegram" | "whatsapp" | "email";
+/**
+ * The alert sign-up, as the alert service takes it (`POST /alerts/subscriptions`):
+ * a town, as `GET /alerts/places` returns it, and a channel. The service derives
+ * the cells around the town itself and warns about a possible fire within about
+ * 50 km of it, so the page never sends cells or zones.
+ *
+ * Telegram needs no address: the answer carries a `confirm_url` to the bot, and
+ * pressing Start there is the confirmation. E-mail gets a confirmation link.
+ */
 
-export const CHANNELS: { value: Channel; label: string; field: string; placeholder: string }[] = [
-  { value: "telegram", label: "Telegram", field: "Telegram username", placeholder: "@username" },
-  { value: "whatsapp", label: "WhatsApp", field: "Phone number with country code", placeholder: "+54 9 362 400 0000" },
-  { value: "email", label: "Email", field: "Email address", placeholder: "name@example.org" },
+export type Channel = "telegram" | "email";
+
+export const CHANNELS: { value: Channel; label: string }[] = [
+  { value: "telegram", label: "Telegram" },
+  { value: "email", label: "Email" },
 ];
 
-/** The body of `POST /alerts/subscriptions`, as agreed with the backend. */
+export interface Place {
+  name: string;
+  region?: string;
+  country?: string;
+  lat: number;
+  lng: number;
+}
+
 export interface SubscriptionRequest {
   channel: Channel;
-  address: string;
-  /** H3 cells the subscriber wants to hear about. */
-  cells: string[];
-  zone_id?: string;
+  place: Place;
+  address?: string;
+  language: "es" | "en";
 }
 
-/** The address as the backend stores it, or the reason it cannot be used. */
-export function normalizeAddress(channel: Channel, raw: string): { address: string } | { error: string } {
+/** The answer of a sign-up: Telegram ones carry the link that confirms them. */
+export interface SubscriptionAnswer {
+  id: string;
+  status: string;
+  confirm_url?: string;
+}
+
+/** "Resistencia, Chaco, Argentina", skipping what is missing or repeated. */
+export function placeLabel(place: Place): string {
+  const parts = [place.name, place.region, place.country].filter((part): part is string => Boolean(part));
+  return parts.filter((part, index) => parts.indexOf(part) === index).join(", ");
+}
+
+export function normalizeEmail(raw: string): { address: string } | { error: string } {
   const value = raw.trim();
-  if (channel === "email")
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? { address: value.toLowerCase() } : { error: "Enter an email address like name@example.org." };
-  if (channel === "whatsapp") {
-    const digits = value.replace(/[\s().-]/g, "");
-    return /^\+\d{8,15}$/.test(digits)
-      ? { address: digits }
-      : { error: "Enter the number with its country code, starting with +." };
-  }
-  const name = value.replace(/^@/, "");
-  return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(name)
-    ? { address: `@${name}` }
-    : { error: "Enter a Telegram username: 5 to 32 letters, digits or _." };
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+    ? { address: value.toLowerCase() }
+    : { error: "Enter an email address like name@example.org." };
 }
 
-export function subscriptionRequest(channel: Channel, address: string, cells: string[], zoneId?: string): SubscriptionRequest {
-  return { channel, address, cells, ...(zoneId && { zone_id: zoneId }) };
+/** Spanish unless the browser says English: the alerts go to people in the Chaco. */
+export function alertLanguage(browserLanguage: string | undefined): "es" | "en" {
+  return (browserLanguage ?? "").toLowerCase().startsWith("en") ? "en" : "es";
+}
+
+/** The point the browser shares, as a place: rounded to about 1 km, as the service keeps it. */
+export function placeFromPosition(lat: number, lng: number): Place {
+  return { name: "My location", lat: Math.round(lat * 100) / 100, lng: Math.round(lng * 100) / 100 };
+}
+
+export function placesUrl(base: string, query: string, language: "es" | "en"): string {
+  return `${base.replace(/\/+$/, "")}/alerts/places?${new URLSearchParams({ q: query.trim(), language })}`;
+}
+
+export function subscriptionRequest(
+  channel: Channel,
+  place: Place,
+  language: "es" | "en",
+  address?: string,
+): SubscriptionRequest {
+  return { channel, place, language, ...(channel === "email" && address && { address }) };
+}
+
+/** Only a t.me link is ever offered as the Telegram confirmation. */
+export function telegramLink(answer: SubscriptionAnswer): string | null {
+  const url = answer.confirm_url;
+  return url && /^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}\?start=[A-Za-z0-9_-]{1,64}$/.test(url) ? url : null;
 }

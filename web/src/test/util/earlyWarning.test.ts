@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { EarlyWarning } from "../../api/types";
-import { alertDecision, daysBetween, formatDay, formatPValue, regionIsAlerting, windowCoverage } from "../../util/earlyWarning";
+import {
+  alertDecision,
+  calmMessage,
+  daysBetween,
+  formatDay,
+  formatPValue,
+  regionIsAlerting,
+  windowCoverage,
+} from "../../util/earlyWarning";
 
 const report = (overrides: Partial<EarlyWarning> = {}): EarlyWarning => ({
   generated_at: "2026-11-13T06:00:00Z",
@@ -93,5 +101,25 @@ describe("dates and p-values", () => {
     expect(formatDay("2026-11-08")).toBe("Nov 8");
     expect(formatPValue(1e-7)).toBe("p < 0.001");
     expect(formatPValue(0.0042)).toBe("p = 0.004");
+  });
+});
+
+describe("calmMessage", () => {
+  it("names the days with data when some are missing", () => {
+    const quiet = report();
+    expect(calmMessage(quiet, windowCoverage(quiet)).text).toBe(
+      "Hotspots on the 6 of 7 days from Nov 6 to Nov 12 with satellite data are within the range of earlier years, region-wide and in every cell.",
+    );
+    const full = report({ days_with_data: 7 });
+    expect(calmMessage(full, windowCoverage(full)).text).toMatch(/^Hotspots from Nov 6 to Nov 12 are within/);
+  });
+
+  it("tells no data apart from no earlier years", () => {
+    const empty = report({ region: null, days_with_data: [] });
+    expect(calmMessage(empty, windowCoverage(empty)).text).toContain("No satellite day");
+    const noHistory = report({ region: null });
+    const message = calmMessage(noHistory, windowCoverage(noHistory));
+    expect(message.title).toBe("Not enough data to judge.");
+    expect(message.text).toContain("no earlier years to compare");
   });
 });
