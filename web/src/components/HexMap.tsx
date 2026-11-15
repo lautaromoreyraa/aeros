@@ -4,6 +4,7 @@ import { FlyToInterpolator, WebMercatorViewport, type MapViewState, type Picking
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { cellToBoundary, cellToLatLng } from "h3-js";
 import type { Unit } from "../api/types";
+import { useI18n } from "../i18n/I18nContext";
 import type { CellTotal } from "../util/aggregation";
 import { boundsOf, type Area, type LngLat } from "../util/area";
 import { type Rgb, VIRIDIS, sampleRamp, sqrtScale } from "../util/colorRamp";
@@ -62,6 +63,7 @@ interface Props {
 
 export default function HexMap(props: Props) {
   const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, describe, focus = null, panel, legible = false, wind = null } = props;
+  const { t } = useI18n();
   const ground = BASEMAP[props.basemap ?? theme];
   const groundId = props.basemap ?? theme;
   const ramp = props.ramp ?? VIRIDIS;
@@ -241,7 +243,7 @@ export default function HexMap(props: Props) {
       <div className="map__controls">
         {wind && (
           <button type="button" className="map__button" onClick={wind.onToggle}>
-            {wind.playing ? "Pause wind" : "Play wind"}
+            {wind.playing ? t.mapControls.pauseWind : t.mapControls.playWind}
           </button>
         )}
         <button
@@ -252,7 +254,7 @@ export default function HexMap(props: Props) {
             setViewState(fit());
           }}
         >
-          Reset view
+          {t.mapControls.resetView}
         </button>
         <button
           type="button"
@@ -260,7 +262,7 @@ export default function HexMap(props: Props) {
           aria-pressed={viewState.pitch === 0}
           onClick={() => setViewState((state) => ({ ...state, pitch: state.pitch ? 0 : 45, bearing: state.pitch ? 0 : -12 }))}
         >
-          {viewState.pitch ? "Flat" : "3D"}
+          {viewState.pitch ? t.mapControls.flat : t.mapControls.view3d}
         </button>
       </div>
       <p className="map__attribution">{ground.attribution}</p>

@@ -18,6 +18,18 @@ export const VERDICT_LABELS: Record<Verdict, string> = {
   no_data: "No data yet",
 };
 
+export const VERDICT_LABELS_ES: Record<Verdict, string> = {
+  above: "Por encima de lo normal",
+  normal: "Dentro del rango normal",
+  below: "Por debajo de lo normal",
+  no_baseline: "Sin línea de base aún",
+  no_data: "Sin datos aún",
+};
+
+export function verdictLabel(verdict: Verdict, locale: "en" | "es" = "en"): string {
+  return (locale === "es" ? VERDICT_LABELS_ES : VERDICT_LABELS)[verdict];
+}
+
 interface Props {
   rows: SectorRow[];
   selectedId: string;

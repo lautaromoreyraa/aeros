@@ -1,6 +1,12 @@
 import type { MonthKey } from "../api/types";
 
-export const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const MONTH_LABELS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const MONTH_LABELS_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+export const MONTH_LABELS = MONTH_LABELS_EN;
+
+export function monthLabel(monthIndex0: number, locale: "en" | "es" = "en"): string {
+  return (locale === "es" ? MONTH_LABELS_ES : MONTH_LABELS_EN)[monthIndex0] ?? "";
+}
 
 export function monthKey(year: number, monthOfYear: number): MonthKey {
   return year * 12 + (monthOfYear - 1);

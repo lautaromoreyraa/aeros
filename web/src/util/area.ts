@@ -87,7 +87,16 @@ export function boundsOf(points: LngLat[]): BoundingBox {
 }
 
 /** How the chosen area is named in headings and file names. */
-export function areaLabel(area: Area, cells: number): string {
-  if (area.kind === "region") return "Study region";
-  return `${area.kind === "box" ? "Lat-lon box" : "Drawn area"} (${cells} cells)`;
+export function areaLabel(area: Area, cells: number, locale: "en" | "es" = "en"): string {
+  if (area.kind === "region") return locale === "es" ? "Región de estudio" : "Study region";
+  const type =
+    area.kind === "box"
+      ? locale === "es"
+        ? "Caja lat-lon"
+        : "Lat-lon box"
+      : locale === "es"
+        ? "Área dibujada"
+        : "Drawn area";
+  const unit = locale === "es" ? "celdas" : "cells";
+  return `${type} (${cells} ${unit})`;
 }

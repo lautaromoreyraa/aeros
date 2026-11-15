@@ -127,11 +127,11 @@ export function outlookOf(week: Pick<ForecastWeek, "low" | "high" | "climatology
 }
 
 /** "Nov 16 – 22" for the week starting on a Monday given as "YYYY-MM-DD". */
-export function weekLabel(weekStart: string): string {
+export function weekLabel(weekStart: string, locale: "en" | "es" = "en"): string {
   const start = Date.parse(`${weekStart}T00:00:00Z`);
   if (Number.isNaN(start)) return weekStart;
   const end = start + 6 * 86_400_000;
-  const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
+  const month = new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-US", { month: "short", timeZone: "UTC" });
   const day = (time: number) => new Date(time).getUTCDate();
   return month.format(start) === month.format(end)
     ? `${month.format(start)} ${day(start)} – ${day(end)}`

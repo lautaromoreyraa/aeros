@@ -38,19 +38,49 @@ export const SOURCE_LABELS: Record<string, string> = {
   modeled_terra: "Modeled from MODIS Terra",
 };
 
+export const SOURCE_LABELS_ES: Record<string, string> = {
+  observed: "Observado por VIIRS",
+  bridged: "Puenteado: NOAA-20 en reemplazo de Suomi NPP",
+  modeled_terra_aqua: "Modelado a partir de MODIS Terra + Aqua",
+  modeled_terra: "Modelado a partir de MODIS Terra",
+};
+
+export function sourceLabel(source: string, locale: "en" | "es" = "en"): string {
+  return (locale === "es" ? SOURCE_LABELS_ES : SOURCE_LABELS)[source] ?? source;
+}
+
 export const COVERAGE_LABELS: Record<Coverage, string> = {
   observed: "Observed",
   bridged: "Bridged",
   modeled: "Modeled",
 };
 
+export const COVERAGE_LABELS_ES: Record<Coverage, string> = {
+  observed: "Observado",
+  bridged: "Puenteado",
+  modeled: "Modelado",
+};
+
+export function coverageLabel(coverage: Coverage, locale: "en" | "es" = "en"): string {
+  return (locale === "es" ? COVERAGE_LABELS_ES : COVERAGE_LABELS)[coverage];
+}
+
 const UNIT_LABELS = {
   hotspots: { one: "hotspot", many: "hotspots", toggle: "Hotspots" },
   cell_days: { one: "fire cell-day", many: "fire cell-days", toggle: "Cell-days" },
 } as const;
 
-export function unitLabel(unit: keyof typeof UNIT_LABELS, form: "one" | "many" | "toggle" = "many"): string {
-  return UNIT_LABELS[unit][form];
+const UNIT_LABELS_ES = {
+  hotspots: { one: "foco de calor", many: "focos de calor", toggle: "Focos" },
+  cell_days: { one: "día-celda de fuego", many: "días-celda de fuego", toggle: "Días-celda" },
+} as const;
+
+export function unitLabel(
+  unit: keyof typeof UNIT_LABELS,
+  form: "one" | "many" | "toggle" = "many",
+  locale: "en" | "es" = "en",
+): string {
+  return (locale === "es" ? UNIT_LABELS_ES : UNIT_LABELS)[unit][form];
 }
 
 /** Satellite names as the model writes them, spelled out for people. */

@@ -322,13 +322,21 @@ class Subscriptions:
             raise InvalidSubscription("a place needs a latitude and a longitude")
         if self.area and not self._inside_point(lat, lng):
             raise InvalidSubscription("this place is outside the monitored area")
-        return {
+        cleaned: dict = {
             "name": name,
             "region": _clean(place.get("region"), 60),
             "country": _clean(place.get("country"), 60),
             "lat": lat,
             "lng": lng,
         }
+        if "radius_km" in place:
+            try:
+                r = float(place["radius_km"])
+                if 1.0 <= r <= 100.0:
+                    cleaned["radius_km"] = round(r, 1)
+            except (KeyError, TypeError, ValueError):
+                pass
+        return cleaned
 
     # ---------- confirming ----------
 

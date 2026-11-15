@@ -37,6 +37,7 @@ class SubscriberSettings:
     email_from_parameter: str = alerts.EMAIL_FROM_PARAMETER
     resend_key_parameter: str = alerts.RESEND_KEY_PARAMETER
     telegram_token_parameter: str = alerts.TELEGRAM_TOKEN_PARAMETER
+    fire_radius_km: float | None = None
     twilio_account_sid_parameter: str = alerts.TWILIO_ACCOUNT_SID_PARAMETER
     twilio_auth_token_parameter: str = alerts.TWILIO_AUTH_TOKEN_PARAMETER
     twilio_from_parameter: str = alerts.TWILIO_FROM_PARAMETER
@@ -49,6 +50,7 @@ class SubscriberSettings:
         if not os.environ.get("SUBSCRIPTIONS_TABLE"):
             return None
         env = os.environ
+        radius = float(env["ALERT_FIRE_RADIUS_KM"]) if env.get("ALERT_FIRE_RADIUS_KM") else None
         return cls(
             bucket=env["DATA_BUCKET"],
             web_url=env.get("ALERT_WEB_URL", ""),
@@ -59,6 +61,7 @@ class SubscriberSettings:
             telegram_token_parameter=env.get(
                 "ALERT_TELEGRAM_TOKEN_PARAMETER", alerts.TELEGRAM_TOKEN_PARAMETER
             ),
+            fire_radius_km=radius,
             twilio_account_sid_parameter=env.get(
                 "TWILIO_ACCOUNT_SID_PARAMETER", alerts.TWILIO_ACCOUNT_SID_PARAMETER
             ),
@@ -146,6 +149,7 @@ def run(
         web_url=settings.web_url,
         unsubscribe_url=lambda subscription: unsubscribe_url(settings.web_url, subscription),
         now=now,
+        radius_km=settings.fire_radius_km,
     )
 
 

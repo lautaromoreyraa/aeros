@@ -23,7 +23,7 @@ const onDashboardUrl = () => window.location.hash === DASHBOARD_HASH;
 export default function App() {
   const [unit, setUnit] = useState<Unit>("hotspots");
   const { state, retry } = useRegion(unit);
-  const { resolved, toggle } = useTheme();
+  const { resolved } = useTheme();
   const [section, setSection] = useState<Section>("calendar");
   const selection = useAreaSelection();
   const warning = useEarlyWarning();
@@ -79,8 +79,6 @@ export default function App() {
             section={section}
             onSectionChange={setSection}
             alerting={decision.active}
-            theme={resolved}
-            onToggleTheme={toggle}
             onShowLanding={showLanding}
           >
             {!state.data && state.status === "loading" && <p className="status">Loading the burning calendar…</p>}
