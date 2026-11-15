@@ -126,14 +126,16 @@
 }
 
 /* Transparent over the planet, black where the page continues: the hero
-   hands over to the map below without a seam. */
+   hands over to the map below without a seam. The fade starts low, so the
+   fires in the south of the disc stay clear of it; the copy reads against
+   the night side and a darkening from the left. */
 .hero__veil {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(180deg, transparent 0%, transparent 38%, rgb(0 0 0 / 0.72) 72%, var(--void) 100%),
-    linear-gradient(90deg, rgb(0 0 0 / 0.55) 0%, transparent 55%);
+    linear-gradient(180deg, transparent 0%, transparent 72%, rgb(0 0 0 / 0.6) 90%, var(--void) 100%),
+    linear-gradient(90deg, rgb(0 0 0 / 0.6) 0%, rgb(0 0 0 / 0.25) 34%, transparent 52%);
 }
 
 .hero__copy {
@@ -180,12 +182,6 @@
   color: var(--ash);
 }
 
-@media (min-width: 720px) {
-  .hero__lede span {
-    display: block;
-  }
-}
-
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
@@ -209,15 +205,12 @@
    the fires, the words whip in from below, each starting as the one before
    settles. Opacity is binary, the travel decelerates hard, heavy words travel
    further than light ones, and the gaps shrink towards the end. */
-/* Transforms need a box; on wide screens each lede line is its own row. */
+/* Transforms need a box, and each lede sentence is its own row: two inline
+   boxes on a phone leave a word stranded on a line of its own. Balanced
+   wrapping keeps the last word of a sentence from standing alone too. */
 .hero__lede .wf {
-  display: inline-block;
-}
-
-@media (min-width: 720px) {
-  .hero__lede .wf {
-    display: block;
-  }
+  display: block;
+  text-wrap: balance;
 }
 
 @media (prefers-reduced-motion: no-preference) {
