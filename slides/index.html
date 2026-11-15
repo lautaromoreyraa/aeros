@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aeros · Anticipación Planetaria de Incendios</title>
+  <style>
+    :root {
+      --bg-space: #07090e;
+      --bg-surface: #0d121d;
+      --bg-surface-elevated: #151d2d;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-faint: #475569;
+      
+      --ember-white: #fff7ed;
+      --ember-yellow: #fde047;
+      --ember-orange: #fb923c;
+      --ember-red: #ef4444;
+      --ember-crimson: #991b1b;
+      
+      --accent-cyan: #38bdf8;
+      --accent-green: #34d399;
+      --accent-purple: #a855f7;
+
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-space);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Language Switch Visibility */
+    body[data-lang="es"] .lang-en { display: none !important; }
+    body[data-lang="en"] .lang-es { display: none !important; }
+
+    /* Deck Layout */
+    .deck-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 15%, #131b2e 0%, #07090e 75%);
+    }
+
+    .slide {
+      position: absolute;
+      width: 92vw;
+      max-width: 1440px;
+      height: 84vh;
+      max-height: 850px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 48px 56px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.96) translateY(14px);
+      transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1) translateY(0);
+      z-index: 10;
+    }
+
+    /* Slide Header */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+
+    .slide-meta {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .slide-meta::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    .slide-title {
+      font-size: 2.2rem;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      max-width: 950px;
+    }
+
+    .slide-subtitle {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+      line-height: 1.35;
+      font-weight: 400;
+    }
+
+    /* Top Controls */
+    .top-bar-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .lang-toggle-btn {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .lang-toggle-btn:hover {
+      background: #1e293b;
+      border-color: var(--accent-cyan);
+    }
+
+    .lang-badge {
+      opacity: 0.45;
+      transition: opacity 0.2s ease;
+    }
+
+    body[data-lang="es"] .lang-badge[data-lang="es"],
+    body[data-lang="en"] .lang-badge[data-lang="en"] {
+      opacity: 1;
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    /* Slide Body Grid */
+    .slide-body {
+      flex: 1;
+      display: grid;
+      gap: 22px;
+      align-items: stretch;
+      margin: 12px 0;
+    }
+
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .grid-1-2 { grid-template-columns: 1fr 1.6fr; }
+    .grid-2-1 { grid-template-columns: 1.6fr 1fr; }
+
+    /* Cards & Containers */
+    .card {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card--highlight {
+      border-color: rgba(239, 68, 68, 0.4);
+      background: linear-gradient(170deg, rgba(239, 68, 68, 0.08) 0%, var(--bg-surface-elevated) 60%);
+    }
+
+    .card--success {
+      border-color: rgba(56, 189, 248, 0.4);
+      background: linear-gradient(170deg, rgba(56, 189, 248, 0.08) 0%, var(--bg-surface-elevated) 60%);
+    }
+
+    .card-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .stat-number {
+      font-size: 2.8rem;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      margin: 6px 0;
+    }
+
+    .stat-number--danger {
+      color: var(--ember-orange);
+      text-shadow: 0 0 24px rgba(251, 146, 60, 0.35);
+    }
+
+    .stat-number--cyan {
+      color: var(--accent-cyan);
+      text-shadow: 0 0 24px rgba(56, 189, 248, 0.35);
+    }
+
+    .stat-desc {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* Narrative Highlights */
+    .quote-box {
+      border-left: 3px solid var(--ember-orange);
+      padding: 10px 16px;
+      margin-top: 12px;
+      background: rgba(251, 146, 60, 0.05);
+      border-radius: 0 8px 8px 0;
+      font-size: 0.88rem;
+      color: var(--text-main);
+      line-height: 1.4;
+    }
+
+    .quote-box--blue {
+      border-left-color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .quote-box--green {
+      border-left-color: var(--accent-green);
+      background: rgba(52, 211, 153, 0.05);
+    }
+
+    /* Table */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      text-align: left;
+    }
+
+    .compare-table th {
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .compare-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    .pill--red { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    .pill--amber { background: rgba(251, 191, 36, 0.2); color: #fde68a; }
+    .pill--blue { background: rgba(56, 189, 248, 0.2); color: #7dd3fc; }
+    .pill--green { background: rgba(52, 211, 153, 0.2); color: #86efac; }
+
+    /* Timeline Stepper */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      top: 14px;
+      bottom: 14px;
+      left: 17px;
+      width: 2px;
+      background: var(--border-strong);
+    }
+
+    .timeline-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      position: relative;
+    }
+
+    .timeline-node {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--bg-surface-elevated);
+      border: 2px solid var(--border-strong);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      z-index: 2;
+    }
+
+    .timeline-item.active .timeline-node {
+      border-color: var(--ember-orange);
+      color: var(--ember-orange);
+      background: rgba(251, 146, 60, 0.15);
+      box-shadow: 0 0 12px rgba(251, 146, 60, 0.4);
+    }
+
+    .timeline-content h4 {
+      font-size: 0.98rem;
+      color: var(--text-main);
+      margin-bottom: 2px;
+    }
+
+    .timeline-content p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    /* Pitch Guidance Box */
+    .pitch-guard {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px dashed var(--border-strong);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .pitch-guard strong {
+      color: #ffffff;
+    }
+
+    .pitch-guard .tag-no {
+      color: #f87171;
+      font-weight: 700;
+    }
+
+    .pitch-guard .tag-yes {
+      color: #4ade80;
+      font-weight: 700;
+    }
+
+    /* Footer Navigation */
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 0.82rem;
+      color: var(--text-faint);
+    }
+
+    .progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--ember-orange));
+      transition: width 0.3s ease;
+      z-index: 20;
+    }
+
+    .controls-hint {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+
+    .key {
+      padding: 2px 7px;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      color: var(--text-muted);
+    }
+
+    /* Print Styles */
+    @media print {
+      body {
+        overflow: visible;
+        height: auto;
+        background: #000;
+      }
+      .deck-container {
+        display: block;
+        height: auto;
+        background: transparent;
+      }
+      .slide {
+        position: relative;
+        opacity: 1 !important;
+        transform: none !important;
+        page-break-after: always;
+        width: 100vw;
+        max-width: 100%;
+        height: 100vh;
+        max-height: 100%;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        margin: 0;
+      }
+      .top-bar-controls, .slide-footer {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body data-lang="es">
+
+<div class="deck-container">
+  <div class="progress-bar" id="progress"></div>
+
+  <!-- SLIDE 1: THE ILLUSION OF SUPPRESSION / EL DOLOR -->
+  <section class="slide active" data-slide="1">
+    <div class="slide-header">
+      <div>
+        <div class="slide-meta">
+          <span class="lang-es">Diapositiva 01 · El Problema de Fondo</span>
+          <span class="lang-en">Slide 01 · The Planetary Problem</span>
+        </div>
+        <h1 class="slide-title">
+          <span class="lang-es">Apagar incendios empieza meses antes de la chispa</span>
+          <span class="lang-en">Fighting Wildfires Starts Months Before the Spark</span>
+        </h1>
+        <p class="slide-subtitle">
+          <span class="lang-es">Por qué la respuesta y el presupuesto fallan cuando no hay anticipación.</span>
+          <span class="lang-en">Why suppression infrastructure fails when early anticipation is absent.</span>
+        </p>
+      </div>
+      <div class="top-bar-controls">
+        <button id="lang-btn" class="lang-toggle-btn" title="Alternar idioma (Tecla L)">
+          <span class="lang-badge" data-lang="es">ES</span>/<span class="lang-badge" data-lang="en">EN</span>
+        </button>
+        <div class="pill pill--red">
+          <span class="lang-es">El Punto Ciego</span>
+          <span class="lang-en">The Critical Blindspot</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-body grid-2">
+      <!-- Corrientes -->
+      <div class="card card--highlight">
+        <div>
+          <div class="card-label">
+            <span class="lang-es">Argentina · Verano 2021–2022 · Sin Recursos</span>
+            <span class="lang-en">Argentina · Summer 2021–2022 · Low Resources</span>
+          </div>
+          <h3 style="font-size: 1.4rem; margin-bottom: 6px;">
+            <span class="lang-es">Catástrofe de Corrientes</span>
+            <span class="lang-en">Corrientes Catastrophe</span>
+          </h3>
+          <div class="stat-number stat-number--danger">1.042.514 ha</div>
+          <p class="stat-desc">
+            <span class="lang-es"><strong>El 12 % de la provincia arrasado por el fuego.</strong> Humedales del Iberá colapsados bajo sequía extrema. Los bomberos voluntarios dependieron de una colecta popular ciudadana en el pico de la emergencia.</span>
+            <span class="lang-en"><strong>12% of the entire province incinerated.</strong> Iberá wetlands collapsed under severe drought. Volunteer brigades relied on citizen crowdfunding at the disaster's peak.</span>
+          </p>
+        </div>
+        <div class="quote-box">
+          <span class="lang-es"><strong>Sin aviones ni infraestructura pesada:</strong> atender el fuego reactivamente significó empezar a actuar cuando las llamas ya estaban sobre estancias y poblaciones.</span>
+          <span class="lang-en"><strong>Zero heavy aircraft:</strong> reacting to fire meant responding only when flames were already consuming ranches and towns.</span>
+        </div>
+      </div>
+
+      <!-- Los Angeles -->
+      <div class="card">
+        <div>
+          <div class="card-label">
+            <span class="lang-es">Estados Unidos · Enero 2025 · Recursos Infinitos</span>
+            <span class="lang-en">United States · January 2025 · Infinite Resources</span>
+          </div>
+          <h3 style="font-size: 1.4rem; margin-bottom: 6px;">
+            <span class="lang-es">Los Ángeles (Palisades y Eaton)</span>
+            <span class="lang-en">Los Angeles (Palisades & Eaton)</span>
+          </h3>
+          <div class="stat-number" style="color: #cbd5e1;">&lt; 60 min</div>
+          <p class="stat-desc">
+            <span class="lang-es"><strong>Las casas ardieron antes de la llegada de las dotaciones.</strong> A pesar de flotas multimillonarias, helicópteros de visión nocturna y aviones cisterna, el viento y el combustible seco desbordaron la contención al instante.</span>
+            <span class="lang-en"><strong>Homes burned before first units arrived.</strong> Despite multi-billion-dollar fire fleets, night-vision helitack, and air tankers, wind and parched fuels overwhelmed containment instantly.</span>
+          </p>
+        </div>
+        <div class="quote-box" style="border-left-color: #94a3b8; background: rgba(148, 163, 184, 0.05);">
+          <span class="lang-es"><strong>La lección universal:</strong> El problema no es cómo apagar el fuego, sino cómo prevenir y anticipar. Si el humo ya subió a la atmósfera, la contención humana fracasa siempre.</span>
+          <span class="lang-en"><strong>The universal axiom:</strong> The problem is not suppression, but anticipation. When smoke is already in the air, containment is physically impossible.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Aeros · NASA Space Apps Challenge 2026</div>
+      <div class="controls-hint">
+        <span class="lang-es">Navegar con <span class="key">←</span> <span class="key">→</span> o <span class="key">Espacio</span> · Idioma con <span class="key">L</span></span>
+        <span class="lang-en">Navigate with <span class="key">←</span> <span class="key">→</span> or <span class="key">Space</span> · Language with <span class="key">L</span></span>
+      </div>
+      <div>1 / 7</div>
+    </div>
+  </section>
+
+  <!-- SLIDE 2: THE SATELLITE FLEET CRISIS / CRISIS DE DATOS -->
+  <section class="slide" data-slide="2">
+    <div class="slide-header">
+      <div>
+        <div class="slide-meta">
+          <span class="lang-es">Diapositiva 02 · El Desafío de Observación</span>
+          <span class="lang-en">Slide 02 · Earth Observation Blindspot</span>
+        </div>
+        <h1 class="slide-title">
+          <span class="lang-es">La flota satelital que vigila la Tierra se está apagando</span>
+          <span class="lang-en">The Satellites Watching Our Planet Are Going Dark</span>
+        </h1>
+        <p class="slide-subtitle">
+          <span class="lang-es">26 años de registro histórico fragmentados por sensores que cambian de resolución.</span>
+          <span class="lang-en">NASA's 26-year active fire fleet is fragmenting, distorting historical baseline records.</span>
+        </p>
+      </div>
+      <div class="top-bar-controls">
+        <div class="pill pill--amber">
+          <span class="lang-es">Transición Crítica</span>
+          <span class="lang-en">Sensor Transition Crisis</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-body grid-1-2">
+      <div class="card">
+        <div class="card-label">
+          <span class="lang-es">Discontinuidad de Sensores</span>
+          <span class="lang-en">The Sensor Discontinuity</span>
+        </div>
+        <p class="stat-desc" style="font-size: 1rem; margin-bottom: 12px;">
+          <span class="lang-es">Para saber si una temporada es anormal, hay que comparar contra 2000–2023. Pero apilar archivos crudos de NASA FIRMS hace que el fuego <strong>"salte" un 230% (3,3×)</strong> simplemente porque cambió el satélite, no el fuego.</span>
+          <span class="lang-en">To evaluate anomaly, one must compare against 2000–2023. But stacking raw NASA FIRMS files creates an artificial <strong>230% jump (3.3×)</strong> simply because the satellite changed, not the fire.</span>
+        </p>
+        <div class="stat-number stat-number--danger" style="font-size: 2.5rem;">+230 %</div>
+        <p class="stat-desc">
+          <span class="lang-es">Salto artificial de focos detectados al pasar de MODIS (1 km) a VIIRS (375 m). Los brigadistas no pueden distinguir si el año fue peor o cambió el instrumento.</span>
+          <span class="lang-en">Artificial detection spike switching from MODIS (1 km) to VIIRS (375 m). Fire managers cannot tell if a season worsened or the satellite changed.</span>
+        </p>
+      </div>
+
+      <div class="card" style="padding: 18px 22px;">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th><span class="lang-es">Plataforma</span><span class="lang-en">Platform</span></th>
+              <th><span class="lang-es">Sensor</span><span class="lang-en">Sensor</span></th>
+              <th><span class="lang-es">Píxel</span><span class="lang-en">Pixel</span></th>
+              <th><span class="lang-es">Estado Operativo (2026)</span><span class="lang-en">Operational Status (2026)</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Terra</strong></td>
+              <td>MODIS</td>
+              <td>1 km</td>
+              <td><span class="pill pill--red"><span class="lang-es">Órbita a la deriva · Cierre 2027</span><span class="lang-en">Orbit drifting · Shutdown 2027</span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Aqua</strong></td>
+              <td>MODIS</td>
+              <td>1 km</td>
+              <td><span class="pill pill--red"><span class="lang-es">Órbita a la deriva · Cierre Sep 2027</span><span class="lang-en">Orbit drifting · Shutdown Sep 2027</span></span></td>
+            </tr>
+            <tr>
+              <td><strong>Suomi NPP</strong></td>
+              <td>VIIRS</td>
+              <td>375 m</td>
+              <td><span class="pill pill--red"><span class="lang-es">Entrega de datos cesó (Nov 2026)</span><span class="lang-en">Data delivery ceased (Nov 2026)</span></span></td>
+            </tr>
+            <tr>
+              <td><strong>NOAA-20 / 21</strong></td>
+              <td>VIIRS</td>
+              <td>375 m</td>
+              <td><span class="pill pill--amber"><span class="lang-es">Activos · Brechas en transiciones</span><span class="lang-en">Active · Intermittent gaps</span></span></td>
+            </tr>
+            <tr>
+              <td><strong>GOES-19</strong></td>
+              <td>ABI</td>
+              <td>~2 km</td>
+              <td><span class="pill pill--blue"><span class="lang-es">Geoestacionario · Barrido cada 10 min</span><span class="lang-en">Geostationary · 10-min scan</span></span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="quote-box quote-box--blue" style="margin-top: 14px;">
+          <span class="lang-es"><strong>Solución Aeros:</strong> Reconstrucción de una serie unificada de 26 años sobre grilla H3 mediante puentes de calibración cruzada y corrección Poisson.</span>
+          <span class="lang-en"><strong>Aeros Solution:</strong> Reconstructed 26-year unified series on H3 grid via cross-calibrated reference bridges and Poisson corrections.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Aeros · Harmonization of MODIS and VIIRS Hot Spots</div>
+      <div class="controls-hint">Navigate with <span class="key">←</span> <span class="key">→</span></div>
+      <div>2 / 7</div>
+    </div>
+  </section>
+
+  <!-- SLIDE 3: LOS 3 MECANISMOS REALES / THE 3 REAL MECHANISMS -->
+  <section class="slide" data-slide="3">
+    <div class="slide-header">
+      <div>
+        <div class="slide-meta">
+          <span class="lang-es">Diapositiva 03 · Arquitectura Científica</span>
+          <span class="lang-en">Slide 03 · Core Scientific Architecture</span>
+        </div>
+        <h1 class="slide-title">
+          <span class="lang-es">La "predicción" sale de 3 mecanismos distintos</span>
+          <span class="lang-en">"Prediction" Stems from 3 Distinct Mechanisms</span>
+        </h1>
+        <p class="slide-subtitle">
+          <span class="lang-es">Modelos estadísticos y de aprendizaje automático que miran diferentes ventanas de tiempo.</span>
+          <span class="lang-en">Statistical and machine learning models operating across distinct temporal scales.</span>
+        </p>
+      </div>
+      <div class="top-bar-controls">
+        <div class="pill pill--green">
+          <span class="lang-es">Sin Humo · Métodos Reales</span>
+          <span class="lang-en">Validated Methods</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-body grid-3">
+      <!-- Mecanismo 1 -->
+      <div class="card card--success">
+        <div>
+          <div class="card-label">
+            <span class="lang-es">1. Pronóstico 1–4 Semanas</span>
+            <span class="lang-en">1. 1–4 Week Forecast</span>
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 6px;">
+            <span class="lang-es">Aprendizaje Automático (26 Años)</span>
+            <span class="lang-en">Machine Learning (26 Years)</span>
+          </h3>
+          <p class="stat-desc">
+            <span class="lang-es"><strong>Es lo único que mira al futuro.</strong> Modelo de gradient boosting (scikit-learn) sobre celdas de ~1.770 km². Aprende de 4 semanas previas, celdas vecinas, estacionalidad y sequedad del aire (NASA POWER).</span>
+            <span class="lang-en"><strong>The only piece looking ahead.</strong> Gradient boosting model (scikit-learn) over ~1,770 km² cells. Learns from past 4 weeks, neighbors, seasonality, and air dryness (NASA POWER).</span>
+          </p>
+        </div>
+        <div class="quote-box quote-box--green" style="font-size: 0.84rem;">
+          <span class="lang-es"><strong>Resultado:</strong> Da cantidad esperada con rango (ej: "40 focos [20-70], habitual 15"). <em>Erra 30% menos que "lo de siempre".</em></span>
+          <span class="lang-en"><strong>Output:</strong> Expected count with range (e.g. "40 hotspots [20-70], norm 15"). <em>Errors 30% less than baseline.</em></span>
+        </div>
+      </div>
+
+      <!-- Mecanismo 2 -->
+      <div class="card card--highlight">
+        <div>
+          <div class="card-label">
+            <span class="lang-es">2. Alerta Temprana</span>
+            <span class="lang-en">2. Early Warning</span>
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 6px;">
+            <span class="lang-es">Estadística, no Adivinación</span>
+            <span class="lang-en">Statistics, Not Guessing</span>
+          </h3>
+          <p class="stat-desc">
+            <span class="lang-es"><strong>Detecta ahora lo anormal, antes de que sea noticia.</strong> Cuenta focos de los últimos 7 días y los compara con la mediana histórica mediante <strong>test de Poisson (p &lt; 0,01)</strong>.</span>
+            <span class="lang-en"><strong>Detects abnormality today, before it hits the news.</strong> Evaluates last 7 days against historical median via <strong>Poisson test (p &lt; 0.01)</strong>.</span>
+          </p>
+        </div>
+        <div class="quote-box" style="font-size: 0.84rem;">
+          <span class="lang-es"><strong>Validación:</strong> 1 de cada 2 celdas marcadas sigue ardiendo a más del doble de lo normal la semana siguiente. <em>Ese es su poder real.</em></span>
+          <span class="lang-en"><strong>Validation:</strong> 1 in 2 flagged cells continues burning at over 2× normal the following week. <em>That is its true predictive power.</em></span>
+        </div>
+      </div>
+
+      <!-- Mecanismo 3 -->
+      <div class="card">
+        <div>
+          <div class="card-label">
+            <span class="lang-es">3. Detección Rápida</span>
+            <span class="lang-en">3. Rapid Fire Watch</span>
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 6px;">
+            <span class="lang-es">GOES-19 Cada 10 Minutos</span>
+            <span class="lang-en">GOES-19 Every 10 Minutes</span>
+          </h3>
+          <p class="stat-desc">
+            <span class="lang-es"><strong>Fuego activo casi en tiempo real.</strong> Si un píxel caliente aparece en 2 de 3 escaneos seguidos, avisa a quienes viven a &lt; 50 km. Para un vecino, es la parte más "temprana" de todas.</span>
+            <span class="lang-en"><strong>Near real-time active fire.</strong> If a hotspot persists in 2 of 3 consecutive scans, it alerts residents within 50 km. For local people, this is the earliest layer.</span>
+          </p>
+        </div>
+        <div class="quote-box quote-box--blue" style="font-size: 0.84rem;">
+          <span class="lang-es"><strong>Clima 4 días:</strong> Open-Meteo clasificado en "normal, elevado, extremo" frente a 10 años de ERA5.</span>
+          <span class="lang-en"><strong>4-day weather:</strong> Open-Meteo physics classified into "normal, elevated, extreme" vs 10-year ERA5.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Aeros · Tri-Mechanism Predictive Engine</div>
+      <div class="controls-hint">Navigate with <span class="key">←</span> <span class="key">→</span></div>
+      <div>3 / 7</div>
+    </div>
+  </section>
+
+  <!-- SLIDE 4: POR QUÉ NO UN LLM / WHY NO LLM & PITCH HONESTY -->
+  <section class="slide" data-slide="4">
+    <div class="slide-header">
+      <div>
+        <div class="slide-meta">
+          <span class="lang-es">Diapositiva 04 · Honestidad Frente al Jurado</span>
+          <span class="lang-en">Slide 04 · Scientific Honesty & Credibility</span>
+        </div>
+        <h1 class="slide-title">
+          <span class="lang-es">Por qué aeros no usa un LLM (y no le hace falta)</span>
+          <span class="lang-en">Why Aeros Does Not Use an LLM (and Doesn't Need One)</span>
+        </h1>
+        <p class="slide-subtitle">
+          <span class="lang-es">Un modelo de lenguaje no sabe predecir fuego a partir de números. La credibilidad nace de números auditables.</span>
+          <span class="lang-en">A language model cannot predict fire from raw numbers. Credibility comes from auditable statistics.</span>
+        </p>
+      </div>
+      <div class="top-bar-controls">
+        <div class="pill pill--blue">
+          <span class="lang-es">Rigor Técnico</span>
+          <span class="lang-en">Audit-Ready Science</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-body grid-2">
+      <!-- Why no LLM -->
+      <div class="card">
+        <div class="card-label">
+          <span class="lang-es">Fundamentos vs Moda</span>
+          <span class="lang-en">Fundamentals vs Hype</span>
+        </div>
+        <h3 style="font-size: 1.35rem; margin-bottom: 10px;">
+          <span class="lang-es">¿Por qué no un modelo de lenguaje?</span>
+          <span class="lang-en">Why Not a Language Model?</span>
+        </h3>
+        <p class="stat-desc" style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 14px;">
+          <span class="lang-es">Un LLM predice la próxima palabra de un texto. No sabe sumar 26 años de detecciones por celda ni calcular si <strong>203 focos contra 0,6 habituales</strong> es raro estadísticamente.</span>
+          <span class="lang-en">An LLM predicts the next word in a text string. It cannot aggregate 26 years of cell-level satellite detections or compute whether <strong>203 hotspots against 0.6 normal</strong> is statistically anomalous.</span>
+        </p>
+        <div class="quote-box quote-box--green">
+          <span class="lang-es">Lo que funciona con datos numéricos son <strong>modelos estadísticos y gradient boosting</strong> que se pueden validar matemáticamente contra años que el modelo jamás vio.</span>
+          <span class="lang-en">What works on numerical data is <strong>statistical modeling and gradient boosting</strong> that can be mathematically validated on unseen held-out years.</span>
+        </div>
+      </div>
+
+      <!-- How to Pitch It -->
+      <div class="card" style="justify-content: flex-start; gap: 14px;">
+        <div class="card-label">
+          <span class="lang-es">Reglas de Oro del Pitch</span>
+          <span class="lang-en">Pitching Rules · No Overselling</span>
+        </div>
+
+        <div class="pitch-guard">
+          <div class="tag-no">
+            <span class="lang-es">✗ LO QUE NO HAY QUE DECIR:</span>
+            <span class="lang-en">✗ WHAT NOT TO SAY:</span>
+          </div>
+          <p style="margin-top: 4px; color: #cbd5e1;">
+            <span class="lang-es">"Predice incendios", "calcula la probabilidad de que haya fuego" o "usa IA" a secas.</span>
+            <span class="lang-en">"Predicts wildfires", "calculates the probability of fire", or generic "uses AI".</span>
+          </p>
+        </div>
+
+        <div class="pitch-guard" style="border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.05);">
+          <div class="tag-yes">
+            <span class="lang-es">✓ CÓMO CONTARLO CON PRECISIÓN:</span>
+            <span class="lang-en">✓ HOW TO PITCH ACCURATELY:</span>
+          </div>
+          <p style="margin-top: 4px; color: #f1f5f9; font-style: italic;">
+            <span class="lang-es">"aeros no adivina dónde va a empezar un incendio. Une 26 años de satélites MODIS y VIIRS en una sola escala, y con eso detecta en horas cuándo una zona arde fuera de lo normal, avisa por Telegram cuando GOES-19 ve fuego cerca, y pronostica cuánta actividad traen las próximas semanas."</span>
+            <span class="lang-en">"Aeros does not guess where a fire will start. It unifies 26 years of MODIS and VIIRS satellites into one scale, detects in hours when an area burns abnormally, alerts via Telegram when GOES-19 spots nearby fire, and forecasts upcoming weekly activity."</span>
+          </p>
+        </div>
+
+        <p style="font-size: 0.8rem; color: var(--text-faint); margin-top: 4px;">
+          <span class="lang-es"><strong>Declaración de IA (Space Apps):</strong> Los LLM se usaron exclusivamente como asistentes de programación, tal como se declara formalmente en el repositorio.</span>
+          <span class="lang-en"><strong>AI Disclosure (Space Apps):</strong> LLMs were used strictly as code assistance tools, exactly as declared in the project submission.</span>
+        </p>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Aeros · Space Apps AI Ethics & Rigor</div>
+      <div class="controls-hint">Navigate with <span class="key">←</span> <span class="key">→</span></div>
+      <div>4 / 7</div>
+    </div>
+  </section>
+
+  <!-- SLIDE 5: LA PRUEBA EMPÍRICA / CORRIENTES BACKTEST -->
+  <section class="slide" data-slide="5">
+    <div class="slide-header">
+      <div>
+        <div class="slide-meta">
+          <span class="lang-es">Diapositiva 05 · La Prueba Empírica</span>
+          <span class="lang-en">Slide 05 · Empirical Backtest Proof</span>
+        </div>
+        <h1 class="slide-title">
+          <span class="lang-es">Prueba Corrientes: Alerta roja 60 días antes</span>
+          <span class="lang-en">The Corrientes Backtest: 60 Days of Warning</span>
+        </h1>
+        <p class="slide-subtitle">
+          <span class="lang-es">La fórmula matemática exacta que anticipó el desastre dos meses antes de la catástrofe.</span>
+          <span class="lang-en">The exact mathematical trigger that anticipated disaster two months before peak.</span>
+        </p>
+      </div>
+      <div class="top-bar-controls">
+        <div class="pill pill--red">
+          <span class="lang-es">Backtest Real</span>
+          <span class="lang-en">Historical Replay</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-body grid-1-2">
+      <div class="card card--highlight" style="display: flex; flex-direction: column; justify-content: center;">
+        <div class="card-label">
+          <span class="lang-es">Regla Matemática de Disparo</span>
+          <span class="lang-en">Exact Mathematical Trigger</span>
+        </div>
+        <div style="font-family: var(--font-mono); font-size: 0.95rem; background: rgba(0,0,0,0.4); padding: 12px 14px; border-radius: 6px; border: 1px solid var(--border-strong); margin: 6px 0 14px 0; color: #fde047;">
+          <span class="lang-es">VIIRS 7d &gt; 2× Mediana Histórica &amp; Poisson (p &lt; 0.01)</span>
+          <span class="lang-en">VIIRS 7d &gt; 2× Historical Median &amp; Poisson (p &lt; 0.01)</span>
+        </div>
+        <div class="stat-number stat-number--danger" style="font-size: 3.4rem;">60 Días</div>
+        <p class="stat-desc" style="font-size: 0.98rem; line-height: 1.5;">
+          <span class="lang-es">Con esta regla, en Corrientes <strong>habría avisado el 18 de diciembre de 2021</strong> y se habría mantenido activa. 60 días antes del colapso de mediados de febrero de 2022.</span>
+          <span class="lang-en">Under this rule, it <strong>would have triggered on Dec 18, 2021</strong> in Corrientes and remained active. 60 days before mid-February 2022 collapse.</span>
+        </p>
+        <div class="quote-box" style="margin-top: 14px; font-size: 0.85rem;">
+          <span class="lang-es"><strong>17 de Enero:</strong> 6.387 detecciones en 7 días (266× lo habitual) — <em>un mes entero antes de la colecta ciudadana</em>.</span>
+          <span class="lang-en"><strong>January 17:</strong> 6,387 detections in 7 days (266× normal) — <em>a full month before citizen crowdfunding</em>.</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="timeline">
+          <div class="timeline-item active">
+            <div class="timeline-node">18D</div>
+            <div class="timeline-content">
+              <h4>
+                <span class="lang-es">18 Dic 2021 · Salta la Alerta (Regla VIIRS + Poisson)</span>
+                <span class="lang-en">Dec 18, 2021 · Alert Triggered (VIIRS + Poisson)</span>
+              </h4>
+              <p>
+                <span class="lang-es">Los últimos 7 días superan el doble de la mediana y la cola de Poisson da p &lt; 0,01. La anomalía ya era visible desde el espacio.</span>
+                <span class="lang-en">Last 7 days exceed 2× historical median with Poisson p &lt; 0.01. The anomaly was already obvious from orbit.</span>
+              </p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-node">17E</div>
+            <div class="timeline-content">
+              <h4>
+                <span class="lang-es">17 Ene 2022 · 6.387 focos en 7 días (266× lo habitual)</span>
+                <span class="lang-en">Jan 17, 2022 · 6,387 spots in 7 days (266× normal)</span>
+              </h4>
+              <p>
+                <span class="lang-es">Un mes antes de que la emergencia fuera noticia nacional y se organizara la colecta para los bomberos.</span>
+                <span class="lang-en">A full month before the crisis became national news and citizen firefighting fundraisers began.</span>
+              </p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-node">19F</div>
+            <div class="timeline-content">
+              <h4>
+                <span class="lang-es">19 Feb 2022 · Pico de Catástrofe (3.966 focos/día)</span>
+                <span class="lang-en">Feb 19, 2022 · Disaster Peak (3,966 spots/day)</span>
+              </h4>
+              <p>
+                <span class="lang-es">Día más activo en la historia de la provincia. Recién esa noche arranca la colecta pública ciudadana.</span>
+                <span class="lang-en">Busiest single day in provincial history. That night, public crowdfunding for firefighters finally starts.</span>
+              </p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-node">27F</div>
+            <div class="timeline-content">
+              <h4>
+                <span class="lang-es">27 Feb 2022 · Balance Final: 1.042.514 ha (12 %)</span>
+                <span class="lang-en">Feb 27, 2022 · Final Toll: 1,042,514 ha (12%)</span>
+              </h4>
+              <p>
+                <span class="lang-es">12 % de Corrientes incinerado según INTA. Pérdida irreversible de biodiversidad en los esteros.</span>
+                <span class="lang-en">12% of Corrientes incinerated (INTA report). Irreversible ecological and economic collapse.</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Aeros · Validated on Real NASA FIRMS Raw Data</div>
+      <div class="controls-hint">Navigate with <span class="key">←</span> <span class="key">→</span></div>
+      <div>5 / 7</div>
+    </div>
+  </section>
+
+  <!-- SLIDE 6: DESPACHO FOCALIZADO / TARGETED DISPATCH -->
+  <section class="slide" data-slide="6">
+    <div class="slide-header">
+      <div>
+        <div class="slide-meta">
+          <span class="lang-es">Diapositiva 06 · Notificación Focalizada</span>
+          <span class="lang-en">Slide 06 · Actionable Notification</span>
+        </div>
+        <h1 class="slide-title">
+          <span class="lang-es">Avisar a quien está en el camino del fuego</span>
+          <span class="lang-en">Alerting Communities in the Path of Fire</span>
+        </h1>
+        <p class="slide-subtitle">
+          <span class="lang-es">Sin saturar con alarmas masivas: física del viento y mensajería directa por Telegram y mail.</span>
+          <span class="lang-en">Eliminating alert fatigue: wind dispersion physics and direct Telegram push.</span>
+        </p>
+      </div>
+      <div class="top-bar-controls">
+        <div class="pill pill--blue">
+          <span class="lang-es">Entrega Práctica</span>
+          <span class="lang-en">Targeted Dispatch</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-body grid-2">
+      <div class="card">
+        <div class="card-label">
+          <span class="lang-es">Física de Dispersión</span>
+          <span class="lang-en">Dispersion Physics</span>
+        </div>
+        <h3 style="font-size: 1.3rem; margin-bottom: 10px;">
+          <span class="lang-es">Cono de Riesgo a Favor del Viento</span>
+          <span class="lang-en">Dynamic Downwind Risk Cones</span>
+        </h3>
+        <p class="stat-desc" style="margin-bottom: 14px;">
+          <span class="lang-es">En vez de mandar alertas genéricas por provincia, aeros lee el pronóstico de viento de 48 horas (vectores $u$ y $v$ de Open-Meteo) y proyecta dónde viajará el frente:</span>
+          <span class="lang-en">Instead of generic regional spam, Aeros evaluates 48-hour wind forecasts ($u$ and $v$ vectors from Open-Meteo) to project the fire front trajectory:</span>
+        </p>
+        <ul style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.7; margin-left: 20px;">
+          <li><span class="lang-es"><strong>Anillo Inmediato:</strong> Celdas H3 contiguas (~22 km).</span><span class="lang-en"><strong>Immediate Ring:</strong> Adjacent H3 neighbors (~22 km).</span></li>
+          <li><span class="lang-es"><strong>Cono de Viento:</strong> Cuña de $\pm 30^\circ$ hasta 80 km según la velocidad del aire.</span><span class="lang-en"><strong>Wind Cone:</strong> $\pm 30^\circ$ wedge extending up to 80 km based on velocity.</span></li>
+          <li><span class="lang-es"><strong>Filtro de Escalada:</strong> Reenvía sólo si los focos aumentan o el clima pasa a extremo.</span><span class="lang-en"><strong>Escalation Filter:</strong> Resends only if hotspots multiply or weather turns extreme.</span></li>
+        </ul>
+      </div>
+
+      <div class="card card--success">
+        <div class="card-label">
+          <span class="lang-es">Sin Burocracia</span>
+          <span class="lang-en">Zero Friction</span>
+        </div>
+        <h3 style="font-size: 1.3rem; margin-bottom: 10px;">
+          <span class="lang-es">Bot de Telegram y Correo Directo</span>
+          <span class="lang-en">Telegram Bot & Direct Email</span>
+        </h3>
+        <p class="stat-desc" style="margin-bottom: 14px;">
+          <span class="lang-es">El productor agropecuario o el jefe de cuartel no necesitan instalar una app pesada ni mirar tableros todo el día.</span>
+          <span class="lang-en">Farmers and brigade leaders do not need to install complex software or monitor screens.</span>
+        </p>
+        <div style="background: rgba(0,0,0,0.35); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px; font-family: var(--font-mono); font-size: 0.82rem; color: #e2e8f0;">
+          <div style="color: var(--ember-orange); font-weight: 700; margin-bottom: 6px;">⚠️ ALERTA TEMPRANA AEROS</div>
+          <div>Sector: Chaco Boreal (Celda: 86a9442...)</div>
+          <div>Focos activos: 48 (5,2x la mediana histórica)</div>
+          <div>Viento: 28 km/h NO → Tu localidad en cono de riesgo (est. 6h)</div>
+          <div>Clima: Extremo (Índice Hot-Dry-Windy p95)</div>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 10px; line-height: 1.4;">
+          <span class="lang-es"><strong>Estado real:</strong> El envío por correo y Telegram está escrito y testeado con tests unitarios. Empieza a salir en cuanto la cuenta de AWS esté desplegada con destinatarios (hoy nadie lo recibe).</span>
+          <span class="lang-en"><strong>Operational reality:</strong> Email and Telegram dispatch is fully written and unit-tested. Messages will deliver once the AWS stack is deployed with subscribers (currently pre-deployment; zero live recipients).</span>
+        </p>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Aeros · Targeted Early Warning Dispatch</div>
+      <div class="controls-hint">Navigate with <span class="key">←</span> <span class="key">→</span></div>
+      <div>6 / 7</div>
+    </div>
+  </section>
+
+  <!-- SLIDE 7: RESILIENCIA PLANETARIA / PLANETARY DEFENSE -->
+  <section class="slide" data-slide="7">
+    <div class="slide-header">
+      <div>
+        <div class="slide-meta">
+          <span class="lang-es">Diapositiva 07 · Visión e Impacto Global</span>
+          <span class="lang-en">Slide 07 · Vision & Planetary Impact</span>
+        </div>
+        <h1 class="slide-title">
+          <span class="lang-es">Ciencia abierta, escalable y sin sobreventa</span>
+          <span class="lang-en">Open Science, Scalable, Without Hype</span>
+        </h1>
+        <p class="slide-subtitle">
+          <span class="lang-es">Una plataforma universal aplicable al Gran Chaco, California o el Mediterráneo.</span>
+          <span class="lang-en">A universal platform engineered for Gran Chaco, California, or the Mediterranean.</span>
+        </p>
+      </div>
+      <div class="top-bar-controls">
+        <div class="pill pill--blue">
+          <span class="lang-es">Misión Global</span>
+          <span class="lang-en">Global Mission</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-body grid-3">
+      <div class="card">
+        <div class="card-label">
+          <span class="lang-es">Pilar 1 · Nube Eficiente</span>
+          <span class="lang-en">Pillar 1 · Lean Cloud</span>
+        </div>
+        <h3 style="font-size: 1.25rem; margin-bottom: 6px;">
+          <span class="lang-es">Serverless y DuckDB</span>
+          <span class="lang-en">Serverless & DuckDB</span>
+        </h3>
+        <p class="stat-desc">
+          <span class="lang-es">DuckDB + AWS Lambda + CloudFront. Entrega paquetes estáticos Parquet/JSON que responden consultas en milisegundos sin requerir servidores dedicados costosos.</span>
+          <span class="lang-en">DuckDB + AWS Lambda + CloudFront. Delivers static Parquet/JSON bundles answering queries in milliseconds without costly infrastructure.</span>
+        </p>
+        <div style="margin-top: 14px; font-size: 0.8rem; color: var(--accent-cyan);">
+          <span class="lang-es">Opera dentro de la capa gratuita</span>
+          <span class="lang-en">Operates inside free cloud tier</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">
+          <span class="lang-es">Pilar 2 · Gemelo Digital</span>
+          <span class="lang-en">Pillar 2 · Digital Twin</span>
+        </div>
+        <h3 style="font-size: 1.25rem; margin-bottom: 6px;">
+          <span class="lang-es">Tierra 3D Fotorealista</span>
+          <span class="lang-en">Photoreal 3D Earth</span>
+        </h3>
+        <p class="stat-desc">
+          <span class="lang-es">Three.js WebGL + Deck.gl con grilla H3. Permite tanto el monitoreo macro planetario en tiempo real como la inspección táctica a nivel de campo desde cualquier navegador.</span>
+          <span class="lang-en">Three.js WebGL + Deck.gl with H3 grid. Enables macro planetary monitoring and micro tactical inspection on any standard browser.</span>
+        </p>
+        <div style="margin-top: 14px; font-size: 0.8rem; color: var(--accent-cyan);">
+          <span class="lang-es">Diseño sobrio de alto contraste</span>
+          <span class="lang-en">High-contrast dark matter aesthetic</span>
+        </div>
+      </div>
+
+      <div class="card card--highlight">
+        <div class="card-label">
+          <span class="lang-es">Pilar 3 · El Axioma Final</span>
+          <span class="lang-en">Pillar 3 · The Final Axiom</span>
+        </div>
+        <h3 style="font-size: 1.25rem; margin-bottom: 6px;">
+          <span class="lang-es">Anticipar es la Única Opción</span>
+          <span class="lang-en">Anticipation is the Only Way</span>
+        </h3>
+        <p class="stat-desc">
+          <span class="lang-es">Los incendios forestales son inevitables en la biosfera terrestre. Las catástrofes que arrasan provincias enteras no tienen por qué serlo.</span>
+          <span class="lang-en">Wildfires are an inevitable reality of Earth's biosphere. Catastrophes that wipe out entire provinces do not have to be.</span>
+        </p>
+        <div style="margin-top: 14px; font-weight: 700; color: #ffffff;">
+          <span class="lang-es">Aeros une satélites para actuar antes del humo.</span>
+          <span class="lang-en">Aeros unifies satellites to act before the smoke.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-footer">
+      <div>Aeros · NASA Space Apps Challenge 2026 · Harmonization of MODIS and VIIRS Hot Spots</div>
+      <div class="controls-hint">
+        <span class="lang-es">Presioná <span class="key">P</span> para imprimir / exportar PDF</span>
+        <span class="lang-en">Press <span class="key">P</span> to print / export PDF</span>
+      </div>
+      <div>7 / 7</div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  let currentSlide = 1;
+  const totalSlides = 7;
+  const slides = document.querySelectorAll('.slide');
+  const progressBar = document.getElementById('progress');
+  const langBtn = document.getElementById('lang-btn');
+
+  function updateSlides() {
+    slides.forEach((slide) => {
+      const slideIndex = parseInt(slide.dataset.slide, 10);
+      slide.classList.toggle('active', slideIndex === currentSlide);
+    });
+    progressBar.style.width = ((currentSlide / totalSlides) * 100) + '%';
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides) {
+      currentSlide++;
+      updateSlides();
+    }
+  }
+
+  function prevSlide() {
+    if (currentSlide > 1) {
+      currentSlide--;
+      updateSlides();
+    }
+  }
+
+  function toggleLanguage() {
+    const currentLang = document.body.getAttribute('data-lang');
+    const newLang = currentLang === 'es' ? 'en' : 'es';
+    document.body.setAttribute('data-lang', newLang);
+    document.documentElement.setAttribute('lang', newLang);
+  }
+
+  langBtn.addEventListener('click', toggleLanguage);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+      nextSlide();
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      prevSlide();
+    } else if (e.key === 'Home') {
+      currentSlide = 1;
+      updateSlides();
+    } else if (e.key === 'End') {
+      currentSlide = totalSlides;
+      updateSlides();
+    } else if (e.key.toLowerCase() === 'l') {
+      toggleLanguage();
+    } else if (e.key.toLowerCase() === 'p') {
+      window.print();
+    }
+  });
+
+  // Touch / Swipe
+  let touchStartX = 0;
+  let touchEndX = 0;
+  document.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+  });
+  document.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    if (touchStartX - touchEndX > 50) nextSlide();
+    if (touchEndX - touchStartX > 50) prevSlide();
+  });
+
+  updateSlides();
+</script>
+</body>
+</html>

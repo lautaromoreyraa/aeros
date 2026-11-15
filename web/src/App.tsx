@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Unit } from "./api/types";
-import { AlertBanner } from "./components/AlertBanner";
 import { useAreaSelection } from "./hooks/useAreaSelection";
 import { useEarlyWarning, useForecast } from "./hooks/useOutlook";
 import { useRegion } from "./hooks/useRegion";
@@ -80,11 +79,6 @@ export default function App() {
             section={section}
             onSectionChange={setSection}
             alerting={decision.active}
-            banner={
-              report && decision.active && section !== "warning" ? (
-                <AlertBanner report={report} decision={decision} onOpen={() => setSection("warning")} />
-              ) : null
-            }
             theme={resolved}
             onToggleTheme={toggle}
             onShowLanding={showLanding}
