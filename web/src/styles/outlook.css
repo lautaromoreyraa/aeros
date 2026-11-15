@@ -286,7 +286,7 @@
 .outlook__map {
   grid-area: map;
   position: relative;
-  min-height: 520px;
+  min-height: clamp(360px, 48vh, 520px);
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -504,9 +504,35 @@
 
 /* ---------- Responsive ---------- */
 
-@media (max-width: 1180px) {
+@media (max-width: 1340px) {
   .shell__tagline {
     display: none;
+  }
+}
+
+@media (max-width: 1400px) and (min-width: 1081px) {
+  .outlook {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  }
+
+  .forecast-body {
+    gap: var(--space-4);
+  }
+}
+
+@media (max-height: 820px) {
+  .outlook__map {
+    min-height: clamp(320px, 44vh, 440px);
+  }
+
+  .alert-banner,
+  .calm-banner,
+  .notice {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .day-strip {
+    gap: var(--space-1);
   }
 }
 

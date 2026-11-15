@@ -3,6 +3,7 @@ import type { EarlyWarning } from "../api/types";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import { usePlaces } from "../hooks/usePlaces";
 import { useRememberedChoice } from "../hooks/useRememberedChoice";
+import { useI18n } from "../i18n/I18nContext";
 import { type AlertDecision, formatDay, windowCoverage } from "../util/earlyWarning";
 import { formatRatio } from "../util/format";
 import { decidePlaceBanner } from "../util/placeBanner";
@@ -33,6 +34,7 @@ function readStoredPlace(): Place | null {
  * fire detected elsewhere.
  */
 export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution = 4 }: Props) {
+  const { lang, t } = useI18n();
   const [userPlace, setUserPlace] = useState<Place | null>(readStoredPlace);
   const reducedMotion = usePrefersReducedMotion();
   const [tickerPlaying, setTickerPlaying] = useRememberedChoice("aeros-ticker", !reducedMotion);
@@ -42,8 +44,8 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
   const [searchQuery, setSearchQuery] = useState("");
 
   const outcome = useMemo(
-    () => decidePlaceBanner({ decision, userPlace, placesIndex, resolution }),
-    [decision, userPlace, placesIndex, resolution],
+    () => decidePlaceBanner({ decision, userPlace, placesIndex, resolution, locale: lang }),
+    [decision, userPlace, placesIndex, resolution, lang],
   );
 
   const searchResults = useMemo(() => {
@@ -71,12 +73,12 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
   };
 
   const searchPopover = (
-    <div className="alert-banner__search-popover" role="dialog" aria-label="Search town">
+    <div className="alert-banner__search-popover" role="dialog" aria-label={t.banner.searchTown}>
       <div className="alert-banner__search-bar">
         <input
           type="search"
           className="input alert-banner__search-input"
-          placeholder="Search town…"
+          placeholder={t.banner.searchTown}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           autoFocus
@@ -104,11 +106,11 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
         </ul>
       )}
       {searchQuery.trim().length >= 2 && searchResults.length === 0 && (
-        <p className="alert-banner__search-empty">No towns found</p>
+        <p className="alert-banner__search-empty">{t.banner.noTowns}</p>
       )}
       {userPlace && (
         <button type="button" className="alert-banner__clear-town" onClick={clearPlace}>
-          Clear saved town ({userPlace.name})
+          {t.banner.clearTown(userPlace.name)}
         </button>
       )}
     </div>
@@ -123,7 +125,7 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
           <path d="M12 10v5M12 17.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
         <p className="alert-banner__text">
-          <strong>Possible fire near {outcome.place.name}:</strong> about {outcome.multiplier} the usual this week.
+          {outcome.text}
         </p>
         <div className="alert-banner__actions">
           {(onSeeOnMap || onOpen) && (
@@ -139,7 +141,7 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
             type="button"
             className="button button--ghost alert-banner__town-btn"
             onClick={() => setShowSearch((v) => !v)}
-            title="Change your town"
+            title={t.banner.changeTown}
           >
             {outcome.place.name}
           </button>
@@ -155,13 +157,13 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
       <div className="alert-banner alert-banner--ticker" role="status">
         <div className="alert-banner__ticker-header">
           {userPlace ? (
-            <span className="alert-banner__calm-note">No unusual fire near {userPlace.name}</span>
+            <span className="alert-banner__calm-note">{t.banner.calmNear(userPlace.name)}</span>
           ) : (
-            <span className="alert-banner__calm-note">Fire detected elsewhere:</span>
+            <span className="alert-banner__calm-note">{t.banner.detectedElsewhere}</span>
           )}
         </div>
 
-        <div className="alert-banner__ticker-viewport" tabIndex={0} aria-label="Fire detected elsewhere">
+        <div className="alert-banner__ticker-viewport" tabIndex={0} aria-label={t.banner.detectedElsewhere}>
           <div className={`alert-banner__ticker-track ${!tickerPlaying ? "is-paused" : ""}`}>
             {outcome.places.map((item, idx) => (
               <button
@@ -171,7 +173,7 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
                 onClick={() => (onSeeOnMap ? onSeeOnMap(item.cell) : onOpen?.())}
               >
                 <span className="alert-banner__ticker-chip-name">{item.label}</span>
-                <span className="alert-banner__ticker-chip-ratio">about {item.multiplier} the usual</span>
+                <span className="alert-banner__ticker-chip-ratio">{t.banner.aboutTheUsual(item.multiplier)}</span>
               </button>
             ))}
             {outcome.places.length > 1 &&
@@ -185,7 +187,7 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
                   onClick={() => (onSeeOnMap ? onSeeOnMap(item.cell) : onOpen?.())}
                 >
                   <span className="alert-banner__ticker-chip-name">{item.label}</span>
-                  <span className="alert-banner__ticker-chip-ratio">about {item.multiplier} the usual</span>
+                  <span className="alert-banner__ticker-chip-ratio">{t.banner.aboutTheUsual(item.multiplier)}</span>
                 </button>
               ))}
           </div>
@@ -196,10 +198,10 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
             type="button"
             className="button button--ghost alert-banner__ticker-pause"
             onClick={() => setTickerPlaying(!tickerPlaying)}
-            aria-label={tickerPlaying ? "Pause ticker" : "Play ticker"}
-            title={tickerPlaying ? "Pause ticker" : "Play ticker"}
+            aria-label={tickerPlaying ? t.banner.pauseTicker : t.banner.playTicker}
+            title={tickerPlaying ? t.banner.pauseTicker : t.banner.playTicker}
           >
-            {tickerPlaying ? "Pause" : "Play"}
+            {tickerPlaying ? (lang === "es" ? "Pausar" : "Pause") : (lang === "es" ? "Reproducir" : "Play")}
           </button>
 
           <button
@@ -207,7 +209,7 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
             className="button button--ghost alert-banner__town-btn"
             onClick={() => setShowSearch((v) => !v)}
           >
-            {userPlace ? userPlace.name : "Set your town"}
+            {userPlace ? userPlace.name : t.banner.chooseTown}
           </button>
         </div>
 
@@ -226,15 +228,18 @@ export function AlertBanner({ report, decision, onOpen, onSeeOnMap, resolution =
           <path d="M12 10v5M12 17.5v.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
         <p className="alert-banner__text">
-          <strong>Early warning:</strong> region-wide activity at {formatRatio(report.region.ratio)} the usual,{" "}
-          {formatDay(report.window[0])} – {formatDay(report.window[1])}.{" "}
+          <strong>{lang === "es" ? "Alerta temprana:" : "Early warning:"}</strong>{" "}
+          {lang === "es" ? "actividad regional a" : "region-wide activity at"} {formatRatio(report.region.ratio)}{" "}
+          {lang === "es" ? "lo habitual," : "the usual,"} {formatDay(report.window[0])} – {formatDay(report.window[1])}.{" "}
           <span className="alert-banner__coverage">
-            Based on {coverage.dataDays} of {coverage.windowDays} days with satellite data.
+            {lang === "es"
+              ? `Basado en ${coverage.dataDays} de ${coverage.windowDays} días con datos satelitales.`
+              : `Based on ${coverage.dataDays} of ${coverage.windowDays} days with satellite data.`}
           </span>
         </p>
         {onOpen && (
           <button type="button" className="button alert-banner__action" onClick={onOpen}>
-            See where
+            {lang === "es" ? "Ver dónde" : "See where"}
           </button>
         )}
       </div>

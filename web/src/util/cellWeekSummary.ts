@@ -30,7 +30,13 @@ export interface CellWeekSummary {
  * Values >= 10 are rounded to the nearest integer; smaller ones show one decimal.
  * Values < 1 (or null) return a fixed phrase.
  */
-export function formatRatio(ratio: number | null): string {
+export function formatRatio(ratio: number | null, locale: "en" | "es" = "en"): string {
+  if (locale === "es") {
+    if (ratio === null) return "una cantidad inusual";
+    if (ratio < 1) return "menos de 1 vez";
+    if (ratio >= 10) return `${Math.round(ratio)} veces`;
+    return `${ratio.toFixed(1).replace(".", ",")} veces`;
+  }
   if (ratio === null) return "an unusual amount";
   if (ratio < 1) return "less than 1 times";
   if (ratio >= 10) return `${Math.round(ratio)} times`;
@@ -49,7 +55,12 @@ export function firmsUrl(lng: number, lat: number): string {
  * Below 0.001: "less than 1 in 1,000 by chance".
  * Otherwise: "about 1 in N by chance" (N rounded to a friendly number).
  */
-function oddsLabel(p: number): string {
+function oddsLabel(p: number, locale: "en" | "es" = "en"): string {
+  if (locale === "es") {
+    if (p < 0.001) return "menos de 1 en 1.000 por azar";
+    const n = Math.round(1 / p);
+    return `aprox. 1 en ${n.toLocaleString("es-AR")} por azar`;
+  }
   if (p < 0.001) return "less than 1 in 1,000 by chance";
   const n = Math.round(1 / p);
   return `about 1 in ${n.toLocaleString("en-US")} by chance`;
@@ -67,16 +78,21 @@ function windowLabel(window: [string, string]): string {
  * @param report  The raw early-warning report.
  * @param decision  The resolved alert decision (which cells passed the test).
  * @param center  [lng, lat] of the cell centre for the FIRMS link.
+ * @param locale  Optional locale code ("en" | "es", default "en").
  */
 export function cellWeekSummary(
   cell: string,
   report: EarlyWarning,
   decision: AlertDecision,
   center: [number, number],
+  locale: "en" | "es" = "en",
 ): CellWeekSummary {
   const score = decision.cells.find((c) => c.cell === cell) ?? null;
   const coverage = windowCoverage(report);
-  const dataDaysLabel = `${coverage.dataDays} of ${coverage.windowDays} days`;
+  const dataDaysLabel =
+    locale === "es"
+      ? `${coverage.dataDays} de ${coverage.windowDays} días`
+      : `${coverage.dataDays} of ${coverage.windowDays} days`;
   const satellites = report.days
     ? Array.from(new Set(report.days.map((d) => d.satellite).filter((s): s is string => Boolean(s))))
     : [];
@@ -102,9 +118,19 @@ export function cellWeekSummary(
 
   return {
     ...base,
-    observedLabel: `${score.observed} fire detection${score.observed !== 1 ? "s" : ""}`,
-    expectedLabel: score.expected < 1 ? "less than 1" : `about ${Math.round(score.expected)}`,
-    ratioLabel: formatRatio(score.ratio),
-    oddsLabel: oddsLabel(score.p_value),
+    observedLabel:
+      locale === "es"
+        ? `${score.observed} detección${score.observed !== 1 ? "es" : ""} de fuego`
+        : `${score.observed} fire detection${score.observed !== 1 ? "s" : ""}`,
+    expectedLabel:
+      locale === "es"
+        ? score.expected < 1
+          ? "menos de 1"
+          : `aprox. ${Math.round(score.expected)}`
+        : score.expected < 1
+        ? "less than 1"
+        : `about ${Math.round(score.expected)}`,
+    ratioLabel: formatRatio(score.ratio, locale),
+    oddsLabel: oddsLabel(score.p_value, locale),
   };
 }

@@ -43,7 +43,13 @@ export type PlaceBannerOutcome = PlaceBannerNear | PlaceBannerElsewhere | PlaceB
  * Multiplier formatted for the alert banner.
  * Values >= 10 are rounded to integers; values under 10 show one decimal.
  */
-export function formatMultiplier(ratio: number | null): string {
+export function formatMultiplier(ratio: number | null, locale: "en" | "es" = "en"): string {
+  if (locale === "es") {
+    if (ratio === null) return "una cantidad inusual";
+    if (ratio < 1) return "menos de 1 vez";
+    if (ratio >= 10) return `${Math.round(ratio)} veces`;
+    return `${ratio.toFixed(1).replace(".", ",")} veces`;
+  }
   if (ratio === null) return "an unusual amount";
   if (ratio < 1) return "less than 1 times";
   if (ratio >= 10) return `${Math.round(ratio)} times`;
@@ -55,6 +61,7 @@ export interface DecidePlaceBannerOptions {
   userPlace: Place | null;
   placesIndex: PlaceIndex | null;
   resolution?: number;
+  locale?: "en" | "es";
 }
 
 /**
@@ -67,6 +74,7 @@ export function decidePlaceBanner({
   userPlace,
   placesIndex,
   resolution = 4,
+  locale = "en",
 }: DecidePlaceBannerOptions): PlaceBannerOutcome {
   if (!decision.cells || decision.cells.length === 0) {
     return { kind: "none" };
@@ -85,15 +93,18 @@ export function decidePlaceBanner({
         (a, b) => (b.ratio ?? 0) - (a.ratio ?? 0) || b.observed - a.observed,
       );
       const strongest = sorted[0]!;
-      const multiplier = formatMultiplier(strongest.ratio);
+      const multiplier = formatMultiplier(strongest.ratio, locale);
       return {
         kind: "near",
         place: userPlace,
         cell: strongest.cell,
         ratio: strongest.ratio,
         multiplier,
-        text: `Possible fire near ${userPlace.name}: about ${multiplier} the usual this week`,
-        action: "See it on the map",
+        text:
+          locale === "es"
+            ? `Posible incendio cerca de ${userPlace.name}: unas ${multiplier} lo habitual esta semana`
+            : `Possible fire near ${userPlace.name}: about ${multiplier} the usual this week`,
+        action: locale === "es" ? "Verlo en el mapa" : "See it on the map",
       };
     }
   }
@@ -112,7 +123,7 @@ export function decidePlaceBanner({
       const currentRatio = cell.ratio ?? 0;
 
       if (!existing || currentRatio > (existing.ratio ?? 0)) {
-        const multiplier = formatMultiplier(cell.ratio);
+        const multiplier = formatMultiplier(cell.ratio, locale);
         const label = placeName(nearby.place);
         townMap.set(key, {
           place: nearby.place,
@@ -121,7 +132,7 @@ export function decidePlaceBanner({
           observed: cell.observed,
           label,
           multiplier,
-          text: `${label}: about ${multiplier} the usual`,
+          text: locale === "es" ? `${label}: unas ${multiplier} lo habitual` : `${label}: about ${multiplier} the usual`,
         });
       }
     }

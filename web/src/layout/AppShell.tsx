@@ -1,15 +1,8 @@
 import type { ReactNode } from "react";
 import { DataCredits } from "../components/DataCredits";
+import { useI18n } from "../i18n/I18nContext";
 
 export type Section = "calendar" | "terrain" | "warning" | "forecast" | "past";
-
-const SECTIONS: { value: Section; label: string }[] = [
-  { value: "calendar", label: "Calendar" },
-  { value: "terrain", label: "Terrain" },
-  { value: "warning", label: "Early warning" },
-  { value: "forecast", label: "Forecast" },
-  { value: "past", label: "Past fires" },
-];
 
 interface Props {
   section: Section;
@@ -18,26 +11,34 @@ interface Props {
   alerting: boolean;
   /** Shown above every view, under the header. */
   banner?: ReactNode;
-  theme: "light" | "dark";
-  onToggleTheme: () => void;
   onShowLanding: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ section, onSectionChange, alerting, banner, theme, onToggleTheme, onShowLanding, children }: Props) {
+export function AppShell({ section, onSectionChange, alerting, banner, onShowLanding, children }: Props) {
+  const { lang, toggleLang, t } = useI18n();
+
+  const sections: { value: Section; label: string }[] = [
+    { value: "calendar", label: t.shell.calendar },
+    { value: "terrain", label: t.shell.terrain },
+    { value: "warning", label: t.shell.warning },
+    { value: "forecast", label: t.shell.forecast },
+    { value: "past", label: t.shell.past },
+  ];
+
   return (
     <div className="shell">
       <header className="shell__header">
-        <button type="button" className="shell__back" onClick={onShowLanding} aria-label="Back to the presentation">
+        <button type="button" className="shell__back" onClick={onShowLanding} aria-label={t.shell.backAria}>
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="shell__back-label">Back</span>
+          <span className="shell__back-label">{t.shell.back}</span>
         </button>
         <a
           className="brand"
           href="./"
-          aria-label="aeros, back to the presentation"
+          aria-label={t.shell.brandAria}
           onClick={(event) => {
             event.preventDefault();
             onShowLanding();
@@ -48,9 +49,9 @@ export function AppShell({ section, onSectionChange, alerting, banner, theme, on
           </svg>
           <span>aeros</span>
         </a>
-        <p className="shell__tagline">Harmonized MODIS × VIIRS fire activity</p>
-        <nav className="tabs" aria-label="Views">
-          {SECTIONS.map((option) => (
+        <p className="shell__tagline">{t.shell.tagline}</p>
+        <nav className="tabs" aria-label={t.shell.views}>
+          {sections.map((option) => (
             <button
               key={option.value}
               type="button"
@@ -61,20 +62,22 @@ export function AppShell({ section, onSectionChange, alerting, banner, theme, on
               {option.label}
               {option.value === "warning" && alerting && (
                 <span className="tabs__dot">
-                  <span className="visually-hidden"> (active alert)</span>
+                  <span className="visually-hidden">{t.shell.activeAlert}</span>
                 </span>
               )}
             </button>
           ))}
         </nav>
-        <nav className="shell__actions" aria-label="Display">
+        <nav className="shell__actions" aria-label="Language">
           <button
             type="button"
-            className="button button--ghost"
-            onClick={onToggleTheme}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            className="button button--ghost shell__lang-switch"
+            onClick={toggleLang}
+            aria-label={t.shell.switchLang}
           >
-            {theme === "dark" ? "Light" : "Dark"}
+            <span className={lang === "es" ? "lang-badge is-active" : "lang-badge"}>ES</span>
+            <span className="lang-divider">/</span>
+            <span className={lang === "en" ? "lang-badge is-active" : "lang-badge"}>EN</span>
           </button>
         </nav>
       </header>
@@ -83,11 +86,7 @@ export function AppShell({ section, onSectionChange, alerting, banner, theme, on
         {children}
       </main>
       <footer className="shell__footer">
-        <p>
-          Hotspot counts are model outputs aggregated to H3 cells; months before 2012 are translated from MODIS to
-          VIIRS-equivalent values with a 90 % interval. The early warning and the forecast are statistical, not
-          official fire alerts.
-        </p>
+        <p>{t.shell.footer}</p>
         <DataCredits />
       </footer>
     </div>

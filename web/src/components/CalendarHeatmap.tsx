@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import type { CalendarRecord, Unit } from "../api/types";
+import { useI18n } from "../i18n/I18nContext";
 import { DIVERGING, VIRIDIS, ratioScale, readableTextOn, sampleRamp, sqrtScale, toCss } from "../util/colorRamp";
-import { MONTH_LABELS } from "../util/months";
-import { COVERAGE_LABELS, coverageOf, formatCount, formatRatio, unitLabel } from "../util/format";
+import { monthLabel } from "../util/months";
+import { coverageLabel, coverageOf, formatCount, formatRatio, unitLabel } from "../util/format";
 
 export type CalendarView = "harmonized" | "raw" | "anomaly";
 
@@ -36,19 +37,32 @@ export function colorFor(record: CalendarRecord, view: CalendarView, max: number
     : sampleRamp(VIRIDIS, sqrtScale(valueOf(record, view), max));
 }
 
-function describe(record: CalendarRecord, view: CalendarView, unit: Unit): string {
-  const month = `${MONTH_LABELS[record.month_of_year - 1]} ${record.year} (${COVERAGE_LABELS[coverageOf(record.source)].toLowerCase()})`;
+function describe(record: CalendarRecord, view: CalendarView, unit: Unit, lang: "en" | "es"): string {
+  const mName = monthLabel(record.month_of_year - 1, lang);
+  const cov = coverageLabel(coverageOf(record.source), lang).toLowerCase();
+  const month = `${mName} ${record.year} (${cov})`;
   if (view === "anomaly") {
-    if (record.in_progress) return `${month}: in progress, not compared with the usual yet`;
+    if (record.in_progress) {
+      return lang === "es"
+        ? `${month}: en curso, aún no comparado con lo habitual`
+        : `${month}: in progress, not compared with the usual yet`;
+    }
     return record.anomaly_ratio === null
-      ? `${month}: no usual value to compare with`
-      : `${month}: ${formatRatio(record.anomaly_ratio)} the usual ${MONTH_LABELS[record.month_of_year - 1]}`;
+      ? (lang === "es" ? `${month}: sin valor habitual para comparar` : `${month}: no usual value to compare with`)
+      : (lang === "es"
+          ? `${month}: ${formatRatio(record.anomaly_ratio)} lo habitual para ${mName}`
+          : `${month}: ${formatRatio(record.anomaly_ratio)} the usual ${mName}`);
   }
-  return `${month}: ${formatCount(valueOf(record, view))} ${view === "raw" ? "raw stacked" : "harmonized"} ${unitLabel(unit)}`;
+  const modeLabel = view === "raw"
+    ? (lang === "es" ? "brutos acumulados" : "raw stacked")
+    : (lang === "es" ? "armonizados" : "harmonized");
+  return `${month}: ${formatCount(valueOf(record, view))} ${unitLabel(unit, "many", lang)} ${modeLabel}`;
 }
 
 export function CalendarHeatmap({ records, view, unit, criticalMonths, peakMonth, selected, onSelect }: Props) {
+  const { lang } = useI18n();
   const max = useMemo(() => countScaleMax(records), [records]);
+  const months12 = useMemo(() => Array.from({ length: 12 }, (_, i) => monthLabel(i, lang)), [lang]);
   const years = useMemo(() => {
     const byYear = new Map<number, (CalendarRecord | undefined)[]>();
     for (const record of records) {
@@ -60,23 +74,32 @@ export function CalendarHeatmap({ records, view, unit, criticalMonths, peakMonth
   }, [records]);
 
   if (records.length === 0) {
-    return <p className="calendar__empty">No months in this range.</p>;
+    return <p className="calendar__empty">{lang === "es" ? "Sin meses en este rango." : "No months in this range."}</p>;
   }
 
   return (
-    <div className="calendar" role="region" aria-label="Burning calendar, month by year" tabIndex={0}>
+    <div
+      className="calendar"
+      role="region"
+      aria-label={lang === "es" ? "Calendario de incendios, mes por año" : "Burning calendar, month by year"}
+      tabIndex={0}
+    >
       <table className="calendar__table">
         <caption className="visually-hidden">
           {view === "anomaly"
-            ? "Each month compared with the median of the same month in every other year"
-            : `${view === "raw" ? "Raw stacked" : "Harmonized"} hotspots per month`}
+            ? (lang === "es"
+                ? "Cada mes comparado con la mediana del mismo mes en todos los demás años"
+                : "Each month compared with the median of the same month in every other year")
+            : (lang === "es"
+                ? `Focos ${view === "raw" ? "brutos acumulados" : "armonizados"} por mes`
+                : `${view === "raw" ? "Raw stacked" : "Harmonized"} hotspots per month`)}
         </caption>
         <thead>
           <tr>
             <th scope="col" className="calendar__corner">
-              <span className="visually-hidden">Year</span>
+              <span className="visually-hidden">{lang === "es" ? "Año" : "Year"}</span>
             </th>
-            {MONTH_LABELS.map((label, index) => (
+            {months12.map((label, index) => (
               <th
                 key={label}
                 scope="col"
@@ -89,7 +112,9 @@ export function CalendarHeatmap({ records, view, unit, criticalMonths, peakMonth
                   .join(" ")}
                 aria-description={
                   criticalMonths.includes(index + 1)
-                    ? `critical period${peakMonth === index + 1 ? ", peak month" : ""}`
+                    ? (lang === "es"
+                        ? `período crítico${peakMonth === index + 1 ? ", mes pico" : ""}`
+                        : `critical period${peakMonth === index + 1 ? ", peak month" : ""}`)
                     : undefined
                 }
               >
@@ -117,8 +142,8 @@ export function CalendarHeatmap({ records, view, unit, criticalMonths, peakMonth
                       className="calendar__swatch"
                       style={{ background: toCss(color), color: readableTextOn(color) }}
                       aria-pressed={isSelected}
-                      aria-label={describe(record, view, unit)}
-                      title={describe(record, view, unit)}
+                      aria-label={describe(record, view, unit, lang)}
+                      title={describe(record, view, unit, lang)}
                       data-coverage={coverageOf(record.source)}
                       onClick={() => onSelect(record)}
                     />

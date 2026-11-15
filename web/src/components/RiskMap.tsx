@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import DeckGL from "@deck.gl/react";
 import type { MapViewState, PickingInfo } from "@deck.gl/core";
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
+import { useI18n } from "../i18n/I18nContext";
 import type { Area, LngLat } from "../util/area";
 import type { Rgb } from "../util/colorRamp";
 import { BASEMAP, areaLayers, initialView, rasterLayer } from "./mapLayers";
@@ -39,6 +40,7 @@ const escapeHtml = (text: string) =>
  */
 export default function RiskMap(props: Props) {
   const { cells, context, centers, selected = null, area = { kind: "region" }, drawing = false, draft = [], onAddVertex, theme } = props;
+  const { t } = useI18n();
   const container = useRef<HTMLDivElement>(null);
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0, false);
   const [viewState, setViewState] = useState<MapViewState>(() => initialView(centers, 0, 0, false));
@@ -114,7 +116,7 @@ export default function RiskMap(props: Props) {
       />
       <div className="map__controls">
         <button type="button" className="map__button" onClick={() => setViewState(fit())}>
-          Reset view
+          {t.mapControls.resetView}
         </button>
       </div>
       <p className="map__attribution">Basemap: Esri, HERE, Garmin, © OpenStreetMap contributors</p>

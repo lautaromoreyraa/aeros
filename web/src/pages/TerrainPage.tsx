@@ -15,6 +15,7 @@ import { useRememberedChoice } from "../hooks/useRememberedChoice";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { useSectorCalendars } from "../hooks/useSectorCalendars";
 import { useWind } from "../hooks/useWind";
+import { useI18n } from "../i18n/I18nContext";
 import { cellTotals, yearlyTotals, type CellTotal } from "../util/aggregation";
 import type { Area, LngLat } from "../util/area";
 import { BLAZE, toCss } from "../util/colorRamp";
@@ -33,13 +34,6 @@ import { cellWeekSummary } from "../util/cellWeekSummary";
 const HexMap = lazy(() => import("../components/HexMap"));
 
 type Tab = "overview" | "calendar" | "anomalies" | "trend";
-
-const TABS: { value: Tab; label: string }[] = [
-  { value: "overview", label: "Overview" },
-  { value: "calendar", label: "Calendar" },
-  { value: "anomalies", label: "Anomalies" },
-  { value: "trend", label: "Trend" },
-];
 
 const UNITS: Unit[] = ["hotspots", "cell_days"];
 
@@ -76,6 +70,7 @@ const percent = (change: number) => `${change >= 0 ? "+" : "−"}${Math.abs(Math
  * `util/sectors`.
  */
 export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDecision }: Props) {
+  const { lang, t } = useI18n();
   const reducedMotion = usePrefersReducedMotion();
   /** The zone whose dashboard is open; `null` while the map is shown alone. */
   const [sectorId, setSectorId] = useState<string | null>(null);
@@ -99,6 +94,13 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
   const [tab, setTab] = useState<Tab>("overview");
   const [month, setMonth] = useState(region.lastMonth);
   const [playing, setPlaying] = useState(false);
+
+  const tabs: { value: Tab; label: string }[] = [
+    { value: "overview", label: lang === "es" ? "Resumen" : "Overview" },
+    { value: "calendar", label: lang === "es" ? "Calendario" : "Calendar" },
+    { value: "anomalies", label: lang === "es" ? "Anomalías" : "Anomalies" },
+    { value: "trend", label: lang === "es" ? "Tendencia" : "Trend" },
+  ];
 
   const sectors = useMemo(() => demoSectors(region.centers), [region.centers]);
   const calendars = useSectorCalendars(region.unit, sectors, region.firstMonth, region.lastMonth);
@@ -205,7 +207,7 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
     : null;
   const weekSummary =
     earlyWarning && anchor && anchorCenter
-      ? cellWeekSummary(anchor, earlyWarning, alertDecision, anchorCenter)
+      ? cellWeekSummary(anchor, earlyWarning, alertDecision, anchorCenter, lang)
       : null;
   const describe = useCallback(
     (cell: string) => {
@@ -218,12 +220,20 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
   const windTime = wind
     ? (() => {
         const parsed = Date.parse(wind.field.hours[wind.hour] ?? "");
-        return Number.isNaN(parsed) ? "" : ` (${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(parsed)})`;
+        return Number.isNaN(parsed)
+          ? ""
+          : ` (${new Intl.DateTimeFormat(lang === "es" ? "es-AR" : "en-US", { hour: "numeric", minute: "2-digit" }).format(parsed)})`;
       })()
     : "";
   const windLegend = wind
     ? windPlaying
-      ? `Wind now${windTime}: the streaks move the way it blows; brighter and faster means stronger.`
+      ? lang === "es"
+        ? `Viento ahora${windTime}: las líneas se mueven según su dirección; más brillante y rápido indica mayor intensidad.`
+        : `Wind now${windTime}: the streaks move the way it blows; brighter and faster means stronger.`
+      : lang === "es"
+      ? `Viento ahora${windTime}: cada flecha apunta hacia donde sopla; más brillante y larga indica mayor intensidad.${
+          reducedMotion ? " Pausado por preferencia del dispositivo; pulse Animar viento para ver el movimiento." : ""
+        }`
       : `Wind now${windTime}: each arrow points the way it blows; brighter and longer means stronger.${
           reducedMotion ? " Paused because this device asks for less motion; press Play wind to see it move." : ""
         }`
@@ -231,8 +241,8 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
 
   return (
     <div className="terrain">
-      <section className="terrain__map" aria-label={`Map of how much fire each area has had since ${yearOf(region.firstMonth)}`}>
-        <Suspense fallback={<div className="map map--loading">Loading map…</div>}>
+      <section className="terrain__map" aria-label={lang === "es" ? `Mapa de actividad de fuego acumulada desde ${yearOf(region.firstMonth)}` : `Map of how much fire each area has had since ${yearOf(region.firstMonth)}`}>
+        <Suspense fallback={<div className="map map--loading">{t.earlyWarning.mapLoading}</div>}>
           <HexMap
             totals={totals}
             selected={selected}
@@ -257,38 +267,42 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
         </Suspense>
 
         <div className="terrain__toolbar">
-          <fieldset className="segmented" aria-label="Count">
+          <fieldset className="segmented" aria-label={t.explorer.hotspots}>
             {UNITS.map((option) => (
               <label key={option}>
                 <input type="radio" name="terrain-unit" checked={unit === option} onChange={() => onUnitChange(option)} />
-                {unitLabel(option, "toggle")}
+                {unitLabel(option, "toggle", lang)}
               </label>
             ))}
           </fieldset>
           {/* The same choice as tapping the map, for keyboards and screen readers. */}
           <select
             className="terrain__zone"
-            aria-label="Zone"
+            aria-label={lang === "es" ? "Zona" : "Zone"}
             value={sectorId ?? ""}
             onChange={(event) => choose(event.target.value || null)}
           >
-            <option value="">Tap a zone on the map</option>
+            <option value="">{lang === "es" ? "Seleccione una zona en el mapa" : "Tap a zone on the map"}</option>
             {zones.map((zone) => (
               <option key={zone.id} value={zone.id}>
-                {zone.name}
+                {zone.id === WHOLE_REGION && lang === "es" ? "Toda la región" : zone.name}
               </option>
             ))}
           </select>
           <div className="terrain__legend terrain__scale">
-            <span>No risk</span>
+            <span>{t.terrain.lessFire}</span>
             <span
               className="terrain__ramp"
               style={{ background: `linear-gradient(to right, ${BLAZE.map((stop) => toCss(stop)).join(", ")})` }}
               aria-hidden="true"
             />
-            <span>High risk</span>
+            <span>{t.terrain.moreFire}</span>
           </div>
-          <p className="terrain__legend">Taller and redder: higher fire risk in that area since {yearOf(region.firstMonth)}.</p>
+          <p className="terrain__legend">
+            {lang === "es"
+              ? `Más alta y más roja: mayor actividad de fuego acumulada desde ${yearOf(region.firstMonth)}.`
+              : `Taller and redder: higher fire risk in that area since ${yearOf(region.firstMonth)}.`}
+          </p>
           {windState?.status === "error" && (
             <p className="terrain__legend" role="status">
               The wind could not be loaded: {windState.message}
@@ -328,18 +342,22 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
             </div>
 
             {tapped && weekSummary && (
-              <section className="terrain__week" aria-label="This week">
+              <section className="terrain__week" aria-label={t.terrain.thisWeek}>
                 <h3 className="terrain__week-title">
-                  This week ({weekSummary.windowLabel})
+                  {t.terrain.thisWeek} ({weekSummary.windowLabel})
                 </h3>
                 {weekSummary.flagged ? (
                   <>
                     <p className="terrain__week-status terrain__week-status--alert">
-                      {weekSummary.observedLabel} where {weekSummary.expectedLabel} is usual
-                      — about <strong>{weekSummary.ratioLabel}</strong> the usual.
+                      {lang === "es"
+                        ? `${weekSummary.observedLabel} donde lo habitual es ${weekSummary.expectedLabel} — unas `
+                        : `${weekSummary.observedLabel} where ${weekSummary.expectedLabel} is usual — about `}
+                      <strong>{weekSummary.ratioLabel}</strong> {lang === "es" ? "lo habitual." : "the usual."}
                     </p>
                     <p className="terrain__week-evidence summary__note">
-                      Based on {weekSummary.dataDaysLabel} with satellite data
+                      {lang === "es"
+                        ? `Basado en ${weekSummary.dataDaysLabel} con datos satelitales`
+                        : `Based on ${weekSummary.dataDaysLabel} with satellite data`}
                       {weekSummary.satellitesLabel ? ` (${weekSummary.satellitesLabel})` : ""}
                       {" · "}
                       {weekSummary.oddsLabel}
@@ -350,13 +368,13 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        Check this spot on NASA FIRMS
+                        {lang === "es" ? "Ver este punto en NASA FIRMS" : "Check this spot on NASA FIRMS"}
                       </a>
                     </p>
                   </>
                 ) : (
                   <p className="terrain__week-status">
-                    Nothing unusual here this week.
+                    {lang === "es" ? "Sin actividad anómala aquí esta semana." : "Nothing unusual here this week."}
                   </p>
                 )}
               </section>
@@ -366,15 +384,23 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
               <div className="terrain__weather">
                 <p className="summary__note">
                   {zoneWeather.stale
-                    ? `Fire weather forecast of ${formatDay(zoneWeather.field.generated_at.slice(0, 10))}`
-                    : "Fire weather in this zone, next days"}
+                    ? lang === "es"
+                      ? `Pronóstico meteorológico de fuego del ${formatDay(zoneWeather.field.generated_at.slice(0, 10))}`
+                      : `Fire weather forecast of ${formatDay(zoneWeather.field.generated_at.slice(0, 10))}`
+                    : lang === "es"
+                      ? "Meteorología de incendios en esta zona, próximos días"
+                      : "Fire weather in this zone, next days"}
                 </p>
-                <FireWeatherDays days={zoneWeather.days} label={`Fire weather in ${current.name} by day`} />
+                <FireWeatherDays
+                  days={zoneWeather.days}
+                  label={lang === "es" ? `Meteorología de incendios en ${current.name} por día` : `Fire weather in ${current.name} by day`}
+                />
                 <p className="summary__note">
-                  Against the same days of {zoneWeather.field.climatology.years[0]}–
-                  {zoneWeather.field.climatology.years[1]}.{" "}
+                  {lang === "es"
+                    ? `Comparado con los mismos días de ${zoneWeather.field.climatology.years[0]}–${zoneWeather.field.climatology.years[1]}. `
+                    : `Against the same days of ${zoneWeather.field.climatology.years[0]}–${zoneWeather.field.climatology.years[1]}. `}
                   <a className="credit-link" href="https://open-meteo.com/">
-                    Weather data by Open-Meteo.com
+                    {t.earlyWarning.weatherByOpenMeteo}
                   </a>
                 </p>
               </div>
@@ -382,12 +408,14 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
 
             {calendars.status === "error" && (
               <p className="field-error" role="alert">
-                Could not compute the sector calendars: {calendars.message}
+                {lang === "es"
+                  ? `No se pudieron calcular los calendarios de los sectores: ${calendars.message}`
+                  : `Could not compute the sector calendars: ${calendars.message}`}
               </p>
             )}
 
-            <div className="tabs tabs--panel" role="tablist" aria-label="Dashboard">
-              {TABS.map((option) => (
+            <div className="tabs tabs--panel" role="tablist" aria-label={lang === "es" ? "Panel" : "Dashboard"}>
+              {tabs.map((option) => (
                 <button
                   key={option.value}
                   type="button"
@@ -433,8 +461,12 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
                   <AnnualChart records={records} unit={region.unit} showRaw />
                   <p className="summary__note">
                     {era.stackedChange !== null && era.harmonizedChange !== null
-                      ? `Stacked as delivered, ${era.late[0]}–${era.late[1]} looks ${percent(era.stackedChange)} busier than ${era.early[0]}–${era.early[1]}. Harmonized, the difference is ${percent(era.harmonizedChange)}: the part that is fire, not the change of satellite.`
-                      : "There are not enough complete years to compare the satellite eras."}
+                      ? lang === "es"
+                        ? `Conteo acumulado directo: ${era.late[0]}–${era.late[1]} muestra ${percent(era.stackedChange)} más actividad que ${era.early[0]}–${era.early[1]}. Armonizado, la diferencia es ${percent(era.harmonizedChange)}: la variación real del fuego, sin el salto del recambio satelital.`
+                        : `Stacked as delivered, ${era.late[0]}–${era.late[1]} looks ${percent(era.stackedChange)} busier than ${era.early[0]}–${era.early[1]}. Harmonized, the difference is ${percent(era.harmonizedChange)}: the part that is fire, not the change of satellite.`
+                      : lang === "es"
+                        ? "No hay suficientes años completos para comparar las eras satelitales."
+                        : "There are not enough complete years to compare the satellite eras."}
                   </p>
                 </>
               )}

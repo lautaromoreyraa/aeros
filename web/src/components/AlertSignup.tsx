@@ -1,10 +1,9 @@
 import { type FormEvent, useId, useState } from "react";
+import { useI18n } from "../i18n/I18nContext";
 import {
-  CHANNELS,
   type Channel,
   type Place,
   type SubscriptionAnswer,
-  alertLanguage,
   normalizeEmail,
   placeFromPosition,
   placeLabel,
@@ -40,8 +39,9 @@ async function failure(response: Response): Promise<string> {
  * until the person confirms.
  */
 export function AlertSignup() {
+  const { lang, t } = useI18n();
   const id = useId();
-  const language = alertLanguage(typeof navigator === "undefined" ? undefined : navigator.language);
+  const language = lang === "es" ? "es" : "en";
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Place[] | null>(null);
   const [place, setPlace] = useState<Place | null>(null);
@@ -51,31 +51,36 @@ export function AlertSignup() {
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
+  const channels: { value: Channel; label: string }[] = [
+    { value: "telegram", label: lang === "es" ? "Telegram" : "Telegram" },
+    { value: "email", label: lang === "es" ? "Correo electrónico" : "Email" },
+  ];
+
   const search = async () => {
-    if (!ALERTS_API || query.trim().length < 2) return setHint("Write at least two letters of the town.");
-    setHint("Looking the town up…");
+    if (!ALERTS_API || query.trim().length < 2) return setHint(t.signup.minLetters);
+    setHint(t.signup.lookingUp);
     try {
       const response = await fetch(placesUrl(ALERTS_API, query, language));
       if (!response.ok) throw new Error(await failure(response));
       const places = ((await response.json()) as { places?: Place[] }).places ?? [];
       setFound(places);
       setPlace(places.length === 1 ? places[0]! : null);
-      setHint(places.length ? null : "No town by that name in the Gran Chaco; try one nearby.");
+      setHint(places.length ? null : t.signup.notFound);
     } catch (error) {
       setHint(error instanceof Error ? error.message : String(error));
     }
   };
 
   const locate = () => {
-    if (!("geolocation" in navigator)) return setHint("This browser cannot share a location; search for the town instead.");
-    setHint("Finding your location…");
+    if (!("geolocation" in navigator)) return setHint(t.signup.noGeolocation);
+    setHint(t.signup.findingLocation);
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         setPlace(placeFromPosition(coords.latitude, coords.longitude));
         setFound(null);
         setHint(null);
       },
-      () => setHint("The location was not shared; search for the town instead."),
+      () => setHint(t.signup.locationDenied),
       { enableHighAccuracy: false, timeout: 10000 },
     );
   };
@@ -108,36 +113,36 @@ export function AlertSignup() {
   if (status.kind === "telegram")
     return (
       <div className="signup signup--done" role="status">
-        <p className="signup__title">One step left: confirm in Telegram</p>
+        <p className="signup__title">{t.signup.telegramConfirmTitle}</p>
         {status.link ? (
           <>
-            <p>Open the bot and press Start. Alerts for {place && placeLabel(place)} begin then.</p>
+            <p>{t.signup.telegramConfirmBody(place ? placeLabel(place) : "")}</p>
             <a className="landing__cta" href={status.link} target="_blank" rel="noopener noreferrer">
-              Open Telegram to confirm
+              {t.signup.telegramBtn}
             </a>
           </>
         ) : (
-          <p>The Telegram bot is not connected yet, so this sign-up cannot be confirmed. Try e-mail instead.</p>
+          <p>{t.signup.telegramNotConnected}</p>
         )}
       </div>
     );
   if (status.kind === "email")
     return (
       <div className="signup signup--done" role="status">
-        <p className="signup__title">Check your email</p>
-        <p>We sent a confirmation link. Alerts for {place && placeLabel(place)} begin once you open it.</p>
+        <p className="signup__title">{t.signup.emailConfirmTitle}</p>
+        <p>{t.signup.emailConfirmBody(place ? placeLabel(place) : "")}</p>
       </div>
     );
 
   return (
     <form className="signup" onSubmit={submit} noValidate>
       <fieldset className="signup__group">
-        <legend>Town</legend>
+        <legend>{t.signup.townGroup}</legend>
         <div className="signup__row">
           <input
             type="text"
-            aria-label="Town"
-            placeholder="Resistencia, Filadelfia, Tartagal…"
+            aria-label={t.signup.townGroup}
+            placeholder={t.signup.townPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -148,14 +153,14 @@ export function AlertSignup() {
             }}
           />
           <button type="button" className="signup__locate" onClick={() => void search()} disabled={!ALERTS_API}>
-            Find
+            {t.signup.findBtn}
           </button>
           <button type="button" className="signup__locate" onClick={locate} disabled={!ALERTS_API}>
-            Use my location
+            {t.signup.useLocation}
           </button>
         </div>
         {found && found.length > 1 && (
-          <div className="signup__channels" role="radiogroup" aria-label="Matching towns">
+          <div className="signup__channels" role="radiogroup" aria-label={lang === "es" ? "Localidades coincidentes" : "Matching towns"}>
             {found.map((option) => (
               <label key={`${option.lat},${option.lng},${option.name}`} className="signup__channel">
                 <input type="radio" name={`${id}-place`} checked={place === option} onChange={() => setPlace(option)} />
@@ -164,14 +169,14 @@ export function AlertSignup() {
             ))}
           </div>
         )}
-        {place && <p className="signup__hint">Alerts about a possible fire within about 50 km of {placeLabel(place)}.</p>}
+        {place && <p className="signup__hint">{t.signup.radiusHint(placeLabel(place))}</p>}
         {hint && <p className="signup__hint">{hint}</p>}
       </fieldset>
 
       <fieldset className="signup__group">
-        <legend>Channel</legend>
+        <legend>{t.signup.channelGroup}</legend>
         <div className="signup__channels">
-          {CHANNELS.map((entry) => (
+          {channels.map((entry) => (
             <label key={entry.value} className={`signup__channel signup__channel--${entry.value}`}>
               <input
                 type="radio"
@@ -190,12 +195,12 @@ export function AlertSignup() {
 
       {channel === "email" && (
         <label className="signup__group" htmlFor={`${id}-address`}>
-          <span className="signup__label">Email address</span>
+          <span className="signup__label">{t.signup.emailLabel}</span>
           <input
             id={`${id}-address`}
             type="email"
             autoComplete="email"
-            placeholder="name@example.org"
+            placeholder={t.signup.emailPlaceholder}
             value={email}
             aria-invalid={fieldError ? true : undefined}
             aria-describedby={fieldError ? `${id}-error` : undefined}
@@ -210,14 +215,14 @@ export function AlertSignup() {
       )}
 
       <button type="submit" className="landing__cta" disabled={!ALERTS_API || !place || status.kind === "sending"}>
-        {status.kind === "sending" ? "Signing up…" : "Get alerts for this town"}
+        {status.kind === "sending" ? t.signup.submitting : t.signup.submitBtn}
       </button>
       {!ALERTS_API && (
-        <p className="signup__hint">Sign-ups open when the alert service goes live; nothing is sent from this preview.</p>
+        <p className="signup__hint">{t.signup.serviceClosed}</p>
       )}
       {status.kind === "error" && (
         <p className="signup__error" role="alert">
-          {status.message} Try again in a few minutes.
+          {status.message} {t.fireReport.tryAgainLater}
         </p>
       )}
     </form>

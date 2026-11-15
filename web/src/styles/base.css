@@ -108,6 +108,50 @@ button {
   background: transparent;
 }
 
+/* Language switch button */
+.shell__lang-switch,
+.landing__lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 var(--space-2);
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.shell__lang-switch:hover,
+.landing__lang-switch:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+.landing__nav-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.lang-badge {
+  opacity: 0.45;
+  transition: opacity 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.lang-badge.is-active {
+  opacity: 1;
+  color: var(--color-accent);
+}
+
+.lang-divider {
+  opacity: 0.25;
+  font-weight: 400;
+}
+
 /* Segmented control built from radio inputs, so arrow keys work natively. */
 .segmented {
   display: inline-flex;

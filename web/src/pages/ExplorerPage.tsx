@@ -11,6 +11,7 @@ import { useCalendar } from "../hooks/useCalendar";
 import type { AreaSelection } from "../hooks/useAreaSelection";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { LoadedRegion } from "../hooks/useRegion";
+import { useI18n } from "../i18n/I18nContext";
 import { cellTotals, inRange } from "../util/aggregation";
 import { areaLabel, boundsOf, cellsInArea, type BoundingBox } from "../util/area";
 import { criticalPeriod } from "../util/criticalPeriod";
@@ -19,12 +20,6 @@ import { SATELLITE_NAMES, formatCount, unitLabel } from "../util/format";
 import { formatMonth } from "../util/months";
 
 const HexMap = lazy(() => import("../components/HexMap"));
-
-const VIEWS: { value: CalendarView; label: string }[] = [
-  { value: "harmonized", label: "Harmonized" },
-  { value: "raw", label: "Raw stacked" },
-  { value: "anomaly", label: "Anomaly" },
-];
 
 const UNITS: Unit[] = ["hotspots", "cell_days"];
 
@@ -49,11 +44,18 @@ interface Props {
 }
 
 export function ExplorerPage({ region, theme, unit, onUnitChange, selection: chosen }: Props) {
+  const { lang, t } = useI18n();
   const reducedMotion = usePrefersReducedMotion();
   const { mode, area, draft } = chosen;
   const [range, setRange] = useState({ start: region.firstMonth, end: region.lastMonth });
   const [view, setView] = useState<CalendarView>("harmonized");
   const [picked, setPicked] = useState<CalendarRecord | null>(null);
+
+  const views: { value: CalendarView; label: string }[] = [
+    { value: "harmonized", label: lang === "es" ? "Armonizado" : "Harmonized" },
+    { value: "raw", label: lang === "es" ? "Datos brutos" : "Raw stacked" },
+    { value: "anomaly", label: lang === "es" ? "Anomalía" : "Anomaly" },
+  ];
 
   const selection = useMemo(() => cellsInArea(region.centers, area), [region.centers, area]);
   // The whole record is requested: the critical period describes the area's
@@ -93,15 +95,15 @@ export function ExplorerPage({ region, theme, unit, onUnitChange, selection: cho
       ),
     [records],
   );
-  const units = unitLabel(region.unit);
+  const units = unitLabel(region.unit, "many", lang);
   const reference = region.meta?.reference_chain.map((name) => SATELLITE_NAMES[name] ?? name).join(", then ");
 
   const selectedCount = selection ? selection.size : region.centers.length;
 
   return (
     <div className="explorer">
-      <section className="explorer__map" aria-label={`Map of ${units} per H3 cell`}>
-        <Suspense fallback={<div className="map map--loading">Loading map…</div>}>
+      <section className="explorer__map" aria-label={t.explorer.mapAria(units)}>
+        <Suspense fallback={<div className="map map--loading">{t.earlyWarning.mapLoading}</div>}>
           <HexMap
             totals={totals}
             selected={selection}
@@ -118,8 +120,12 @@ export function ExplorerPage({ region, theme, unit, onUnitChange, selection: cho
         </Suspense>
         <div className="map__legend">
           <span>
-            Column height and colour: {view === "raw" ? "raw stacked" : "harmonized"} {units}, {formatMonth(range.start)}{" "}
-            to {formatMonth(range.end)}
+            {t.explorer.mapLegend(
+              view === "raw" ? (lang === "es" ? "datos brutos" : "raw stacked") : (lang === "es" ? "armonizado" : "harmonized"),
+              units,
+              formatMonth(range.start),
+              formatMonth(range.end),
+            )}
           </span>
         </div>
       </section>
@@ -146,22 +152,19 @@ export function ExplorerPage({ region, theme, unit, onUnitChange, selection: cho
         />
         <section className="panel summary" aria-labelledby="summary-title">
           <h2 id="summary-title" className="panel__title">
-            {areaLabel(area, selectedCount)}
+            {areaLabel(area, selectedCount, lang)}
           </h2>
           {selectedCount === 0 ? (
-            <p className="summary__note">No cells in this area. Draw a larger area or pick the whole region.</p>
+            <p className="summary__note">{t.explorer.noCellsInArea}</p>
           ) : (
             <>
               <p className="summary__total">
-                {formatCount(total.harmonized)}
-                <span> harmonized {units} in range</span>
+                {t.explorer.harmonizedInRange(formatCount(total.harmonized), units)}
               </p>
               <p className="summary__note">
-                A naive stack of MODIS and VIIRS counts {formatCount(total.raw)}: raw counts mix sensors that see
-                fire differently, so years from different eras are not comparable.
-                {reference && ` Every month is expressed as ${reference} would have seen it.`}
+                {t.explorer.rawComparisonNote(formatCount(total.raw), reference)}
               </p>
-              {latest && <MonthDetail record={latest} unit={region.unit} heading="Latest month in range vs. its usual value" />}
+              {latest && <MonthDetail record={latest} unit={region.unit} heading={t.explorer.latestMonthPrompt} />}
             </>
           )}
         </section>
@@ -171,27 +174,27 @@ export function ExplorerPage({ region, theme, unit, onUnitChange, selection: cho
         <div className="calendar-head">
           <div>
             <h2 id="calendar-title" className="panel__title">
-              Burning calendar
+              {t.explorer.burningCalendar}
             </h2>
             <p className="calendar-head__sub">
               {view === "anomaly"
-                ? "Each month against the median of the same month in all other years."
+                ? t.explorer.viewSubAnomaly
                 : view === "raw"
-                  ? "What stacking raw detections gives: watch the jumps in 2002 and 2012."
-                  : `VIIRS-equivalent ${units} per month, comparable across satellite eras.`}
+                  ? t.explorer.viewSubRaw
+                  : t.explorer.viewSubHarmonized(units)}
             </p>
           </div>
           <div className="calendar-head__actions">
-            <fieldset className="segmented" aria-label="Count">
+            <fieldset className="segmented" aria-label={t.explorer.hotspots}>
               {UNITS.map((option) => (
-                <label key={option} title={option === "cell_days" ? "H3 cells with at least one detection, per day" : undefined}>
+                <label key={option} title={option === "cell_days" ? (lang === "es" ? "Celdas H3 con al menos una detección por día" : "H3 cells with at least one detection, per day") : undefined}>
                   <input type="radio" name="calendar-unit" checked={unit === option} onChange={() => onUnitChange(option)} />
-                  {unitLabel(option, "toggle")}
+                  {unitLabel(option, "toggle", lang)}
                 </label>
               ))}
             </fieldset>
-            <fieldset className="segmented" aria-label="Calendar view">
-              {VIEWS.map((option) => (
+            <fieldset className="segmented" aria-label={lang === "es" ? "Vista de calendario" : "Calendar view"}>
+              {views.map((option) => (
                 <label key={option.value}>
                   <input type="radio" name="calendar-view" checked={view === option.value} onChange={() => setView(option.value)} />
                   {option.label}
@@ -205,17 +208,17 @@ export function ExplorerPage({ region, theme, unit, onUnitChange, selection: cho
               onClick={() =>
                 download(
                   calendarToCsv(records),
-                  csvFileName(`${areaLabel(area, selectedCount)} ${region.unit}`, formatMonth(range.start), formatMonth(range.end)),
+                  csvFileName(`${areaLabel(area, selectedCount, lang)} ${region.unit}`, formatMonth(range.start), formatMonth(range.end)),
                 )
               }
             >
-              Download CSV
+              {t.explorer.downloadCsv}
             </button>
           </div>
         </div>
         {calendar.status === "error" && (
           <p className="field-error" role="alert">
-            Could not compute the calendar: {calendar.message}
+            {t.explorer.computeError(calendar.message)}
           </p>
         )}
         <div className="calendar-body" aria-busy={calendar.status === "loading" || region.unit !== unit}>
@@ -234,9 +237,9 @@ export function ExplorerPage({ region, theme, unit, onUnitChange, selection: cho
           </div>
           <div className="calendar-body__side">
             {focus ? (
-              <MonthDetail record={focus} unit={region.unit} heading="Selected month" />
+              <MonthDetail record={focus} unit={region.unit} heading={t.explorer.selectedMonth} />
             ) : (
-              <p className="summary__note">Pick a month in the calendar to see its numbers.</p>
+              <p className="summary__note">{t.explorer.pickMonthPrompt}</p>
             )}
             <AnnualChart records={records} unit={region.unit} showRaw={view !== "anomaly"} />
           </div>
