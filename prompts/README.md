@@ -41,6 +41,7 @@ These are the fields of the `steering_prompts` table of the team context server 
 | [P-010](#p-010) | 2026-11-14 | David | architecture | 2 | Deploy on my account |
 | [P-011](#p-011) | 2026-11-14 | David | process | 1 | One connection, and a job I can supervise myself |
 | [P-012](#p-012) | 2026-11-14 | David | process | 2 | Keep the prompts and declare where AI was used |
+| [P-013](#p-013) | 2026-11-15 | David | presentation | 2 | A global product: the copy stops naming one region |
 
 Every entry so far was received by Devin. Lautaro's own words are added by his assistant; until then his decisions are listed [at the end](#decisions-by-lautaro-in-the-team-log).
 
@@ -199,6 +200,19 @@ In English: "I need a tracker in the repo that keeps the prompts that were effec
 - **Decision:** This file, with the fields of that log, and a section of `README.md` whose diagram ties people, prompts, assistants and checks together.
 - **Impact:** `README.md` and `prompts/README.md`.
 - **References:** `infra/mcp/migrations/0006_steering_prompts.sql`.
+
+### P-013
+
+**A global product: the copy stops naming one region** · 2026-11-15 · presentation · importance 2 · David via Devin
+
+> me gusta la comvinacion de B y C con el tiempo de every 10 minutes del C linea 1 la idea es un producto global asi que no tiene que quedar gran chaco en ninguna parte.
+
+In English: "I like the combination of B and C, with the 'every 10 minutes' of C's first line. The idea is a global product, so 'Gran Chaco' must not remain anywhere."
+
+- **Situation:** The hero said aeros warns "the day an area burns past its normal", which stopped being how subscribers are warned once the alert became a possible fire seen by GOES-19 within 50 km, and the page presented aeros as a product for one region. The assistant had offered three ledes inside the same character budget.
+- **Decision:** The lede joins two of them: 26 years of MODIS and VIIRS on one scale, and an agent that reads GOES-19 every 10 minutes. The product copy stops naming one region. Region and sector names that come from the data stay, and so does this record, which quotes what was said.
+- **Impact:** The hero ("Fire early warning" and the new lede), the page title and description, and the labels of the dashboard. The copy does not claim coverage aeros does not have: it runs on its first study region. The texts of the bot and of the alert messages are left to their owners.
+- **References:** `web/src/pages/LandingPage.tsx`; team decision "Subscriber alerts only on a possible fire within 50 km; bot guide; Resend on aer-os.health".
 
 ## Decisions by Lautaro in the team log
 

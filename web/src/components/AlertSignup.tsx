@@ -50,7 +50,7 @@ export function AlertSignup({ sectors, regionCells, resolution }: Props) {
       ({ coords }) => {
         const cell = latLngToCell(coords.latitude, coords.longitude, resolution);
         if (!gridDisk(cell, 1).some((near) => region.has(near)))
-          return setLocating("Your location is outside the Gran Chaco region aeros watches; choose a zone instead.");
+          return setLocating("Your location is outside the area aeros watches today; choose a zone instead.");
         const zone = sectors.find((sector) => sector.cells.includes(cell));
         setPlace({ kind: "here", cell, zoneId: zone?.id ?? null });
         setLocating(`Alerts for your area${zone ? `, in ${zone.name}` : ""}.`);

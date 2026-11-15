@@ -41,7 +41,7 @@ export function alertMessage(report: EarlyWarning, decision: AlertDecision, sect
   const shown = decision.cells.slice(0, MAX_PLACES);
   const centers = new Map(cellCenters(shown.map((cell) => cell.cell)).map((cell) => [cell.cell, cell.center]));
   const places = shown.map((cell) => {
-    const name = sectorOf.get(cell.cell) ?? "Gran Chaco";
+    const name = sectorOf.get(cell.cell) ?? "Study region";
     const expected = cell.expected < 10 ? cell.expected.toFixed(1) : formatCount(cell.expected);
     return `${name}, ${formatPlace(centers.get(cell.cell)!)}: ${formatRatio(cell.ratio)} the usual (${formatCount(cell.observed)} hotspots, ${expected} expected)`;
   });

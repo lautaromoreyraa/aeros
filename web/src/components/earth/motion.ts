@@ -226,7 +226,7 @@ export interface FireFront {
 export const FIRE_FRONTS: readonly FireFront[] = [
   // The arc of deforestation, Rondônia.
   { center: [-63.5, -10.5], spread: 1.9, points: 60 },
-  // The Gran Chaco.
+  // The dry forest further south.
   { center: [-61.5, -23], spread: 2.2, points: 70 },
   // The Pantanal.
   { center: [-57, -17.8], spread: 1.5, points: 45 },

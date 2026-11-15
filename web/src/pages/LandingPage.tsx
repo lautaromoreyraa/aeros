@@ -66,7 +66,7 @@ interface Props {
 }
 
 /**
- * The front page: the planet turning to the Gran Chaco, then the record on
+ * The front page: the planet seen from orbit, then the record on
  * satellite imagery, then the message an early warning sends. Each part uses
  * the same artifacts as the dashboard it leads to.
  */
@@ -134,15 +134,15 @@ export function LandingPage({ region, warning, onEnter }: Props) {
                 aeros
               </span>
               <span className="hero__claim wf" style={wf("claim")}>
-                Fire early warning for the Gran Chaco
+                Fire early warning
               </span>
             </h1>
             <p className="hero__lede">
               <span className="wf" style={wf("lede1")}>
-                An agent that watches the fire satellites every day
+                26 years of MODIS and VIIRS fire on a single scale.
               </span>{" "}
               <span className="wf" style={wf("lede2")}>
-                and warns you the day an area burns past its normal.
+                An agent reads GOES-19 every 10 minutes to warn you.
               </span>
             </p>
             <div className="hero__actions">
@@ -185,7 +185,7 @@ export function LandingPage({ region, warning, onEnter }: Props) {
               {RECORD_YEARS} years of fire, on the ground it burned
             </h2>
             <p>
-              Each column is one H3 cell of the Gran Chaco; its height and colour, the harmonized{" "}
+              Each column is one H3 cell; its height and colour, the harmonized{" "}
               {region ? unitLabel(region.unit) : "hotspots"} of the whole record. MODIS and VIIRS were joined on one
               scale to raise early warnings that help fire brigades, land managers and local governments tell a worse
               season from a change of satellite, plan for the critical months and act where an area burns above its

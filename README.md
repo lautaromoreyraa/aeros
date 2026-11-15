@@ -1,6 +1,6 @@
 # aeros
 
-Fire early warning for the Gran Chaco, built on 26 years of MODIS and VIIRS hotspots brought onto one scale. NASA FIRMS has recorded fire since 2000, but with sensors that see differently, so the count jumps when the fleet changes and not when the fire does. aeros removes that jump, shows what is normal for any area and month, and warns the people near a possible fire.
+Satellite fire early warning, built on 26 years of MODIS and VIIRS hotspots brought onto one scale. NASA FIRMS has recorded fire since 2000, but with sensors that see differently, so the count jumps when the fleet changes and not when the fire does. aeros removes that jump, shows what is normal for any area and month, and warns the people near a possible fire. It runs today on its first study region, in South America; the harmonization never uses location as a model feature, so it is not tied to that region.
 
 - Live: https://d1l9qps910fke.cloudfront.net
 - Challenge: NASA Space Apps Challenge 2026, **Harmonization of MODIS and VIIRS Hot Spots**
@@ -59,7 +59,7 @@ flowchart TB
   subgraph steer["Steering prompts, kept in prompts/README.md"]
     S["Scope<br/>P-001, P-002,<br/>P-006"]
     A["Data and<br/>architecture<br/>P-003, P-009,<br/>P-010"]
-    P["Presentation<br/>P-004, P-005,<br/>P-008"]
+    P["Presentation<br/>P-004, P-005,<br/>P-008, P-013"]
     Q["Quality and<br/>process<br/>P-007, P-011,<br/>P-012"]
   end
   subgraph write["Assistants write"]

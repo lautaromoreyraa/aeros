@@ -169,7 +169,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
         {report.region && (
           <section className="panel" aria-labelledby="ew-region-title">
             <h2 id="ew-region-title" className="panel__title">
-              Gran Chaco study region
+              Study region
             </h2>
             <p className="summary__total">
               {formatCount(report.region.observed)}
