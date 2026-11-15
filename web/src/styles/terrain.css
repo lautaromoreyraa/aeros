@@ -145,6 +145,11 @@
   gap: var(--space-3);
 }
 
+.terrain__weather {
+  display: grid;
+  gap: var(--space-2);
+}
+
 /* The header tabs shrink and stretch on phones; these must not follow them. */
 .terrain .tabs--panel {
   order: 0;

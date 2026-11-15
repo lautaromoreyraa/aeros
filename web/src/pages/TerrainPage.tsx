@@ -2,10 +2,12 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { Unit } from "../api/types";
 import { AnnualChart } from "../components/AnnualChart";
 import { CalendarHeatmap, countScaleMax, type CalendarView } from "../components/CalendarHeatmap";
+import { FireWeatherDays } from "../components/FireWeatherDays";
 import { Legend } from "../components/Legend";
 import { MonthTimeline } from "../components/MonthTimeline";
 import { SectorOverview } from "../components/SectorOverview";
 import type { MapFocus } from "../components/HexMap";
+import { useFireWeather } from "../hooks/useFireWeather";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { useSectorCalendars } from "../hooks/useSectorCalendars";
@@ -14,6 +16,8 @@ import { cellTotals, yearlyTotals, type CellTotal } from "../util/aggregation";
 import type { Area, LngLat } from "../util/area";
 import { FIRE } from "../util/colorRamp";
 import { criticalPeriod } from "../util/criticalPeriod";
+import { formatDay } from "../util/earlyWarning";
+import { daysAhead, nodesNear, summarizeDays } from "../util/fireWeather";
 import { unitLabel } from "../util/format";
 import { monthKey, monthOfYear, yearOf } from "../util/months";
 import { eraComparison, recordAt } from "../util/sectorKpis";
@@ -114,6 +118,14 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
     () => new Map(sectors.flatMap((sector) => sector.cells.map((cell) => [cell, sector.id] as const))),
     [sectors],
   );
+  const fireWeather = useFireWeather();
+  /** The next days of fire weather over the open zone: its worst forecast point each day. */
+  const zoneWeather = useMemo(() => {
+    if (sectorId === null || fireWeather.status !== "ready" || !fireWeather.data) return null;
+    const field = fireWeather.data;
+    const points = region.centers.filter((cell) => !selected || selected.has(cell.cell)).map((cell) => cell.center);
+    return { field, ...daysAhead(summarizeDays(field, nodesNear(field.grid, points)), new Date().toISOString().slice(0, 10)) };
+  }, [sectorId, fireWeather, selected, region.centers]);
 
   const close = useCallback(() => {
     setSectorId(null);
@@ -244,6 +256,24 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
                 </svg>
               </button>
             </div>
+
+            {zoneWeather && (
+              <div className="terrain__weather">
+                <p className="summary__note">
+                  {zoneWeather.stale
+                    ? `Fire weather forecast of ${formatDay(zoneWeather.field.generated_at.slice(0, 10))}`
+                    : "Fire weather in this zone, next days"}
+                </p>
+                <FireWeatherDays days={zoneWeather.days} label={`Fire weather in ${current.name} by day`} />
+                <p className="summary__note">
+                  Against the same days of {zoneWeather.field.climatology.years[0]}–
+                  {zoneWeather.field.climatology.years[1]}.{" "}
+                  <a className="credit-link" href="https://open-meteo.com/">
+                    Weather data by Open-Meteo.com
+                  </a>
+                </p>
+              </div>
+            )}
 
             {calendars.status === "error" && (
               <p className="field-error" role="alert">

@@ -42,6 +42,13 @@ button {
   outline-offset: 2px;
 }
 
+/* Links that credit a data source: part of the text, never a call to action. */
+.credit-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
