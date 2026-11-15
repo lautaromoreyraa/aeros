@@ -119,13 +119,14 @@ describe("alert subscriptions API", () => {
     expect(urls.every((u) => u.Properties.AuthType === "AWS_IAM")).toBe(true);
   });
 
-  it("reads only the sender and bot-name parameters", () => {
+  it("reads only the sender, the Resend key and the bot name", () => {
     const reads = statementsOfHandler(web, "alerts_api.handler").filter((s) =>
       actionsOf(s).includes("ssm:GetParameter"),
     );
     expect(reads).toHaveLength(1);
     const json = JSON.stringify(reads[0]!.Resource);
     expect(json).toContain(":parameter/aeros/alerts/email-from");
+    expect(json).toContain(":parameter/aeros/alerts/resend-api-key");
     expect(json).toContain(":parameter/aeros/alerts/telegram-bot");
     expect(json).not.toContain("telegram-token");
     expect(json).not.toContain("*");
