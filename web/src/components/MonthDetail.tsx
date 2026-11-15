@@ -1,10 +1,13 @@
 import type { CalendarRecord, Unit } from "../api/types";
-import { SOURCE_LABELS, formatCount, formatRatio, formatSigned, unitLabel } from "../util/format";
-import { MONTH_LABELS } from "../util/months";
+import { useI18n } from "../i18n/I18nContext";
+import { formatCount, formatRatio, formatSigned, sourceLabel, unitLabel } from "../util/format";
+import { monthLabel } from "../util/months";
 
 /** The numbers behind one calendar square. */
 export function MonthDetail({ record, unit, heading }: { record: CalendarRecord; unit: Unit; heading: string }) {
-  const name = `${MONTH_LABELS[record.month_of_year - 1]} ${record.year}`;
+  const { lang, t } = useI18n();
+  const monthName = monthLabel(record.month_of_year - 1, lang);
+  const name = `${monthName} ${record.year}`;
   const ratio = record.anomaly_ratio;
   const tone = ratio === null ? "neutral" : ratio >= 1.25 ? "above" : ratio <= 0.8 ? "below" : "neutral";
   return (
@@ -13,23 +16,23 @@ export function MonthDetail({ record, unit, heading }: { record: CalendarRecord;
       <h3 className="month-detail__title">{name}</h3>
       <p className="month-detail__value">
         {formatCount(record.harmonized)}
-        <span> VIIRS-equivalent {unitLabel(unit)}</span>
+        <span>{t.monthDetail.viirsEquivalent(unitLabel(unit, "many", lang))}</span>
       </p>
       <dl className="month-detail__list">
         <div>
-          <dt>90 % interval</dt>
+          <dt>{t.monthDetail.interval90}</dt>
           <dd>
             {formatCount(record.low)} – {formatCount(record.high)}
           </dd>
         </div>
         <div>
-          <dt>Usual {MONTH_LABELS[record.month_of_year - 1]}</dt>
+          <dt>{t.monthDetail.usualMonth(monthName)}</dt>
           <dd>{formatCount(record.median_same_month)}</dd>
         </div>
         <div>
-          <dt>Versus usual</dt>
+          <dt>{t.monthDetail.versusUsual}</dt>
           {record.in_progress ? (
-            <dd>Month in progress, not compared yet</dd>
+            <dd>{t.monthDetail.inProgress}</dd>
           ) : (
             <dd className={`tone tone--${tone}`}>
               {formatSigned(record.anomaly)} ({formatRatio(ratio)})
@@ -37,12 +40,12 @@ export function MonthDetail({ record, unit, heading }: { record: CalendarRecord;
           )}
         </div>
         <div>
-          <dt>Raw stacked count</dt>
+          <dt>{t.monthDetail.rawStacked}</dt>
           <dd>{formatCount(record.stacked_raw)}</dd>
         </div>
         <div>
-          <dt>Source</dt>
-          <dd>{SOURCE_LABELS[record.source] ?? record.source}</dd>
+          <dt>{t.monthDetail.source}</dt>
+          <dd>{sourceLabel(record.source, lang)}</dd>
         </div>
       </dl>
     </article>

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { CalendarRecord, Unit } from "../api/types";
+import { useI18n } from "../i18n/I18nContext";
 import { yearlyTotals } from "../util/aggregation";
 import { formatCount, unitLabel } from "../util/format";
 import { FLEET_EVENTS } from "../util/geo";
@@ -21,6 +22,7 @@ function niceMax(value: number): number {
  * change; the harmonized line is the series that can be compared across eras.
  */
 export function AnnualChart({ records, unit, showRaw }: { records: CalendarRecord[]; unit: Unit; showRaw: boolean }) {
+  const { lang, t } = useI18n();
   const years = useMemo(() => yearlyTotals(records), [records]);
   if (years.length < 2) return null;
 
@@ -44,10 +46,9 @@ export function AnnualChart({ records, unit, showRaw }: { records: CalendarRecor
   return (
     <figure className="annual">
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-labelledby="annual-title annual-desc">
-        <title id="annual-title">{`${unitLabel(unit, "toggle")} per year in the selected area`}</title>
+        <title id="annual-title">{t.annualChart.title(unitLabel(unit, "toggle", lang))}</title>
         <desc id="annual-desc">
-          Harmonized VIIRS-equivalent totals with their 90 % interval
-          {showRaw ? ", and the raw stacked MODIS plus VIIRS count that jumps when satellites change" : ""}.
+          {t.annualChart.desc(showRaw)}
         </desc>
         {ticks.map((tick) => (
           <g key={tick}>
@@ -85,17 +86,17 @@ export function AnnualChart({ records, unit, showRaw }: { records: CalendarRecor
             r={3}
           >
             <title>
-              {year.year}: {formatCount(year.harmonized)} harmonized
-              {showRaw ? `, ${formatCount(year.stacked)} raw` : ""}
-              {year.months < 12 ? ` (${year.months} months)` : ""}
+              {year.year}: {formatCount(year.harmonized)} {lang === "es" ? "armonizados" : "harmonized"}
+              {showRaw ? `, ${formatCount(year.stacked)} ${lang === "es" ? "brutos" : "raw"}` : ""}
+              {year.months < 12 ? ` (${year.months} ${lang === "es" ? "meses" : "months"})` : ""}
             </title>
           </circle>
         ))}
       </svg>
       <figcaption className="annual__key">
-        <span className="key key--harmonized">Harmonized (90 % interval)</span>
-        {showRaw && <span className="key key--raw">Raw stacked</span>}
-        <span className="key key--partial">Partial year</span>
+        <span className="key key--harmonized">{t.annualChart.harmonizedKey}</span>
+        {showRaw && <span className="key key--raw">{t.annualChart.rawKey}</span>}
+        <span className="key key--partial">{t.annualChart.partialKey}</span>
       </figcaption>
     </figure>
   );

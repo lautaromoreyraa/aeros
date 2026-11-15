@@ -55,19 +55,66 @@ export function fireCheckUrl(base: string, lat: number, lon: number): string {
 }
 
 /** "12 min ago", "5 h ago" from an ISO time, against `now`. */
-export function ago(iso: string | null | undefined, now: Date): string {
+export function ago(iso: string | null | undefined, now: Date, locale: "en" | "es" = "en"): string {
   if (!iso) return "";
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return "";
   const minutes = Math.max(0, Math.floor((now.getTime() - then) / 60000));
+  if (locale === "es") {
+    return minutes < 120 ? `hace ${minutes} min` : `hace ${Math.floor(minutes / 60)} h`;
+  }
   return minutes < 120 ? `${minutes} min ago` : `${Math.floor(minutes / 60)} h ago`;
 }
 
-/** The headline and the evidence lines of an answer, in plain English. */
-export function describe(result: FireCheck, now: Date): { title: string; lines: string[] } {
+/** The headline and the evidence lines of an answer, in plain English or Spanish. */
+export function describe(result: FireCheck, now: Date, locale: "en" | "es" = "en"): { title: string; lines: string[] } {
   const radius = Math.round(result.radius_km ?? 15);
   const goes = result.goes?.nearest ?? null;
   const polar = result.polar?.nearest ?? null;
+  if (locale === "es") {
+    switch (result.verdict) {
+      case "outside":
+        return {
+          title: "Fuera del área de monitoreo de aeros",
+          lines: ["Ese punto se encuentra fuera del Gran Chaco, por lo que no hay datos satelitales para cotejarlo."],
+        };
+      case "unknown":
+        return {
+          title: "No se pudo verificar ese punto",
+          lines: [
+            "Los datos satelitales no están disponibles o están desactualizados en este momento. Esto no indica ausencia de fuego.",
+          ],
+        };
+      case "seen_now":
+        return {
+          title: "GOES-19 detecta calor cerca de usted en este momento",
+          lines: [
+            `Píxel de fuego confirmado a ${goes!.distance_km} km en sus últimos escaneos (${ago(goes!.last_seen, now, locale)}).`,
+            ...(polar ? [`${polar.satellite} también detectó fuego a ${polar.distance_km} km, ${ago(polar.when, now, locale)}.`] : []),
+          ],
+        };
+      case "seen_recently":
+        return {
+          title: "Los satélites detectaron fuego cerca de usted recientemente",
+          lines: [
+            ...(polar
+              ? [
+                  `${polar.satellite} detectó fuego a ${polar.distance_km} km, ${ago(polar.when, now, locale)} ` +
+                    `(${result.polar!.detections} detecciones a menos de ${radius} km en las últimas ${result.polar!.lookback_hours} h).`,
+                ]
+              : []),
+            ...(goes ? [`GOES-19 registró un píxel de fuego a ${goes.distance_km} km, ${ago(goes.last_seen, now, locale)}.`] : []),
+          ],
+        };
+      default:
+        return {
+          title: "Ningún satélite detectó fuego cerca de usted",
+          lines: [
+            `Sin detecciones a menos de ${radius} km en las últimas 48 horas. Esto no garantiza la ausencia de fuego: un foco pequeño, nubes o humo pueden ocultarlo, y el próximo pase satelital podría captarlo.`,
+          ],
+        };
+    }
+  }
   switch (result.verdict) {
     case "outside":
       return {
