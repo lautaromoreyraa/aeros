@@ -1,5 +1,4 @@
 # Documentation and assistant notes are kept outside the repository
-*.md
 CLAUDE.md
 AGENTS.md
 .claude/
@@ -19,6 +18,8 @@ dist/
 
 # Data (FIRMS downloads and derived tables are rebuilt by the pipeline)
 data/
+# The web demo ships the processed model artifacts it renders
+!web/public/data/
 *.csv
 *.parquet
 *.zip

@@ -1,0 +1,492 @@
+/* Early warning and forecast views, plus the view tabs and the alert banner
+   that sit in the shell. */
+
+/* ---------- Tabs ---------- */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.tabs__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tabs__tab:hover {
+  color: var(--color-text);
+}
+
+.tabs__tab[aria-current="page"] {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.tabs__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-alert-border);
+}
+
+/* ---------- Banners ---------- */
+
+.alert-banner,
+.calm-banner,
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.alert-banner {
+  margin-bottom: var(--space-4);
+  border-color: var(--color-alert-border);
+  background: var(--color-alert-bg);
+  color: var(--color-alert-text);
+}
+
+.outlook__lead .alert-banner {
+  margin-bottom: 0;
+}
+
+.alert-banner__icon {
+  flex: none;
+}
+
+.alert-banner__text {
+  flex: 1;
+}
+
+.alert-banner__coverage {
+  opacity: 0.85;
+}
+
+.alert-banner__action {
+  flex: none;
+}
+
+.calm-banner {
+  border-color: var(--color-calm-border);
+  background: var(--color-calm-bg);
+}
+
+.notice {
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+}
+
+/* ---------- Layout shared by both views ---------- */
+
+.outlook {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-areas:
+    "lead lead"
+    "map side"
+    "table table"
+    "method method";
+  gap: var(--space-4);
+}
+
+.outlook__lead {
+  grid-area: lead;
+}
+
+.outlook__map {
+  grid-area: map;
+  position: relative;
+  min-height: 520px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.outlook__side {
+  grid-area: side;
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.outlook__table {
+  grid-area: table;
+}
+
+.outlook__method {
+  grid-area: method;
+  max-width: 72ch;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.outlook-empty {
+  max-width: 60ch;
+}
+
+/* ---------- Days of the early-warning window ---------- */
+
+.day-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.day__date {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.day__source {
+  color: var(--color-text-muted);
+}
+
+/* Missing days are hatched, like bridged months in the calendar: absent, not zero. */
+.day--gap {
+  border-style: dashed;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--color-text-muted) 22%, transparent) 4px 5px
+  );
+}
+
+.day--gap .day__source {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* ---------- Fire weather of the next days ---------- */
+
+/* One column per day: the strip narrows as the first days pass. */
+.day-strip--weather {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+.day__level {
+  font-weight: 600;
+}
+
+/* The chip warms up with the level, and it always names the level too, so
+   the colour is never the only cue. */
+.day--fire-elevated {
+  border-color: color-mix(in srgb, #fbb61a 60%, var(--color-border));
+  background: color-mix(in srgb, #fbb61a 18%, var(--color-surface-2));
+}
+
+.day--fire-high {
+  border-color: color-mix(in srgb, #ed6925 70%, var(--color-border));
+  background: color-mix(in srgb, #ed6925 26%, var(--color-surface-2));
+}
+
+.day--fire-extreme {
+  border-color: #d7301f;
+  background: color-mix(in srgb, #d7301f 34%, var(--color-surface-2));
+}
+
+.day--fire-high .day__source,
+.day--fire-extreme .day__source {
+  color: var(--color-text);
+}
+
+/* No value for that day: absent, as a missing day of the window. */
+.day--fire-none {
+  border-style: dashed;
+}
+
+/* ---------- Tables ---------- */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th,
+.data-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.data-table th:first-child {
+  text-align: left;
+}
+
+.data-table thead th {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.data-table tbody th {
+  font-weight: 600;
+}
+
+.data-table tr[aria-current="true"] {
+  background: var(--color-surface-2);
+}
+
+/* ---------- Forecast ---------- */
+
+.segmented--wrap {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.segmented--wrap label {
+  flex: 1 1 45%;
+  justify-content: center;
+}
+
+.forecast-body {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.forecast-chart__climatology {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.75;
+  stroke-dasharray: 5 4;
+}
+
+.forecast-chart__dot--current {
+  stroke: var(--color-surface);
+  stroke-width: 2;
+}
+
+.forecast-chart__tick--current {
+  fill: var(--color-text);
+  font-weight: 700;
+}
+
+.key--climatology::before {
+  border-top: 2px dashed var(--color-text-muted);
+}
+
+.outlook-tone--above {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.ratio-legend {
+  display: grid;
+  gap: var(--space-1);
+  width: 220px;
+}
+
+.ratio-legend__bar {
+  height: 8px;
+  border-radius: 4px;
+}
+
+.ratio-legend__labels {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1180px) {
+  .shell__tagline {
+    display: none;
+  }
+}
+
+@media (max-width: 1080px) {
+  .outlook {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "lead"
+      "map"
+      "side"
+      "table"
+      "method";
+  }
+
+  .outlook__map {
+    min-height: 0;
+    height: 58vh;
+  }
+
+  .forecast-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .shell__header {
+    flex-wrap: wrap;
+    height: auto;
+    row-gap: 0;
+    padding-top: var(--space-2);
+  }
+
+  .tabs {
+    order: 3;
+    width: calc(100% + 2 * var(--gutter));
+    margin: 0 calc(-1 * var(--gutter));
+    padding: var(--space-1) var(--gutter) var(--space-2);
+    overflow-x: auto;
+  }
+
+  .tabs__tab {
+    flex: 1;
+    justify-content: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+  }
+
+  .alert-banner {
+    flex-wrap: wrap;
+  }
+
+  .alert-banner__text {
+    flex-basis: calc(100% - 40px);
+  }
+
+  .alert-banner__action {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .outlook__map {
+    height: 52vh;
+    border-radius: var(--radius-md);
+  }
+
+  /* The calendar hides its map legend on phones; the ratio legend stays,
+     because the colours mean nothing without it. */
+  .outlook__map .ratio-legend {
+    display: grid;
+    width: 180px;
+  }
+
+  .day-strip {
+    gap: 2px;
+  }
+
+  .day {
+    padding: var(--space-2) 1px;
+    font-size: 10px;
+  }
+
+  .day__source {
+    font-size: 9px;
+    white-space: nowrap;
+  }
+}
+
+/* Fire report: brigade numbers first, then the form and the answer. */
+.report {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.report__brigade {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-alert-border);
+  border-radius: 8px;
+  background: var(--color-alert-bg);
+  color: var(--color-alert-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.report__number {
+  color: inherit;
+  font-weight: 700;
+}
+
+.report__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.report__point {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.report__point input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.report__answer {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  border-radius: 8px;
+}
+
+.report__answer p {
+  margin: 0 0 0.4rem;
+}
+
+.report__answer--seen_now,
+.report__answer--seen_recently {
+  border-left-color: var(--color-danger);
+}
+
+.report__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.report__title {
+  font-weight: 700;
+}

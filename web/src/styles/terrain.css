@@ -1,0 +1,381 @@
+/* Terrain view: one dark screen, as in web/design/terrain-and-sector-dashboards.html.
+   The design's palette is applied by redefining the shared colour tokens inside
+   `.terrain`, so every existing component (calendar, charts, segmented control)
+   follows it without being touched. Nothing here leaks outside the view. */
+
+.terrain {
+  --color-bg: #05080c;
+  --color-surface: #0e141b;
+  --color-surface-2: #17202b;
+  --color-border: #2a3440;
+  --color-text: #e8edf2;
+  --color-text-muted: #9aa6b2;
+  --color-accent: #fbb61a;
+  --color-accent-contrast: #14100a;
+  --color-focus: #6cb6ff;
+  --color-empty-cell: #1a222c;
+  --shadow-panel: none;
+
+  /* Verdict chips, from the design. */
+  --chip-above-bg: #4a2a10;
+  --chip-above-fg: #f5a35c;
+  --chip-below-bg: #16263d;
+  --chip-below-fg: #7db3ff;
+  --chip-normal-bg: #232b35;
+  --chip-normal-fg: #c9d3dd;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "map"
+    "timeline";
+  height: calc(100dvh - var(--header-height));
+  min-height: 560px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.terrain__map {
+  grid-area: map;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Unit, zone and legend float top-left; the map's own buttons keep top-right. */
+.terrain__toolbar {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(560px, calc(100% - 220px));
+}
+
+.terrain__zone {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  font-size: var(--text-xs);
+  backdrop-filter: blur(8px);
+}
+
+/* On a light physical map the legend needs its own ground to stay legible. */
+.terrain__legend {
+  max-width: 46ch;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+/* The map stays draggable through the legend, except for its credit link. */
+.terrain__legend a {
+  pointer-events: auto;
+}
+
+/* The colour scale: what a column's colour means, at a glance. */
+.terrain__scale {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.terrain__ramp {
+  width: 96px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+/* The dashboard of one zone, floating over the map so the terrain stays in
+   view around it. */
+.terrain__panel {
+  position: absolute;
+  top: calc(var(--space-3) + 44px);
+  right: var(--space-3);
+  bottom: var(--space-3);
+  width: min(380px, calc(100% - 2 * var(--space-3)));
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.45);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .terrain__panel {
+    animation: terrain-panel-in 220ms var(--ease-out);
+  }
+}
+
+@keyframes terrain-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+.terrain__panel .panel__title:focus {
+  outline: none;
+}
+
+.terrain__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.terrain__close:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.terrain__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.terrain__tabpanel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.terrain__weather {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.terrain__week {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.terrain__week-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.terrain__week-status {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.4;
+}
+
+.terrain__week-status--alert {
+  color: var(--color-danger, #ef4444);
+}
+
+.terrain__week-evidence {
+  margin: 0;
+}
+
+/* The header tabs shrink and stretch on phones; these must not follow them. */
+.terrain .tabs--panel {
+  order: 0;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.terrain .tabs--panel .tabs__tab {
+  flex: 0 1 auto;
+}
+
+.terrain .tabs--panel .tabs__tab[aria-selected="true"] {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+/* ---------- Sectors ---------- */
+
+.sector-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sector-list__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.sector-list__item:hover {
+  background: var(--color-surface-2);
+}
+
+.sector-list__item[aria-pressed="true"] {
+  border-color: #fcffa4;
+  background: var(--color-surface-2);
+}
+
+.sector-list__name {
+  display: grid;
+  font-weight: 600;
+}
+
+.sector-list__name small {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.sector-list__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.chip {
+  display: inline-block;
+  min-width: 3.5em;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  background: var(--chip-normal-bg);
+  color: var(--chip-normal-fg);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip--above {
+  background: var(--chip-above-bg);
+  color: var(--chip-above-fg);
+}
+
+.chip--below {
+  background: var(--chip-below-bg);
+  color: var(--chip-below-fg);
+}
+
+/* ---------- Overview ---------- */
+
+.overview {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.overview__value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview__value span {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.overview__interval {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.overview__facts {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+}
+
+.overview__facts dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.overview__facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview__facts small {
+  color: var(--color-text-muted);
+}
+
+/* ---------- Timeline ---------- */
+
+.timeline {
+  grid-area: timeline;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.timeline input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-accent);
+}
+
+.timeline__month {
+  min-width: 5.5em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---------- Narrow screens: the dashboard rises as a sheet from the bottom ---------- */
+
+@media (max-width: 720px) {
+  .terrain__toolbar {
+    max-width: calc(100% - 2 * var(--space-3));
+    top: calc(var(--space-3) + 44px);
+  }
+
+  .terrain__panel {
+    top: auto;
+    left: var(--space-2);
+    right: var(--space-2);
+    bottom: var(--space-2);
+    width: auto;
+    max-height: 62%;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .terrain__panel {
+      animation-name: terrain-sheet-in;
+    }
+  }
+}
+
+@keyframes terrain-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}

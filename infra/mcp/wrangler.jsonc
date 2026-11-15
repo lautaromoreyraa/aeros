@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aeros-team-context",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  // Only reachable through the custom domain, which Cloudflare Access fronts.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "mcp.aeros.lautaromoreyra.dev", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aeros-team-context",
+      "database_id": "41b1085d-448e-4029-b5d7-2515baf575d7",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "black-sun-1523.cloudflareaccess.com",
+    // Audience tag of the Access application that fronts this hostname. Not a secret:
+    // it only pins which application's signed assertions the Worker accepts.
+    "ACCESS_AUD": "d49b6117483e53a303ce1d604930225c0b046f0008e87e41349b7734b043a42b",
+    "DATA_BASE_URL": "https://aer-os.health/data/hotspots"
+  }
+}

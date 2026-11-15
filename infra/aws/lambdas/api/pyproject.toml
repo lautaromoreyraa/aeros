@@ -1,0 +1,14 @@
+[project]
+name = "aeros-api"
+version = "0.1.0"
+description = "Lambda behind POST /calendar and POST /hotspots.csv"
+requires-python = ">=3.12"
+# Runtime dependencies come from the shared layer (../layer/requirements.txt).
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

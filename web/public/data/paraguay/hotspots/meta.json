@@ -1,0 +1,1 @@
+{"unit":"hotspots","reference_chain":["SNPP","NOAA20","NOAA21"],"resolution":4,"region":{"id":"paraguay","name":"Paraguay","source":"geoBoundaries gbOpen PRY ADM0 (simplified)","license":"CC BY 4.0"},"model":"boosted_offset","first_month":"2000-11-01","last_month":"2026-11-01"}
