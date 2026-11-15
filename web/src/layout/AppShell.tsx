@@ -7,7 +7,7 @@ const SECTIONS: { value: Section; label: string }[] = [
   { value: "calendar", label: "Calendar" },
   { value: "terrain", label: "Terrain" },
   { value: "warning", label: "Early warning" },
-  { value: "forecast", label: "Forecast" },
+  // The weekly outlook stays in the code. It is off the nav for this MVP.
   { value: "past", label: "Past fires" },
 ];
 
