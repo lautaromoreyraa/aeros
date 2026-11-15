@@ -3,6 +3,7 @@ import type { CalendarRecord, CellsMonthly } from "../../api/types";
 import {
   Z90,
   aggregateCalendar,
+  closeOpenMonth,
   areaVariance,
   cellTotals,
   inRange,
@@ -152,5 +153,37 @@ describe("range helpers", () => {
     const january = 2001 * 12;
     expect(inRange(records, january, january)).toHaveLength(1);
     expect(yearlyTotals(records)[0]).toMatchObject({ year: 2001, harmonized: 60, stacked: 24, months: 2 });
+  });
+});
+
+describe("closeOpenMonth", () => {
+  const record = (year: number, month: number, harmonized: number): CalendarRecord => ({
+    year,
+    month_of_year: month,
+    harmonized,
+    low: harmonized,
+    high: harmonized,
+    stacked_raw: harmonized,
+    unattached: 0,
+    median_same_month: null,
+    anomaly: null,
+    anomaly_ratio: null,
+    source: "observed",
+  });
+
+  it("drops the comparison of the newest month and keeps it out of the others' usual", () => {
+    const records = [record(2024, 11, 100), record(2025, 11, 200), record(2026, 10, 50), record(2026, 11, 10)];
+    const closed = closeOpenMonth(records);
+    const open = closed[3]!;
+    expect(open.in_progress).toBe(true);
+    expect(open.harmonized).toBe(10);
+    expect(open.anomaly_ratio).toBeNull();
+    // November 2024's usual is November 2025 alone, not the median with the partial 2026.
+    expect(closed[0]!.median_same_month).toBe(200);
+    expect(closed[0]!.in_progress).toBe(false);
+  });
+
+  it("leaves an empty record alone", () => {
+    expect(closeOpenMonth([])).toEqual([]);
   });
 });

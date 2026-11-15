@@ -64,8 +64,9 @@ describe("StaticCalendarSource", () => {
     const source = new StaticCalendarSource("/data");
     const result = await source.calendar({ unit: "hotspots", cells: ["a"], start: monthKey(2002, 1), end: monthKey(2002, 1) });
     expect(result).toHaveLength(1);
-    // The reference still comes from 2001, outside the requested range.
-    expect(result[0]).toMatchObject({ year: 2002, harmonized: 30, median_same_month: 10, anomaly: 20 });
+    // The reference still comes from 2001, outside the requested range. January 2002 is
+    // the newest month of the record, so it is in progress and not compared yet.
+    expect(result[0]).toMatchObject({ year: 2002, harmonized: 30, median_same_month: 10, anomaly: null, in_progress: true });
   });
 
   it("survives missing optional artifacts but fails on missing essentials, and can retry", async () => {

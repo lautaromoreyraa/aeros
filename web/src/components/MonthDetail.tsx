@@ -28,9 +28,13 @@ export function MonthDetail({ record, unit, heading }: { record: CalendarRecord;
         </div>
         <div>
           <dt>Versus usual</dt>
-          <dd className={`tone tone--${tone}`}>
-            {formatSigned(record.anomaly)} ({formatRatio(ratio)})
-          </dd>
+          {record.in_progress ? (
+            <dd>Month in progress, not compared yet</dd>
+          ) : (
+            <dd className={`tone tone--${tone}`}>
+              {formatSigned(record.anomaly)} ({formatRatio(ratio)})
+            </dd>
+          )}
         </div>
         <div>
           <dt>Raw stacked count</dt>
