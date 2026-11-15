@@ -146,10 +146,22 @@ describe("alert subscriptions API", () => {
     expect(JSON.stringify(ses[0]!.Resource)).toContain(":identity/alerts.example.org");
   });
 
-  it("can never touch the data bucket", () => {
-    expect(JSON.stringify(statementsOfHandler(web, "alerts_api.handler"))).not.toContain("s3:");
+  it("reads only the GOES layer and the NRT files of the data bucket, for fire reports", () => {
+    expectFireCheckReadsOnly(statementsOfHandler(web, "alerts_api.handler"));
   });
 });
+
+/** A fire report reads two kinds of object with GetObject, and nothing else of S3. */
+function expectFireCheckReadsOnly(statements: any[]): void {
+  const s3 = statements.filter((s) => actionsOf(s).some((a: string) => a.startsWith("s3:")));
+  expect(s3).toHaveLength(1);
+  expect(actionsOf(s3[0]!)).toEqual(["s3:GetObject"]);
+  const json = JSON.stringify(s3[0]!.Resource);
+  expect(json).toContain("/derived/goes_latest.json");
+  expect(json).toContain("/raw/firms/nrt/*");
+  expect(json).not.toContain("harmonized");
+  expect(json).not.toContain("state/");
+}
 
 describe("Telegram webhook", () => {
   it("is the one public function URL, and says why", () => {
@@ -186,7 +198,7 @@ describe("Telegram webhook", () => {
     expect(json).not.toContain("*");
     const all = JSON.stringify(statementsOfHandler(refresh, "alerts_api.webhook"));
     expect(all).not.toContain("ses:");
-    expect(all).not.toContain("s3:");
+    expectFireCheckReadsOnly(statementsOfHandler(refresh, "alerts_api.webhook"));
   });
 
   it("creates no secret: the parameters are made by hand", () => {

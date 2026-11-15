@@ -10,12 +10,16 @@ The bot only talks in private chats and understands:
 * `/start <id>`: the link on the site. The chat that pressed it becomes the
   subscriber of the pending subscription with that id (see `subscriptions`).
 * the name of a town, written as a plain message: that is the whole sign-up. One match
-  subscribes the chat; several show a button each, and pressing one subscribes it. The bot
-  never asks for a location: the person says where they live.
+  subscribes the chat; several show a button each, and pressing one subscribes it. Signing
+  up never asks for a location: the person says where they live.
 * `/start` alone, `/ayuda` or `/help`: the guide, which says what aeros is, what it
   will warn about and how often, and how to start (or what the chat already gets).
 * `/zona` or `/zone`: which town or area the chat gets alerts about.
 * `/stop`: ends every subscription of that chat.
+* `/reportar` or `/report`: how to report a fire, with a button that shares the location.
+* a shared location: a fire report. The bot answers what the satellites saw around that
+  point (see `fire_check`): fire brigade numbers first, then the verdict. The point is not
+  stored. This is the only time the bot reads a location, and only because the person sent it.
 * any other command: a short pointer to the guide.
 
 There is no account or login: Telegram already says who is writing, so the chat is the
@@ -35,7 +39,9 @@ import logging
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
+import fire_check
 import places
 from alert_text import pick_language
 from subscriptions import InvalidSubscription, Subscription, Subscriptions
@@ -51,6 +57,8 @@ _COMMANDS = {
     "help": "guide",
     "zona": "zone",
     "zone": "zone",
+    "reportar": "report",
+    "report": "report",
 }
 # What Telegram allows in the payload of a /start link.
 _PAYLOAD = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -97,7 +105,9 @@ def secret_is_valid(headers: Mapping[str, str], expected: str | None) -> bool:
 
 @dataclass(frozen=True)
 class Command:
-    kind: str  # "start", "guide", "zone", "stop", "help", "search", "pick" or "ignore"
+    #: "start", "guide", "zone", "stop", "help", "search", "pick", "report", "located"
+    #: or "ignore"
+    kind: str
     chat_id: int | None = None
     payload: str = ""
     #: What Telegram says the language of the person's app is, like "es-AR".
@@ -118,6 +128,14 @@ def parse(update: Mapping) -> Command:
 
     message = update.get("message") or {}
     chat = message.get("chat") or {}
+    location = message.get("location")
+    if isinstance(location, Mapping) and chat.get("type") == "private" and "id" in chat:
+        try:
+            lat, lon = fire_check.parse_point(location.get("latitude"), location.get("longitude"))
+        except fire_check.InvalidPoint:
+            return Command("ignore")
+        language = (message.get("from") or {}).get("language_code")
+        return Command("located", chat["id"], f"{lat},{lon}", language)
     text = (message.get("text") or "").strip()
     if chat.get("type") != "private" or "id" not in chat or not text:
         return Command("ignore")
@@ -165,6 +183,7 @@ def _guide(web_url: str, language: str, status: str) -> str:
             "",
             "Commands:",
             "/zone - see which town you get alerts about",
+            "/report - see a fire? I tell you what the satellites see there",
             "/stop - stop the alerts",
             "/help - show this message again",
         ]
@@ -193,6 +212,7 @@ def _guide(web_url: str, language: str, status: str) -> str:
         "",
         "Comandos:",
         "/zona - ver para qué localidad recibe avisos",
+        "/reportar - ¿ve un fuego? le digo qué ven los satélites en ese lugar",
         "/stop - dejar de recibir avisos",
         "/ayuda - volver a ver este mensaje",
     ]
@@ -299,6 +319,19 @@ def _unavailable(language: str) -> str:
     return "No pude buscar la localidad en este momento. Pruebe de nuevo en unos minutos."
 
 
+def _check_unavailable(language: str) -> str:
+    numbers = ", ".join(f"{c} {n}" for c, n in fire_check.EMERGENCY)
+    if language == "en":
+        return (
+            f"🚒 If you see fire, call the fire brigade: {numbers}.\n\n"
+            "I could not read the satellite data just now. Try again in a few minutes."
+        )
+    return (
+        f"🚒 Si ve fuego, llame a los bomberos: {numbers}.\n\n"
+        "No pude leer los datos satelitales en este momento. Pruebe de nuevo en unos minutos."
+    )
+
+
 def _outside(language: str) -> str:
     if language == "en":
         return "That place is outside the area we cover (the Gran Chaco and its surroundings)."
@@ -334,6 +367,32 @@ def _help(language: str) -> str:
     )
 
 
+def _report_how(language: str) -> tuple[str, dict]:
+    """How to report a fire, with a one-tap button that shares the location (phones only)."""
+    if language == "en":
+        text = (
+            "🚒 If you see fire, call the fire brigade first: "
+            + ", ".join(f"{c} {n}" for c, n in fire_check.EMERGENCY)
+            + ".\n\nThen press the button below (or 📎 → Location) and I will tell you what "
+            "the satellites see around you. Your location is used for this answer only."
+        )
+        button = "📍 Share my location"
+    else:
+        text = (
+            "🚒 Si ve fuego, llame primero a los bomberos: "
+            + ", ".join(f"{c} {n}" for c, n in fire_check.EMERGENCY)
+            + ".\n\nDespués toque el botón de abajo (o 📎 → Ubicación) y le digo qué ven "
+            "los satélites cerca suyo. Su ubicación se usa sólo para esta respuesta."
+        )
+        button = "📍 Compartir mi ubicación"
+    markup = {
+        "keyboard": [[{"text": button, "request_location": True}]],
+        "resize_keyboard": True,
+        "one_time_keyboard": True,
+    }
+    return text, markup
+
+
 def _choices(found: list[dict]) -> dict:
     """One button per town, each carrying what is needed to subscribe to it."""
     return {
@@ -362,6 +421,8 @@ def handle(
     web_url: str = "",
     find: Find | None = None,
     answer: Answer | None = None,
+    check_fire: Callable[[float, float], dict] | None = None,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> str:
     """Acts on one update; returns what it did: welcome, subscribed, choose, stopped, ...."""
     command = parse(update)
@@ -412,6 +473,23 @@ def handle(
         current = subscriptions.of_chat(chat)
         status = _how_to_start(language) if current is None else _zone(current, language)
         outcome, text = "welcome", _guide(web_url, language, status)
+    elif command.kind == "report":
+        outcome = "report_how"
+        text, markup = _report_how(language)
+    elif command.kind == "located":
+        lat, lon = (float(v) for v in command.payload.split(","))
+        if check_fire is None:
+            outcome, text = "unavailable", _check_unavailable(language)
+        else:
+            try:
+                result = check_fire(lat, lon)
+            except Exception as exc:
+                logger.error("fire check failed: %s", type(exc).__name__)
+                outcome, text = "unavailable", _check_unavailable(language)
+            else:
+                outcome = result["verdict"]
+                text = fire_check.message(result, language, now())
+        markup = {"remove_keyboard": True}
     elif command.kind == "zone":
         current = subscriptions.of_chat(chat)
         outcome, text = ("zone" if current else "no_zone"), _zone(current, language)
