@@ -52,18 +52,22 @@ describe("scales", () => {
     expect(g).toBe(b);
   });
 
-  it("runs from blue-violet to red like a danger scale", () => {
+  it("runs from bluish-white (null) through yellow (low) to red (high fire)", () => {
+    // t=0: bluish-white — blue channel dominates, high lightness
     const [r0, g0, b0] = BLAZE[0]!;
-    expect(b0).toBeGreaterThan(r0);
-    expect(b0).toBeGreaterThan(g0);
+    expect(b0).toBeGreaterThan(200);
+    expect(r0).toBeGreaterThan(200);
+    expect(g0).toBeGreaterThan(200);
+    // t=1: red — red channel dominates
     const [rn, gn, bn] = BLAZE[BLAZE.length - 1]!;
-    expect(rn).toBeGreaterThan(200);
-    expect(gn).toBeLessThan(90);
-    expect(bn).toBeLessThan(90);
-    for (let index = 1; index < BLAZE.length; index++) {
-      expect(BLAZE[index]![0]).toBeGreaterThanOrEqual(BLAZE[index - 1]![0]);
-      expect(BLAZE[index]![2]).toBeLessThanOrEqual(BLAZE[index - 1]![2]);
-    }
+    expect(rn).toBeGreaterThan(180);
+    expect(gn).toBeLessThan(80);
+    expect(bn).toBeLessThan(80);
+    // mid-point (yellow): green and red both high, blue low
+    const [rm, gm, bm] = sampleRamp(BLAZE, 0.33);
+    expect(rm).toBeGreaterThan(220);
+    expect(gm).toBeGreaterThan(170);
+    expect(bm).toBeLessThan(80);
   });
 });
 

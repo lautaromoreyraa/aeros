@@ -266,15 +266,15 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             ))}
           </select>
           <div className="terrain__legend terrain__scale">
-            <span>Less fire</span>
+            <span>No risk</span>
             <span
               className="terrain__ramp"
               style={{ background: `linear-gradient(to right, ${BLAZE.map((stop) => toCss(stop)).join(", ")})` }}
               aria-hidden="true"
             />
-            <span>More fire</span>
+            <span>High risk</span>
           </div>
-          <p className="terrain__legend">Taller and redder: more fire in that area since {yearOf(region.firstMonth)}.</p>
+          <p className="terrain__legend">Taller and redder: higher fire risk in that area since {yearOf(region.firstMonth)}.</p>
           {windState?.status === "error" && (
             <p className="terrain__legend" role="status">
               The wind could not be loaded: {windState.message}

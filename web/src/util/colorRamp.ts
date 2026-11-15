@@ -36,18 +36,17 @@ export const FIRE: Rgb[] = [
 ];
 
 /**
- * Blue-violet to red: little fire reads cool and the most fire reads red,
- * the way a layperson expects a danger scale to run. It is not uniform in
- * lightness, so the map that uses it says the same thing again with the
- * columns' height and with how solid a cell is.
+ * Bluish-white to yellow to red: no fire reads as near-white (neutral, calm),
+ * low probability reads as yellow (attention without alarm), and confirmed or
+ * high-probability fire reads as red (the universal danger signal). Intermediate
+ * stops in orange bridge the two warm ends.
  */
 export const BLAZE: Rgb[] = [
-  [72, 80, 196],
-  [112, 72, 192],
-  [158, 62, 178],
-  [204, 52, 138],
-  [232, 46, 88],
-  [240, 42, 42],
+  [220, 230, 245],
+  [253, 220, 40],
+  [248, 160, 20],
+  [238, 90, 20],
+  [220, 30, 30],
 ];
 
 /** Blue to orange through a neutral grey (PuOr-like, colour-blind safe). */
