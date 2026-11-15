@@ -156,7 +156,7 @@ Invariants (enforceable in review):
 |---|---|
 | Harmonization model, continuous reference, units, validation, critical period | in `develop` |
 | Web app: intro, H3 map, area selection, calendar with coverage labels and critical period, unit toggle, CSV | in `develop` (54 tests) |
-| Landing page: globe fly-in, H3 columns on Esri World Imagery with this week's flagged cells, WhatsApp and email preview of the early-warning message | on `feature/early-warning-landing`; the preview is UI only, nothing sends WhatsApp or email yet |
+| Landing page: photoreal Earth hero (Blue and Black Marble with relief, ocean glint, cloud deck and limb glow, six illustrative fire fronts in South America and Australia that flare when MODIS on Terra or VIIRS on NOAA-20 pass over them on their real polar, sun-synchronous orbits, one planet turn every three minutes, every frame a function of one timeline that HyperFrames can seek), H3 columns on Esri World Imagery with this week's flagged cells, WhatsApp and email preview of the early-warning message | in `develop`; the photoreal hero is on `feature/photoreal-earth-hero`, stacked on `feature/fire-weather-and-data-credits`; the preview is UI only, nothing sends WhatsApp or email yet |
 | AWS infrastructure inside the Free plan, calendar/CSV API, daily FIRMS refresh with early warning | in `develop` (29 CDK + 63 Lambda tests, `cdk synth` green); not deployed |
 | Team context MCP server | deployed at `mcp.aeros.lautaromoreyra.dev` (D1 migrated, `workers.dev` off); behind a Cloudflare Access application (deny by default); people and service tokens are added through Access policies |
 | Steering prompt log (`record_steering_prompt`, `steering_study`) | implemented and tested in the MCP server; not deployed |
