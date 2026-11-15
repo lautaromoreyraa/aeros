@@ -45,6 +45,10 @@ These are the fields of the `steering_prompts` table of the team context server 
 
 Every entry so far was received by Devin. Lautaro's own words are added by his assistant; until then his decisions are listed [at the end](#decisions-by-lautaro-in-the-team-log).
 
+## Day-by-day record of both authors
+
+[`earth_satellite_system_prompt.md`](earth_satellite_system_prompt.md) holds the wider record: the key prompts of Lautaro and David from 13 to 15 November 2026, ordered by day and, inside each day, by person and time (UTC-3). Each prompt carries its theme and what it steered. The texts are cleaned and trimmed to the instruction that mattered; the ids P-001 to P-013 above are cited where they apply. The file name is kept because earlier links point to it.
+
 ### P-001
 
 **Rank the challenges without agreeing with me** · 2026-11-13 · scope · importance 3 · David via Devin
@@ -142,7 +146,7 @@ In English: "It is 26 years, not 28. And it must say that the MODIS and VIIRS da
 
 > prompts/earth_satellite_system_prompt.md TENES UN PROMPT PARA EJECUTAR EL MOTION UI DEL FRONT
 
-In English: "prompts/earth_satellite_system_prompt.md: you have a prompt there to carry out the motion UI of the front end." The brief itself, in English, is [`earth_satellite_system_prompt.md`](earth_satellite_system_prompt.md).
+In English: "prompts/earth_satellite_system_prompt.md: you have a prompt there to carry out the motion UI of the front end." The brief it points to was a long system prompt for the hero scene; the day-by-day record below replaced it in this folder.
 
 - **Situation:** The globe of the landing had been corrected through many short messages (size, light, spin, the speed of the satellite) without settling.
 - **Decision:** David replaced them with one brief (the role, the physical setup, the layers of the planet, the lighting and a deterministic timeline) and the assistant rebuilt the scene from it. Later prompts kept adjusting the size, the speed and the fires.
