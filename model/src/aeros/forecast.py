@@ -20,6 +20,7 @@ at years before the target's year, and validation keeps whole years out.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -54,10 +55,21 @@ def _week_of_year(weeks: pd.Series) -> pd.Series:
     return weeks.dt.isocalendar().week.clip(upper=52).astype(int)
 
 
-def weekly_series(harmonized: pd.DataFrame) -> pd.DataFrame:
-    """Dense cell x week table of harmonized counts (gaps before Terra dropped)."""
+def weekly_series(harmonized: pd.DataFrame, last_day: date | None = None) -> pd.DataFrame:
+    """Dense cell x week table of harmonized counts (gaps before Terra dropped).
+
+    `last_day` is the last day with detections. A last week that ends after it
+    holds only some of its days; its counts are scaled up to seven days, so the
+    forecast is not issued from a week that looks quieter only because it is
+    not over. Without `last_day` every week counts as complete.
+    """
     table = harmonized[["cell", "week", "harmonized_n"]].dropna()
     table = table.rename(columns={"harmonized_n": "y"})
+    if last_day is not None and not table.empty:
+        last_week = table["week"].max()
+        observed = (pd.Timestamp(last_day) - last_week).days + 1
+        if 0 < observed < 7:
+            table.loc[table["week"] == last_week, "y"] *= 7.0 / observed
     table["woy"] = _week_of_year(table["week"])
     table["year"] = table["week"].dt.year
     return table.sort_values(["cell", "week"]).reset_index(drop=True)
@@ -120,6 +132,15 @@ def build_examples(table: pd.DataFrame, conditions: pd.DataFrame | None = None) 
         examples = examples.merge(everything.reset_index(), on=["cell", "woy"], how="left")
         examples.loc[future, "climatology"] = examples.loc[future, "_all"]
         examples = examples.drop(columns="_all")
+        # The same week of the year before, as training rows have it; without it
+        # every live row would take the trees' "missing" branch, which only the
+        # first year of each cell ever trained.
+        before = table.groupby(["cell", "woy", "year"])["y"].sum().rename("_prev").reset_index()
+        before["year"] += 1
+        examples = examples.merge(before, on=["cell", "woy", "year"], how="left")
+        fill = future & examples["climatology_prev_year"].isna()
+        examples.loc[fill, "climatology_prev_year"] = examples.loc[fill, "_prev"]
+        examples = examples.drop(columns="_prev")
     if conditions is not None:
         known = conditions.rename(columns={"week": "issue_week"})
         known = known[["cell", "issue_week", *[c for c in CONDITIONS if c in known]]]

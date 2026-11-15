@@ -160,6 +160,12 @@ def main(argv: list[str] | None = None) -> int:
     fc.add_argument("--unit", choices=["hotspots", "cell_days"], default="hotspots")
     fc.add_argument("--out", type=Path, help="write forecast.json here")
     fc.add_argument("--compare-all", action="store_true", help="also score the soil wetness sets")
+    fc.add_argument(
+        "--last-day",
+        type=date.fromisoformat,
+        help="last day with detections (default: read from hotspots_harmonized.parquet"
+        " next to the table); a last week that ends after it is scaled to seven days",
+    )
 
     check = sub.add_parser(
         "verify-archive",
@@ -262,7 +268,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "forecast":
         harmonized = pd.read_parquet(args.harmonized)
         conditions = pd.read_parquet(args.conditions) if args.conditions else None
-        choice = pipeline.fit_forecast(harmonized, conditions, compare_all=args.compare_all)
+        last_day = args.last_day
+        sibling = args.harmonized.with_name("hotspots_harmonized.parquet")
+        if last_day is None and sibling.exists():
+            last_day = pipeline.last_detection_day(
+                pd.read_parquet(sibling, columns=["acq_datetime"])
+            )
+        choice = pipeline.fit_forecast(
+            harmonized, conditions, compare_all=args.compare_all, last_day=last_day
+        )
         print(json.dumps(choice.comparison, indent=1))
         if args.out:
             args.out.parent.mkdir(parents=True, exist_ok=True)

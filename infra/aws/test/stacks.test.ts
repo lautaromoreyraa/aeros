@@ -375,7 +375,7 @@ describe("FIRMS refresh and early warning", () => {
         );
       } else {
         expect(json).toMatch(
-          /\/harmonized\/\*|\/harmonized\/harmonized_cells\.parquet|\/state\/(goes_)?alerts\.json|\/derived\/(wind|fire_weather)\.json/,
+          /\/harmonized\/\*|\/harmonized\/harmonized_cells\.parquet|\/state\/(goes_)?alerts\.json|\/derived\/(wind|fire_weather|goes_latest)\.json|\/raw\/firms\/nrt\/\*/,
         );
       }
     }

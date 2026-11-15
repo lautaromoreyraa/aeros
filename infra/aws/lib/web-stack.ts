@@ -18,6 +18,7 @@ import {
   REFRESH_LAMBDA_DIR,
   SUBSCRIPTION_PARAMETERS,
   grantParameters,
+  grantFireCheck,
   grantSubscriptionsTable,
 } from "./refresh-stack.js";
 
@@ -256,7 +257,7 @@ export class WebStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
     const fn = new lambda.Function(this, "AlertsHandler", {
-      description: "aeros alert subscriptions: sign up, confirm, unsubscribe",
+      description: "aeros alert subscriptions and fire reports",
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: "alerts_api.handler",
@@ -272,9 +273,14 @@ export class WebStack extends Stack {
         ALERT_EMAIL_FROM_PARAMETER: ALERT_PARAMETERS.emailFrom,
         ALERT_RESEND_KEY_PARAMETER: ALERT_PARAMETERS.resendKey,
         ALERT_TELEGRAM_BOT_PARAMETER: SUBSCRIPTION_PARAMETERS.telegramBot,
+        // GET /api/alerts/fire-check reads what the satellites saw around a reported point.
+        DATA_BUCKET: props.dataBucket.bucketName,
+        GOES_LATEST_KEY: DATA_LAYOUT.goesLatestKey,
+        RAW_PREFIX: DATA_LAYOUT.rawFirmsPrefix,
       },
     });
     grantSubscriptionsTable(fn, props.subscriptionsTable);
+    grantFireCheck(fn, props.dataBucket);
     grantParameters(this, fn, [
       ALERT_PARAMETERS.emailFrom,
       ALERT_PARAMETERS.resendKey,

@@ -30,6 +30,7 @@ export const REFRESH_CODE_EXCLUDE = [
   "!subscriptions.py",
   "!dynamo_store.py",
   "!telegram_bot.py",
+  "!fire_check.py",
   "!notifier.py",
   "!subscriber_alerts.py",
   "!fire_alerts.py",
@@ -84,6 +85,24 @@ const TABLE_ACTIONS = [
 export function grantSubscriptionsTable(fn: lambda.Function, table: dynamodb.ITable): void {
   fn.addToRolePolicy(
     new iam.PolicyStatement({ actions: TABLE_ACTIONS, resources: [table.tableArn] }),
+  );
+}
+
+/**
+ * A fire report reads the GOES layer and the FIRMS NRT files, and nothing else
+ * of the data bucket: no listing, no writes, no harmonized tables.
+ */
+export function grantFireCheck(fn: lambda.Function, bucket: s3.IBucket): void {
+  // GetObject alone, not grantRead: that adds List and GetBucket on the whole bucket.
+  // Without ListBucket a missing file reads as AccessDenied, which fire_check takes as absent.
+  fn.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: ["s3:GetObject"],
+      resources: [
+        bucket.arnForObjects(DATA_LAYOUT.goesLatestKey),
+        bucket.arnForObjects(`${DATA_LAYOUT.rawFirmsPrefix}nrt/*`),
+      ],
+    }),
   );
 }
 
@@ -272,7 +291,7 @@ export class RefreshStack extends Stack {
     logGroup: logs.LogGroup,
   ): lambda.Function {
     const fn = new lambda.Function(this, "TelegramWebhookHandler", {
-      description: "Telegram bot webhook: confirms and ends alert subscriptions",
+      description: "Telegram bot webhook: alert subscriptions and fire reports",
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: "alerts_api.webhook",
@@ -287,9 +306,14 @@ export class RefreshStack extends Stack {
         ALERT_WEB_URL: props.webUrl,
         ALERT_TELEGRAM_TOKEN_PARAMETER: ALERT_PARAMETERS.telegramToken,
         ALERT_TELEGRAM_WEBHOOK_SECRET_PARAMETER: SUBSCRIPTION_PARAMETERS.telegramWebhookSecret,
+        // A shared location is a fire report: the bot reads what the satellites saw there.
+        DATA_BUCKET: props.dataBucket.bucketName,
+        GOES_LATEST_KEY: DATA_LAYOUT.goesLatestKey,
+        RAW_PREFIX: DATA_LAYOUT.rawFirmsPrefix,
       },
     });
     grantSubscriptionsTable(fn, props.subscriptionsTable);
+    grantFireCheck(fn, props.dataBucket);
     grantParameters(this, fn, [
       ALERT_PARAMETERS.telegramToken,
       SUBSCRIPTION_PARAMETERS.telegramWebhookSecret,

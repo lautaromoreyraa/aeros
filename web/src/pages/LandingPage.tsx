@@ -230,17 +230,11 @@ export function LandingPage({ region, warning, onEnter }: Props) {
               Get the warning for your area
             </h2>
             <p>
-              Choose a zone or share your location, and the channel to be told on. You get a confirmation first and
-              an alert only when your area, or the one next to it, burns well above its normal.
+              Find your town or share your location, and choose Telegram or e-mail. You confirm first, then you hear
+              about a possible fire within about 50 km of it, at most once every 12 hours.
             </p>
           </div>
-          {region && (
-            <AlertSignup
-              sectors={sectors}
-              regionCells={region.cells.cells.map((cell) => cell.cell)}
-              resolution={region.cells.resolution}
-            />
-          )}
+          <AlertSignup />
         </section>
 
         <section className="landing__end" aria-labelledby="end-title">

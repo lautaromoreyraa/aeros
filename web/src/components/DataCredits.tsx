@@ -1,8 +1,9 @@
 /**
  * Every outside source behind the app, credited the way each one asks:
  * FIRMS with NASA's acknowledgement, GOES as derived NOAA data (never as
- * NOAA's own product), Open-Meteo with its link and licence, and Copernicus
- * for the ERA5 reanalysis the fire-weather ranks are measured against.
+ * NOAA's own product), Open-Meteo with its link and licence, Copernicus
+ * for the ERA5 reanalysis the fire-weather ranks are measured against, and
+ * NASA POWER for the past fire weather the forecast learns from.
  */
 export function DataCredits() {
   return (
@@ -34,6 +35,13 @@ export function DataCredits() {
         : the wind layer comes from its forecast, and the fire-weather index and its ranks are computed from its forecast
         and ERA5 archive. Contains modified Copernicus Climate Change Service information 2026; neither the European
         Commission nor ECMWF is responsible for any use of it.
+      </p>
+      <p>
+        Past fire weather for the forecast: these data were obtained from the{" "}
+        <a className="credit-link" href="https://power.larc.nasa.gov/">
+          NASA Langley Research Center (LaRC) POWER Project
+        </a>{" "}
+        funded through the NASA Earth Science/Applied Science Program.
       </p>
     </div>
   );

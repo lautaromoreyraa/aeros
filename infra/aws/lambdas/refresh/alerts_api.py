@@ -9,6 +9,7 @@ Two Lambda handlers share this module because they share the rules:
     GET    /api/alerts/subscriptions/{id}/confirm?token=      e-mail link
     GET    /api/alerts/subscriptions/{id}/unsubscribe?token=  e-mail link, one click
     DELETE /api/alerts/subscriptions/{id}?token=
+    GET    /api/alerts/fire-check?lat=&lon=&language=         what the satellites saw there
 
   A sign-up names a town (`place`: {name, lat, lng}, as the places search returns it) or lists
   cells; with a town the cells around it are derived on the server.
@@ -21,6 +22,9 @@ Two Lambda handlers share this module because they share the rules:
   CloudFront cannot front it (Telegram cannot sign requests), so the secret
   Telegram sends in a header on every call is the only door, and without a
   configured secret everything is refused.
+
+Both also answer a fire report (`fire_check`): the web through
+`/api/alerts/fire-check`, the bot when someone shares a location.
 
 Answers never echo what the client sent and never tell an unknown id from a
 wrong token. Nothing here reads the Telegram token or the e-mail sender
@@ -36,9 +40,11 @@ import os
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 import alerts
+import fire_check
 import places
 import telegram_bot
 from alert_text import pick_language
@@ -54,6 +60,7 @@ logger = logging.getLogger()
 
 PREFIX = "/api/alerts/subscriptions"
 PLACES = "/api/alerts/places"
+FIRE_CHECK = "/api/alerts/fire-check"
 #: What ids look like; anything else is a 404 before it reaches the table.
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 MAX_BODY_BYTES = 8 * 1024
@@ -65,6 +72,7 @@ Reply = Callable[..., None]  # (chat_id, text, reply_markup=None)
 Find = Callable[[str, str], list[dict]]  # (query, language) -> towns
 Answer = Callable[[str], None]
 SendMail = Callable[[str, str, str], None]  # address, subject, text
+CheckFire = Callable[[float, float], dict]  # (lat, lon) -> fire_check answer
 
 
 @dataclass
@@ -80,6 +88,8 @@ class Dependencies:
     #: Answers a button press on Telegram.
     answer: Answer | None = None
     webhook_secret: str | None = None
+    #: Answers "is there a fire here?"; without it reports are not available.
+    check_fire: CheckFire | None = None
 
 
 def unsubscribe_url(web_url: str, subscription: Subscription) -> str:
@@ -141,6 +151,8 @@ def api_handler(event: Mapping, context=None, *, deps: Dependencies | None = Non
         return _create(event, deps)
     if path == PLACES and method == "GET":
         return _places(query, deps)
+    if path == FIRE_CHECK and method == "GET":
+        return _fire_check(query, deps)
     if path.startswith(PREFIX + "/"):
         parts = path[len(PREFIX) + 1 :].split("/")
         subscription_id, action = parts[0], parts[1] if len(parts) == 2 else ""
@@ -167,6 +179,22 @@ def _places(query: Mapping, deps: Dependencies) -> dict:
         logger.error("%s", exc)
         return _json(502, {"error": "could not look the town up; try again in a moment"})
     return _json(200, {"places": found})
+
+
+def _fire_check(query: Mapping, deps: Dependencies) -> dict:
+    """What the satellites saw around a point someone reports; the point is not stored."""
+    if deps.check_fire is None:
+        return _json(503, {"error": "fire reports are not available yet"})
+    try:
+        lat, lon = fire_check.parse_point(query.get("lat", ""), query.get("lon", ""))
+    except fire_check.InvalidPoint as exc:
+        return _json(400, {"error": str(exc)})
+    try:
+        result = deps.check_fire(lat, lon)
+    except Exception as exc:
+        logger.error("fire check failed: %s", type(exc).__name__)
+        return _json(502, {"error": "could not read the satellite data; try again in a moment"})
+    return _json(200, result)
 
 
 def _create(event: Mapping, deps: Dependencies) -> dict:
@@ -309,6 +337,7 @@ def webhook_handler(event: Mapping, context=None, *, deps: Dependencies | None =
         web_url=deps.web_url,
         find=deps.find,
         answer=deps.answer,
+        check_fire=deps.check_fire,
     )
     return _json(200, {})
 
@@ -323,6 +352,56 @@ def _subscriptions() -> Subscriptions:
 
     area = tuple(float(v) for v in os.environ["FIRMS_AREA"].split(","))
     return Subscriptions(DynamoStore.from_environment(), area=area)  # type: ignore[arg-type]
+
+
+#: How long the satellite files read for fire reports are reused: GOES is
+#: rewritten every 10 minutes, so a few minutes keep a burst of reports cheap.
+FIRE_DATA_TTL_SECONDS = 180
+_fire_data: dict[str, tuple[datetime, tuple]] = {}
+#: A day of NRT detections over the Chaco is a few MB; anything far larger is broken.
+FIRE_DATA_MAX_BYTES = 30 * 1024 * 1024
+
+
+def _fire_checker(area: tuple[float, float, float, float]) -> CheckFire | None:
+    """Reads the GOES layer and the NRT files from the data bucket, both optional."""
+    bucket = os.environ.get("DATA_BUCKET")
+    goes_key = os.environ.get("GOES_LATEST_KEY")
+    if not bucket or not goes_key:
+        return None
+    raw_prefix = os.environ.get("RAW_PREFIX", "raw/firms/")
+    import boto3
+
+    s3 = boto3.client("s3")
+
+    def get(key: str) -> bytes | None:
+        try:
+            response = s3.get_object(Bucket=bucket, Key=key)
+        except s3.exceptions.NoSuchKey:
+            return None
+        except Exception as exc:
+            # Without ListBucket a missing key reads as AccessDenied too. It is logged (the
+            # key, never the point) so a broken grant shows up, and the check says "unknown".
+            if "AccessDenied" in type(exc).__name__ or "AccessDenied" in str(exc):
+                logger.warning("fire check could not read %s (AccessDenied)", key)
+                return None
+            raise
+        if int(response.get("ContentLength") or 0) > FIRE_DATA_MAX_BYTES:
+            logger.error("fire check skipped %s: larger than %d bytes", key, FIRE_DATA_MAX_BYTES)
+            return None
+        return response["Body"].read()
+
+    def check(lat: float, lon: float) -> dict:
+        now = datetime.now(UTC)
+        if not fire_check.inside(area, lat, lon):
+            return fire_check.outside_answer(lat, lon, now)
+        cached = _fire_data.get("data")
+        if cached is None or (now - cached[0]).total_seconds() > FIRE_DATA_TTL_SECONDS:
+            cached = (now, fire_check.load(get, goes_key, raw_prefix, now))
+            _fire_data["data"] = cached
+        goes, detections, files = cached[1]
+        return fire_check.check(lat, lon, now, goes, detections, files)
+
+    return check
 
 
 def _parameter(ssm, variable: str) -> str | None:
@@ -358,6 +437,7 @@ def _api_dependencies() -> Dependencies:
             web_url=os.environ.get("ALERT_WEB_URL", ""),
             bot_username=_parameter(ssm, "ALERT_TELEGRAM_BOT_PARAMETER"),
             send_mail=send_mail if send else None,
+            check_fire=_fire_checker(area),  # type: ignore[arg-type]
         )
     return _cache["api"]
 
@@ -387,6 +467,7 @@ def _webhook_dependencies() -> Dependencies:
             find=lambda query, language: places.search(query, language, area),
             answer=answer if token else None,
             webhook_secret=_parameter(ssm, "ALERT_TELEGRAM_WEBHOOK_SECRET_PARAMETER"),
+            check_fire=_fire_checker(area),  # type: ignore[arg-type]
         )
     return _cache["webhook"]
 

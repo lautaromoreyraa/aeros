@@ -64,6 +64,35 @@ export function windowCoverage(report: EarlyWarning): WindowCoverage {
   return { windowDays: all.length, dataDays: all.length - gapDates.length, gapDates, gapCount: gapDates.length };
 }
 
+/**
+ * What the page says when nothing is flagged, claiming no more than the data
+ * allows: a quiet result only covers the days that had satellite data, and a
+ * missing regional result is told apart by its cause.
+ */
+export function calmMessage(report: EarlyWarning, coverage: WindowCoverage): { title: string; text: string } {
+  const from = formatDay(report.window[0]);
+  const to = formatDay(report.window[1]);
+  if (report.region) {
+    const days =
+      coverage.gapCount === 0
+        ? `Hotspots from ${from} to ${to}`
+        : `Hotspots on the ${coverage.dataDays} of ${coverage.windowDays} days from ${from} to ${to} with satellite data`;
+    return {
+      title: "No unusual fire activity.",
+      text: `${days} are within the range of earlier years, region-wide and in every cell.`,
+    };
+  }
+  if (coverage.dataDays === 0)
+    return {
+      title: "Not enough data to judge.",
+      text: "No satellite day in this window returned detections, so nothing can be said about fire activity yet.",
+    };
+  return {
+    title: "Not enough data to judge.",
+    text: "Detections came in, but there are no earlier years to compare them with yet, so nothing can be said about them.",
+  };
+}
+
 /** "Nov 6" style label for a "YYYY-MM-DD" date, in UTC so the day never shifts. */
 export function formatDay(day: string): string {
   const time = Date.parse(`${day}T00:00:00Z`);

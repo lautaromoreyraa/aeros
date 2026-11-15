@@ -56,6 +56,8 @@ RESOLUTION = 4
 SCANS = 3
 PERSISTENCE = 2
 QUIET_HOURS = 12
+#: A newest scan older than this is not "right now": NOAA or the satellite is late.
+STALE_MINUTES = 30
 TOP_CELLS = 5
 
 # Mask codes of fire pixels; the 3x codes are the same categories after the
@@ -355,6 +357,12 @@ def handler(
 
     area = ",".join(f"{v:g}" for v in settings.area)
     report = summarize(pixels, scans, study, area, now)
+    # `latest_scans` looks up to three hours back, so the newest scan can be old when
+    # GOES or NOAA are late. The layer is still published, marked, but nobody is told
+    # "active fire right now" from it.
+    newest = max(s.start for s in scans)
+    report["newest_scan_age_minutes"] = int((now - newest).total_seconds() // 60)
+    report["stale"] = now - newest > timedelta(minutes=STALE_MINUTES)
     s3.put_object(
         Bucket=settings.bucket,
         Key=settings.output_key,
@@ -366,7 +374,14 @@ def handler(
         "scans": report["scans"],
         "pixels": report["pixels"],
         "persistent_cells": sum(c["persistent"] for c in report["cells"]),
+        "stale": report["stale"],
     }
+    if report["stale"]:
+        logger.warning(
+            "newest GOES scan is %d minutes old; publishing without alerts",
+            report["newest_scan_age_minutes"],
+        )
+        return summary
     if settings.alert_settings and summary["persistent_cells"]:
         try:
             summary["alerts"] = notify(
