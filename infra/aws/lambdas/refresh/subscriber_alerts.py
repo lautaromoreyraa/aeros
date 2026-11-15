@@ -40,6 +40,8 @@ class SubscriberSettings:
     twilio_account_sid_parameter: str = alerts.TWILIO_ACCOUNT_SID_PARAMETER
     twilio_auth_token_parameter: str = alerts.TWILIO_AUTH_TOKEN_PARAMETER
     twilio_from_parameter: str = alerts.TWILIO_FROM_PARAMETER
+    httpsms_api_key_parameter: str = alerts.HTTPSMS_API_KEY_PARAMETER
+    httpsms_from_parameter: str = alerts.HTTPSMS_FROM_PARAMETER
 
     @classmethod
     def from_environment(cls) -> SubscriberSettings | None:
@@ -64,6 +66,12 @@ class SubscriberSettings:
                 "TWILIO_AUTH_TOKEN_PARAMETER", alerts.TWILIO_AUTH_TOKEN_PARAMETER
             ),
             twilio_from_parameter=env.get("TWILIO_FROM_PARAMETER", alerts.TWILIO_FROM_PARAMETER),
+            httpsms_api_key_parameter=env.get(
+                "HTTPSMS_API_KEY_PARAMETER", alerts.HTTPSMS_API_KEY_PARAMETER
+            ),
+            httpsms_from_parameter=env.get(
+                "HTTPSMS_FROM_PARAMETER", alerts.HTTPSMS_FROM_PARAMETER
+            ),
         )
 
 
@@ -88,6 +96,7 @@ def run(
     ses=None,
     post: alerts.Post | None = None,
     post_sms: sms.PostForm | None = None,
+    post_httpsms: sms.PostJson | None = None,
     now: datetime | None = None,
 ) -> dict:
     """Tells each subscriber about the possible fires near them in a GOES-19 report."""
@@ -117,11 +126,16 @@ def run(
     )
     if send:
         senders["email"] = notifier.mail_sender(send)
-    account = alerts.read_optional_parameter(ssm, settings.twilio_account_sid_parameter)
-    twilio_token = alerts.read_optional_parameter(ssm, settings.twilio_auth_token_parameter)
-    from_number = alerts.read_optional_parameter(ssm, settings.twilio_from_parameter)
-    if account and twilio_token and from_number:
-        senders["sms"] = _sms_sender(account, twilio_token, from_number, post_sms)
+    api_key = alerts.read_optional_parameter(ssm, settings.httpsms_api_key_parameter)
+    gateway = alerts.read_optional_parameter(ssm, settings.httpsms_from_parameter)
+    if api_key and gateway:
+        senders["sms"] = _httpsms_sender(api_key, gateway, post_httpsms)
+    else:
+        account = alerts.read_optional_parameter(ssm, settings.twilio_account_sid_parameter)
+        twilio_token = alerts.read_optional_parameter(ssm, settings.twilio_auth_token_parameter)
+        from_number = alerts.read_optional_parameter(ssm, settings.twilio_from_parameter)
+        if account and twilio_token and from_number:
+            senders["sms"] = _sms_sender(account, twilio_token, from_number, post_sms)
 
     return fire_alerts.notify(
         report,
@@ -138,5 +152,12 @@ def run(
 def _sms_sender(account_sid: str, token: str, from_number: str, post: sms.PostForm | None):
     def send(subscription, subject: str, text: str) -> None:
         sms.send_sms(account_sid, token, from_number, str(subscription.address), text, post=post)
+
+    return send
+
+
+def _httpsms_sender(api_key: str, from_number: str, post: sms.PostJson | None):
+    def send(subscription, subject: str, text: str) -> None:
+        sms.send_httpsms(api_key, from_number, str(subscription.address), text, post=post)
 
     return send

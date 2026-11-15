@@ -1,16 +1,21 @@
-"""SMS alerts through Twilio, for a phone that has signal but no mobile data.
+"""SMS alerts for a phone that has signal but no mobile data.
 
 A text message rides the cellular network, so the person does not need internet
-to receive it or to answer it. The Lambda that calls Twilio does. A phone with
-no signal at all cannot be reached this way.
+to receive it or to answer it. The Lambda that asks for the text does. A phone
+with no signal at all cannot be reached this way.
+
+For the MVP the text is sent by an Android phone running httpSMS: this module
+calls that HTTP API, and the phone's own SIM delivers a normal SMS. Twilio
+remains available when its parameters exist and the httpSMS ones do not.
 
 Confirmation is a reply, never a link: YES (or SI) confirms the number that
-replied, STOP ends it. The webhook checks Twilio's signature, so a request that
-did not come from Twilio changes nothing.
+replied, STOP ends it. An httpSMS webhook is a JWT signed with the signing
+key. A Twilio webhook is the X-Twilio-Signature. A request that fails its
+check changes nothing.
 
-Nothing here is called unless the three Parameter Store values exist. Each
-message is billed by Twilio, so this module only sends the one text a caller
-asks for.
+Nothing here is called unless the parameters of one sender exist. Each message
+is billed by the SIM or by Twilio, so this module only sends the one text a
+caller asks for.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -27,8 +33,11 @@ from collections.abc import Callable, Mapping
 from xml.sax.saxutils import escape
 
 TWILIO_API = "https://api.twilio.com/2010-04-01/Accounts"
+HTTPSMS_API = "https://api.httpsms.com/v1/messages/send"
 #: POST (url, account sid, auth token, form fields) -> parsed JSON. Injected in tests.
 PostForm = Callable[[str, str, str, dict], dict]
+#: POST (url, api key, JSON body) -> parsed JSON. Injected in tests.
+PostJson = Callable[[str, str, dict], dict]
 
 # The first word of a reply. Accents are stripped before the comparison.
 _YES = frozenset({"YES", "SI", "OK"})
@@ -90,6 +99,108 @@ def is_yes(body: str) -> bool:
 
 def is_stop(body: str) -> bool:
     return word_of(body) in _STOP
+
+
+def send_httpsms(
+    api_key: str,
+    from_number: str,
+    to: str,
+    body: str,
+    post: PostJson | None = None,
+) -> None:
+    """Queue one SMS on the Android phone. Raises SmsError if the API refuses it.
+
+    The API key never appears in the exception text.
+    """
+    (post or _post_json)(
+        HTTPSMS_API,
+        api_key,
+        {"content": body, "from": from_number, "to": to},
+    )
+
+
+def httpsms_event_type(body: bytes) -> str | None:
+    """The CloudEvent type, or None when the body is not an httpSMS event."""
+    try:
+        event = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(event, dict):
+        return None
+    kind = event.get("type")
+    return kind if isinstance(kind, str) and kind.startswith("message.") else None
+
+
+def received_sms(body: bytes) -> tuple[str, str] | None:
+    """(sender, text) of a message the Android phone received, else None."""
+    if httpsms_event_type(body) != "message.phone.received":
+        return None
+    data = json.loads(body).get("data")
+    if not isinstance(data, dict):
+        return None
+    contact = _phone(str(data.get("contact") or ""))
+    if not contact:
+        return None
+    return contact, str(data.get("content") or "")
+
+
+def jwt_is_valid(authorization: str | None, key: str | None) -> bool:
+    """True when Authorization is a Bearer HS256 JWT signed with the webhook key."""
+    if not key or not authorization or not authorization.startswith("Bearer "):
+        return False
+    parts = authorization.removeprefix("Bearer ").strip().split(".")
+    if len(parts) != 3:
+        return False
+    try:
+        header = json.loads(_b64url(parts[0]))
+        if not isinstance(header, dict) or header.get("alg") != "HS256":
+            return False
+        payload = json.loads(_b64url(parts[1]))
+        given = _b64url(parts[2])
+    except (json.JSONDecodeError, ValueError):
+        return False
+    expected = hmac.new(key.encode(), f"{parts[0]}.{parts[1]}".encode(), hashlib.sha256).digest()
+    if len(expected) != len(given) or not hmac.compare_digest(expected, given):
+        return False
+    exp = payload.get("exp") if isinstance(payload, dict) else None
+    return not isinstance(exp, (int, float)) or exp >= time.time()
+
+
+def _phone(value: str) -> str:
+    text = "".join(ch for ch in value if ch.isdigit() or ch == "+")
+    if text and not text.startswith("+"):
+        text = f"+{text}"
+    return text
+
+
+def _b64url(part: str) -> bytes:
+    return base64.urlsafe_b64decode(part + "=" * (-len(part) % 4))
+
+
+def _post_json(url: str, api_key: str, payload: dict) -> dict:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "aeros-alerts",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            raw = response.read()
+            if not raw:
+                return {}
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+    except urllib.error.HTTPError as exc:
+        raise SmsError(f"httpSMS answered HTTP {exc.code}") from None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        reason = getattr(exc, "reason", exc)
+        raise SmsError(f"httpSMS unreachable: {type(reason).__name__}") from None
 
 
 def send_sms(

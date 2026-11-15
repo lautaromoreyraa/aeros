@@ -72,6 +72,14 @@ export const ALERT_PARAMETERS = {
   twilioAccountSid: "/aeros/alerts/twilio-account-sid",
   twilioAuthToken: "/aeros/alerts/twilio-auth-token",
   twilioFrom: "/aeros/alerts/twilio-from",
+  /**
+   * MVP SMS gateway: an Android phone running httpSMS. The API key and the
+   * webhook signing key are SecureString; the From number is the SIM, String.
+   * When the key and the From number exist, SMS uses this phone instead of Twilio.
+   */
+  httpsmsApiKey: "/aeros/alerts/httpsms-api-key",
+  httpsmsFrom: "/aeros/alerts/httpsms-from",
+  httpsmsSigningKey: "/aeros/alerts/httpsms-signing-key",
 } as const;
 
 /**
@@ -211,6 +219,8 @@ export class RefreshStack extends Stack {
         TWILIO_ACCOUNT_SID_PARAMETER: ALERT_PARAMETERS.twilioAccountSid,
         TWILIO_AUTH_TOKEN_PARAMETER: ALERT_PARAMETERS.twilioAuthToken,
         TWILIO_FROM_PARAMETER: ALERT_PARAMETERS.twilioFrom,
+        HTTPSMS_API_KEY_PARAMETER: ALERT_PARAMETERS.httpsmsApiKey,
+        HTTPSMS_FROM_PARAMETER: ALERT_PARAMETERS.httpsmsFrom,
       },
     });
     // The parameter uses the AWS-managed aws/ssm key, whose key policy lets
@@ -275,6 +285,8 @@ export class RefreshStack extends Stack {
         TWILIO_ACCOUNT_SID_PARAMETER: ALERT_PARAMETERS.twilioAccountSid,
         TWILIO_AUTH_TOKEN_PARAMETER: ALERT_PARAMETERS.twilioAuthToken,
         TWILIO_FROM_PARAMETER: ALERT_PARAMETERS.twilioFrom,
+        HTTPSMS_API_KEY_PARAMETER: ALERT_PARAMETERS.httpsmsApiKey,
+        HTTPSMS_FROM_PARAMETER: ALERT_PARAMETERS.httpsmsFrom,
         SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
         WIND_KEY: DATA_LAYOUT.windKey,
       },
@@ -350,14 +362,14 @@ export class RefreshStack extends Stack {
   }
 
   /**
-   * Twilio's inbound SMS. The number's Messaging webhook is this public
-   * function URL. Twilio cannot sign requests for CloudFront, so the
-   * X-Twilio-Signature over the auth token is the only door; without that
-   * parameter the handler refuses everything.
+   * Inbound SMS. httpSMS posts a signed CloudEvent when the Android phone
+   * receives a reply; Twilio posts a signed form. Neither can sign requests
+   * for CloudFront, so this is a public function URL and a bad signature is
+   * refused. Without the matching parameter the handler refuses that sender.
    */
   private smsWebhookFunction(props: RefreshStackProps, logGroup: logs.LogGroup): lambda.Function {
     const fn = new lambda.Function(this, "SmsWebhookHandler", {
-      description: "Twilio SMS webhook: confirms and ends alert subscriptions",
+      description: "SMS webhook: httpSMS replies, or Twilio, confirm and end subscriptions",
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: "alerts_api.sms_webhook",
@@ -370,10 +382,14 @@ export class RefreshStack extends Stack {
         SUBSCRIPTIONS_TABLE: props.subscriptionsTable.tableName,
         FIRMS_AREA: props.firmsArea,
         TWILIO_AUTH_TOKEN_PARAMETER: ALERT_PARAMETERS.twilioAuthToken,
+        HTTPSMS_SIGNING_KEY_PARAMETER: ALERT_PARAMETERS.httpsmsSigningKey,
       },
     });
     grantSubscriptionsTable(fn, props.subscriptionsTable);
-    grantParameters(this, fn, [ALERT_PARAMETERS.twilioAuthToken]);
+    grantParameters(this, fn, [
+      ALERT_PARAMETERS.twilioAuthToken,
+      ALERT_PARAMETERS.httpsmsSigningKey,
+    ]);
     const url = fn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
     fn.addPermission("PublicSmsInvokeViaUrl", {
       principal: new iam.AnyPrincipal(),
@@ -382,7 +398,7 @@ export class RefreshStack extends Stack {
     });
     new CfnOutput(this, "SmsWebhookUrl", {
       value: url.url,
-      description: "Set it as the Messaging webhook (HTTP POST) of the Twilio number",
+      description: "httpSMS webhook URL for message.phone.received, or the Twilio Messaging webhook",
     });
     return fn;
   }

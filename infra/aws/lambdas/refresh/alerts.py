@@ -49,6 +49,10 @@ RESEND_KEY_PARAMETER = "/aeros/alerts/resend-api-key"
 TWILIO_ACCOUNT_SID_PARAMETER = "/aeros/alerts/twilio-account-sid"
 TWILIO_AUTH_TOKEN_PARAMETER = "/aeros/alerts/twilio-auth-token"
 TWILIO_FROM_PARAMETER = "/aeros/alerts/twilio-from"
+#: MVP sender: an Android SIM via httpSMS. The key and the signing key are SecureString.
+HTTPSMS_API_KEY_PARAMETER = "/aeros/alerts/httpsms-api-key"
+HTTPSMS_FROM_PARAMETER = "/aeros/alerts/httpsms-from"
+HTTPSMS_SIGNING_KEY_PARAMETER = "/aeros/alerts/httpsms-signing-key"
 
 
 class AlertError(RuntimeError):

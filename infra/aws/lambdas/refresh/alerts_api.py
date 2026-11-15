@@ -88,6 +88,8 @@ class Dependencies:
     send_sms: SendSms | None = None
     #: Twilio auth token, only for checking the signature of an inbound text.
     twilio_token: str | None = None
+    #: httpSMS webhook signing key. Inbound replies are a JWT signed with it.
+    httpsms_signing_key: str | None = None
     reply: Reply | None = None
     #: Looks a town up by name; without it the bot cannot sign anyone up by town.
     find: Find | None = None
@@ -505,6 +507,15 @@ def webhook(event, context):
 
 
 def _sms_sender(ssm) -> SendSms | None:
+    """httpSMS when the Android gateway is configured, otherwise Twilio."""
+    api_key = _parameter(ssm, "HTTPSMS_API_KEY_PARAMETER")
+    gateway = _parameter(ssm, "HTTPSMS_FROM_PARAMETER")
+    if api_key and gateway:
+
+        def send_gateway(address: str, text: str) -> None:
+            sms.send_httpsms(api_key, gateway, address, text)
+
+        return send_gateway
     account = _parameter(ssm, "TWILIO_ACCOUNT_SID_PARAMETER")
     token = _parameter(ssm, "TWILIO_AUTH_TOKEN_PARAMETER")
     from_number = _parameter(ssm, "TWILIO_FROM_PARAMETER")
@@ -536,9 +547,12 @@ def _header(headers: Mapping, name: str) -> str:
 
 
 def sms_webhook_handler(event: Mapping, context=None, *, deps: Dependencies | None = None) -> dict:
-    """Inbound SMS. A bad signature is refused; a storage error raises so Twilio retries."""
+    """Inbound SMS. A bad signature is refused; a storage error raises so the sender retries."""
     deps = deps or _sms_dependencies()
-    params = sms.form_params(_body(event))
+    raw = _body(event)
+    if sms.httpsms_event_type(raw) is not None:
+        return _httpsms_webhook(event, raw, deps)
+    params = sms.form_params(raw)
     signature = _header(event.get("headers") or {}, "x-twilio-signature")
     if not sms.signature_is_valid(_request_url(event), params, signature, deps.twilio_token):
         return _json(403, {"error": "forbidden"})
@@ -550,17 +564,31 @@ def sms_webhook_handler(event: Mapping, context=None, *, deps: Dependencies | No
     }
 
 
+def _httpsms_webhook(event: Mapping, raw: bytes, deps: Dependencies) -> dict:
+    """A reply the Android phone received. Other signed events are acknowledged."""
+    authorization = _header(event.get("headers") or {}, "authorization")
+    if not sms.jwt_is_valid(authorization, deps.httpsms_signing_key):
+        return _json(403, {"error": "forbidden"})
+    received = sms.received_sms(raw)
+    if received is None:
+        return _json(200, {"ok": True})
+    deps.subscriptions.answer_sms(*received)
+    return _json(200, {"ok": True})
+
+
 def _sms_dependencies() -> Dependencies:
     if "sms" not in _cache:
         import boto3
 
+        ssm = boto3.client("ssm")
         _cache["sms"] = Dependencies(
             _subscriptions(),
-            twilio_token=_parameter(boto3.client("ssm"), "TWILIO_AUTH_TOKEN_PARAMETER"),
+            twilio_token=_parameter(ssm, "TWILIO_AUTH_TOKEN_PARAMETER"),
+            httpsms_signing_key=_parameter(ssm, "HTTPSMS_SIGNING_KEY_PARAMETER"),
         )
     return _cache["sms"]
 
 
 def sms_webhook(event, context):
-    """Function URL entry of the Twilio inbound SMS webhook."""
+    """Function URL entry of the inbound SMS webhook (httpSMS, or Twilio)."""
     return sms_webhook_handler(event, context)
