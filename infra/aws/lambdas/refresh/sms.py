@@ -8,10 +8,13 @@ For the MVP the text is sent by an Android phone running httpSMS: this module
 calls that HTTP API, and the phone's own SIM delivers a normal SMS. Twilio
 remains available when its parameters exist and the httpSMS ones do not.
 
-Confirmation is a reply, never a link: YES (or SI) confirms the number that
-replied, STOP ends it. An httpSMS webhook is a JWT signed with the signing
-key. A Twilio webhook is the X-Twilio-Signature. A request that fails its
-check changes nothing.
+A sign-up asks for no reply: the number gets one welcome text that says it is
+subscribed, what it will receive and how to leave. STOP ends it. An httpSMS
+webhook is a JWT signed with the signing key. A Twilio webhook is the
+X-Twilio-Signature. A request that fails its check changes nothing.
+
+Every text is plain ASCII, town names included: one accent turns the whole
+message into UCS-2, which fits 70 characters a part instead of 160.
 
 Nothing here is called unless the parameters of one sender exist. Each message
 is billed by the SIM or by Twilio, so this module only sends the one text a
@@ -24,6 +27,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import time
 import unicodedata
 import urllib.error
@@ -40,42 +44,60 @@ PostForm = Callable[[str, str, str, dict], dict]
 PostJson = Callable[[str, str, dict], dict]
 
 # The first word of a reply. Accents are stripped before the comparison.
-_YES = frozenset({"YES", "SI", "OK"})
 _STOP = frozenset({"STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "BAJA"})
 
 _REPLIES = {
     "en": {
-        "confirmed": "Aeros: you will get fire alerts by SMS. Reply STOP to end them.",
-        "already": "Aeros: this number is already subscribed. Reply STOP to end them.",
+        "already": "Aeros: this number gets fire alerts by SMS. Reply STOP to end them.",
         "stopped": "Aeros: fire alerts to this number have stopped.",
-        "unknown": "Aeros: this number has no alert waiting.",
-        "ignored": "Aeros: reply YES to confirm, or STOP to refuse.",
+        "unknown": "Aeros: this number is not subscribed to fire alerts.",
+        "ignored": "Aeros: reply STOP to end the fire alerts.",
     },
     "es": {
-        "confirmed": "Aeros: va a recibir avisos de incendio por SMS. Responda STOP para salir.",
-        "already": "Aeros: este numero ya esta suscripto. Responda STOP para salir.",
+        "already": "Aeros: este numero recibe avisos de incendio. Responda STOP para salir.",
         "stopped": "Aeros: los avisos a este numero se detuvieron.",
-        "unknown": "Aeros: este numero no tiene un aviso pendiente.",
-        "ignored": "Aeros: responda SI para confirmar, o STOP para rechazar.",
+        "unknown": "Aeros: este numero no esta suscripto a los avisos de incendio.",
+        "ignored": "Aeros: responda STOP para dejar de recibir los avisos de incendio.",
     },
 }
+
+
+# A town as a text may name it: letters and spaces, with a number in front ("9 de Julio").
+# The name can come from the form, typed by anybody for anybody's phone, so nothing that
+# makes a link, a phone number or a second sentence gets through.
+_TOWN = re.compile(r"^(?:\d{1,2} )?[A-Za-z][A-Za-z '-]{0,39}$")
 
 
 class SmsError(RuntimeError):
     pass
 
 
-def confirmation(language: str) -> str:
-    """The one text that asks the phone to opt in. No link: it may have no data."""
+def welcome(language: str, town: str | None, radius_km: float) -> str:
+    """The one text a sign-up sends: the number is subscribed, and what it will get.
+
+    No link (the phone may have no data) and no reply asked for.
+    """
+    km = f"{radius_km:g}"
+    place = plain(town or "")
+    if not _TOWN.match(place):
+        place = ""
     if language == "en":
+        where = f"within {km} km of {place}" if place else "near the area you chose"
         return (
-            "Aeros fire alerts: reply YES within 24 hours to confirm this number. "
-            "Reply STOP to refuse. Nothing is sent until you confirm."
+            "Aeros: you are subscribed. We will text you if there is "
+            f"a possible fire {where}. Reply STOP to end the alerts."
         )
+    where = f"a menos de {km} km de {place}" if place else "cerca de la zona que eligio"
     return (
-        "Avisos de incendio de aeros: responda SI antes de 24 horas para confirmar. "
-        "Responda STOP para rechazar. No enviamos nada hasta que confirme."
+        "Aeros: suscripcion exitosa. Le avisaremos por SMS si hay un posible "
+        f"incendio {where}. Responda STOP para salir."
     )
+
+
+def plain(text: str) -> str:
+    """ASCII only, so a town with accents keeps the text in the 160-character alphabet."""
+    folded = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in folded if ch.isascii() and ch.isprintable()).strip()
 
 
 def reply_text(result: str, language: str) -> str:
@@ -84,17 +106,13 @@ def reply_text(result: str, language: str) -> str:
 
 
 def word_of(body: str) -> str:
-    """The first word of a reply, in ASCII capitals, so 'Sí.' and 'SI' match."""
+    """The first word of a reply, in ASCII capitals, so a lower-case or accented one matches."""
     stripped = (body or "").strip()
     if not stripped:
         return ""
     first = stripped.split()[0].strip(".,!?")
     folded = unicodedata.normalize("NFKD", first)
     return "".join(ch for ch in folded if ch.isascii()).upper()
-
-
-def is_yes(body: str) -> bool:
-    return word_of(body) in _YES
 
 
 def is_stop(body: str) -> bool:

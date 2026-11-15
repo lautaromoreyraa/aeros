@@ -5,6 +5,8 @@ import {
   type Place,
   type SubscriptionAnswer,
   alertLanguage,
+  answeredPlace,
+  canSignUp,
   normalizeEmail,
   normalizePhone,
   placeFromPosition,
@@ -22,7 +24,7 @@ type Status =
   | { kind: "sending" }
   | { kind: "telegram"; link: string | null }
   | { kind: "email" }
-  | { kind: "sms" }
+  | { kind: "sms"; place: Place | null }
   | { kind: "error"; message: string };
 
 /** The service's own error text when it sends one, which never echoes what was typed. */
@@ -38,10 +40,12 @@ async function failure(response: Response): Promise<string> {
 
 /**
  * Sign-up for alerts about a possible fire near a town: find the town (or
- * share a location), pick Telegram, SMS or e-mail, confirm. Nothing is sent
- * until the person confirms. SMS needs cellular signal, not mobile data. A
- * LoRa radio is not a channel here: a gateway that has a connection relays
- * the same short text onto the mesh.
+ * share a location), pick Telegram, SMS or e-mail. Telegram and e-mail send
+ * nothing until the person confirms. SMS asks for no reply: the number is
+ * subscribed at once and gets one text that says so. It may also leave the
+ * town out, and the service then uses the one of the number's area code. SMS
+ * needs cellular signal, not mobile data. A LoRa radio is not a channel here:
+ * a gateway that has a connection relays the same short text onto the mesh.
  */
 export function AlertSignup() {
   const id = useId();
@@ -87,7 +91,7 @@ export function AlertSignup() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!ALERTS_API || !place) return;
+    if (!ALERTS_API || !canSignUp(channel, place)) return;
     let address: string | undefined;
     if (channel === "email") {
       const checked = normalizeEmail(email);
@@ -113,7 +117,7 @@ export function AlertSignup() {
         channel === "telegram"
           ? { kind: "telegram", link: telegramLink(answer) }
           : channel === "sms"
-            ? { kind: "sms" }
+            ? { kind: "sms", place: answeredPlace(answer) ?? place }
             : { kind: "email" },
       );
     } catch (error) {
@@ -140,10 +144,11 @@ export function AlertSignup() {
   if (status.kind === "sms")
     return (
       <div className="signup signup--done" role="status">
-        <p className="signup__title">Check the phone</p>
+        <p className="signup__title">You are subscribed</p>
         <p>
-          We sent a text to confirm alerts for {place && placeLabel(place)}. Reply YES. It arrives without mobile
-          data, as long as the phone has signal.
+          We sent a text to the phone to say so. From now on it gets a text when the satellites see a possible fire
+          within about 50 km of {status.place ? placeLabel(status.place) : "your town"}. Nothing to reply: it
+          arrives without mobile data, as long as the phone has signal.
         </p>
       </div>
     );
@@ -227,7 +232,10 @@ export function AlertSignup() {
             aria-describedby={fieldError ? `${id}-error` : undefined}
             onChange={(event) => setPhone(event.target.value)}
           />
-          <span className="signup__hint">Works without mobile data. The phone still needs cellular signal.</span>
+          <span className="signup__hint">
+            Works without mobile data. The phone still needs cellular signal.
+            {!place && " With no town chosen above, the alerts are about the town of this number's area code."}
+          </span>
           {fieldError && (
             <span id={`${id}-error`} className="signup__error">
               {fieldError}
@@ -257,8 +265,8 @@ export function AlertSignup() {
         </label>
       )}
 
-      <button type="submit" className="landing__cta" disabled={!ALERTS_API || !place || status.kind === "sending"}>
-        {status.kind === "sending" ? "Signing up…" : "Get alerts for this town"}
+      <button type="submit" className="landing__cta" disabled={!ALERTS_API || !canSignUp(channel, place) || status.kind === "sending"}>
+        {status.kind === "sending" ? "Signing up…" : place ? "Get alerts for this town" : "Get alerts"}
       </button>
       {!ALERTS_API && (
         <p className="signup__hint">Sign-ups open when the alert service goes live; nothing is sent from this preview.</p>

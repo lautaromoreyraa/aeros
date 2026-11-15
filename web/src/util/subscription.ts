@@ -6,7 +6,9 @@
  *
  * Telegram needs no address: the answer carries a `confirm_url` to the bot, and
  * pressing Start there is the confirmation. E-mail gets a confirmation link.
- * SMS gets a text and is confirmed by replying YES, so it works without mobile data.
+ * SMS asks for no reply: the number is subscribed at once and gets one text that
+ * says so, which works without mobile data. An SMS sign-up may leave the town
+ * out; the service then uses the town of the number's area code and says which.
  */
 
 export type Channel = "telegram" | "sms" | "email";
@@ -27,16 +29,34 @@ export interface Place {
 
 export interface SubscriptionRequest {
   channel: Channel;
-  place: Place;
+  /** Left out only by an SMS sign-up with no town chosen. */
+  place?: Place;
   address?: string;
   language: "es" | "en";
 }
 
-/** The answer of a sign-up: Telegram ones carry the link that confirms them. */
+/**
+ * The answer of a sign-up: Telegram ones carry the link that confirms them, and
+ * SMS ones the town the alerts are about, which may come from the area code.
+ */
 export interface SubscriptionAnswer {
   id: string;
   status: string;
   confirm_url?: string;
+  place?: Place;
+}
+
+/** Only SMS can sign up with no town: a phone number says where it is from. */
+export function canSignUp(channel: Channel, place: Place | null): boolean {
+  return place !== null || channel === "sms";
+}
+
+/** The town of an SMS answer, if it is one the page can show. */
+export function answeredPlace(answer: SubscriptionAnswer): Place | null {
+  const place = answer.place;
+  return place && typeof place.name === "string" && Number.isFinite(place.lat) && Number.isFinite(place.lng)
+    ? place
+    : null;
 }
 
 /** "Resistencia, Chaco, Argentina", skipping what is missing or repeated. */
@@ -75,11 +95,16 @@ export function placesUrl(base: string, query: string, language: "es" | "en"): s
 
 export function subscriptionRequest(
   channel: Channel,
-  place: Place,
+  place: Place | null,
   language: "es" | "en",
   address?: string,
 ): SubscriptionRequest {
-  return { channel, place, language, ...((channel === "email" || channel === "sms") && address && { address }) };
+  return {
+    channel,
+    ...(place && { place }),
+    language,
+    ...((channel === "email" || channel === "sms") && address && { address }),
+  };
 }
 
 /** Only a t.me link is ever offered as the Telegram confirmation. */
