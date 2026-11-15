@@ -168,6 +168,31 @@
   gap: var(--space-2);
 }
 
+.terrain__week {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.terrain__week-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.terrain__week-status {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.4;
+}
+
+.terrain__week-status--alert {
+  color: var(--color-danger, #ef4444);
+}
+
+.terrain__week-evidence {
+  margin: 0;
+}
+
 /* The header tabs shrink and stretch on phones; these must not follow them. */
 .terrain .tabs--panel {
   order: 0;
