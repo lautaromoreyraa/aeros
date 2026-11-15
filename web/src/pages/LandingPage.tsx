@@ -43,20 +43,10 @@ const CUE_FALLBACK_MS = 4200;
 /** Complete years of the FIRMS archive behind the record, 2000 to 2025. */
 const RECORD_YEARS = 26;
 
-/**
- * The alert bot's t.me link, set at build time once the bot exists; until
- * then the button leads to the sign-up section on this page.
- */
-const TELEGRAM_BOT = import.meta.env.VITE_TELEGRAM_BOT_URL as string | undefined;
-const TELEGRAM_URL = TELEGRAM_BOT || "#alerts";
-const TELEGRAM_EXTERNAL = Boolean(TELEGRAM_BOT);
-
-const TelegramIcon = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-    <path
-      fill="currentColor"
-      d="M21.9 4.3 18.7 19.4c-.2 1.1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.3-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.2 13 1.4 11.5c-1-.3-1-1 .2-1.5L20.5 2.8c.9-.3 1.6.2 1.4 1.5Z"
-    />
+const BellIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
   </svg>
 );
 
@@ -166,10 +156,14 @@ export function LandingPage({ region, warning, onEnter }: Props) {
               <a
                 className="landing__cta landing__cta--telegram wf"
                 style={wf("telegram")}
-                href={TELEGRAM_URL}
-                {...(TELEGRAM_EXTERNAL && { target: "_blank", rel: "noopener" })}
+                href="#alerts"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById("alerts")?.scrollIntoView({ behavior: "smooth" });
+                  document.getElementById("alerts")?.querySelector<HTMLInputElement>("input[type='tel'], input[type='email']")?.focus();
+                }}
               >
-                <TelegramIcon />
+                <BellIcon />
                 {t.landing.telegramCta}
               </a>
               <a className="hero__more wf" style={wf("more")} href="#record">

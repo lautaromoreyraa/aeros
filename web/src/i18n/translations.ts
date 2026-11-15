@@ -23,7 +23,7 @@ export const en: Translations = {
     heroClaim: "Fire early warning",
     heroLede1: "26 years of MODIS and VIIRS fire on a single scale.",
     heroLede2: "An agent reads GOES-19 every 10 minutes to warn you.",
-    telegramCta: "Get alerts on Telegram",
+    telegramCta: "Get fire alerts",
     seeRecord: "See the record",
     recordHeading: (years) => `${years} years of fire, on the ground it burned`,
     recordBody: (unit) =>
@@ -300,7 +300,7 @@ export const es: Translations = {
     heroClaim: "Alerta temprana de incendios",
     heroLede1: "26 años de incendios MODIS y VIIRS en una sola escala.",
     heroLede2: "Un agente lee GOES-19 cada 10 minutos para avisar.",
-    telegramCta: "Recibir alertas en Telegram",
+    telegramCta: "Quiero recibir la alerta",
     seeRecord: "Ver el registro histórico",
     recordHeading: (years) => `${years} años de fuego sobre el territorio quemado`,
     recordBody: (unit) =>
