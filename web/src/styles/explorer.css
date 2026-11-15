@@ -357,6 +357,7 @@ fieldset.segmented {
   background: var(--color-surface) !important;
   color: var(--color-text) !important;
   font: var(--text-xs) / 1.4 var(--font-sans);
+  white-space: pre-line;
   box-shadow: var(--shadow-panel);
 }
 

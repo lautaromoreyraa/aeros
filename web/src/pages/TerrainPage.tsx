@@ -9,6 +9,7 @@ import { SectorOverview } from "../components/SectorOverview";
 import type { MapFocus } from "../components/HexMap";
 import { useFireWeather } from "../hooks/useFireWeather";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
+import { usePlaces } from "../hooks/usePlaces";
 import { useRememberedChoice } from "../hooks/useRememberedChoice";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { useSectorCalendars } from "../hooks/useSectorCalendars";
@@ -21,6 +22,7 @@ import { formatDay } from "../util/earlyWarning";
 import { daysAhead, nodesNear, summarizeDays } from "../util/fireWeather";
 import { unitLabel } from "../util/format";
 import { monthKey, monthOfYear, yearOf } from "../util/months";
+import { COUNTRY_NAMES, placeLabel, placeNear } from "../util/places";
 import { eraComparison, recordAt } from "../util/sectorKpis";
 import { WHOLE_REGION, cellsOfSector, demoSectors } from "../util/sectors";
 import { hourIndexAt } from "../util/wind";
@@ -74,10 +76,13 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
   const [sectorId, setSectorId] = useState<string | null>(null);
   /** The tapped cell: the camera closes in on it and the line starts there. */
   const [anchor, setAnchor] = useState<string | null>(null);
+  /** The anchor came from a tap on the map, not from a pick in the zone list. */
+  const [tapped, setTapped] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   // Wind is one more layer of the terrain, always on.
   const windState = useWind();
+  const places = usePlaces(region.cells.resolution);
   const [windPlaying, setWindPlaying] = useRememberedChoice("aeros-wind", !reducedMotion);
   const wind = useMemo(
     () =>
@@ -135,6 +140,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
   const close = useCallback(() => {
     setSectorId(null);
     setAnchor(null);
+    setTapped(false);
   }, []);
   const pick = useCallback(
     (cell: string | null) => {
@@ -142,6 +148,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
       if (!cell || !id) return close();
       setSectorId(id);
       setAnchor(cell);
+      setTapped(true);
     },
     [sectorOfCell, close],
   );
@@ -152,6 +159,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
       if (id === null) return close();
       setSectorId(id);
       setAnchor(cells ? busiestCell(totals, cells) : null);
+      setTapped(false);
     },
     [sectors, totals, close],
   );
@@ -182,6 +190,16 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
     ...sectors.map(({ id, name, place }) => ({ id, name, place })),
   ];
   const current = zones.find((zone) => zone.id === sectorId);
+  // A tapped cell is named after the town people know it by; a zone picked
+  // from the list keeps the zone's own name.
+  const here = tapped && anchor && places ? placeNear(places, anchor) : null;
+  const describe = useCallback(
+    (cell: string) => {
+      const near = places ? placeNear(places, cell) : null;
+      return near ? placeLabel(near) : null;
+    },
+    [places],
+  );
 
   const windTime = wind
     ? (() => {
@@ -220,6 +238,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             panel={panelRef}
             wind={wind}
             basemap="physical"
+            describe={describe}
           />
         </Suspense>
 
@@ -276,11 +295,18 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             <div className="terrain__head">
               <div>
                 <h2 id="terrain-zone-title" ref={headingRef} tabIndex={-1} className="panel__title">
-                  {current.name}
+                  {here ? placeLabel(here) : current.name}
                 </h2>
-                <p className="summary__note">{current.place}</p>
+                <p className="summary__note">
+                  {here ? `${COUNTRY_NAMES[here.place.country] ?? here.place.country} · ${current.name} zone` : current.place}
+                </p>
               </div>
-              <button type="button" className="terrain__close" onClick={close} aria-label={`Close ${current.name}`}>
+              <button
+                type="button"
+                className="terrain__close"
+                onClick={close}
+                aria-label={`Close ${here ? placeLabel(here) : current.name}`}
+              >
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                   <path d="M3 3l10 10M13 3 3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>

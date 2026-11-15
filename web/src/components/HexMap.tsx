@@ -43,6 +43,8 @@ interface Props {
   ramp?: Rgb[];
   /** A click outside drawing mode: the cell under the pointer, or `null` on empty ground. */
   onPick?: (cell: string | null) => void;
+  /** Names the cell under the pointer for the tooltip, in words a visitor knows. */
+  describe?: (cell: string) => string | null;
   /** Flies to these cells and links the anchor to {@link panel} with a line. */
   focus?: MapFocus | null;
   /** The floating panel the focus belongs to; the camera leaves its part of the map free. */
@@ -59,7 +61,7 @@ interface Props {
 }
 
 export default function HexMap(props: Props) {
-  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, focus = null, panel, legible = false, wind = null } = props;
+  const { totals, selected, centers, showRaw, unit, area, drawing, draft, onAddVertex, theme, reducedMotion, onPick, describe, focus = null, panel, legible = false, wind = null } = props;
   const ground = BASEMAP[props.basemap ?? theme];
   const groundId = props.basemap ?? theme;
   const ramp = props.ramp ?? VIRIDIS;
@@ -186,11 +188,16 @@ export default function HexMap(props: Props) {
     leader = { from, to: leaderEnd(from, rect, panelElement.getBoundingClientRect()) };
   }
 
-  const tooltip = ({ object }: PickingInfo<CellTotal>) =>
-    object && {
+  const tooltip = ({ object }: PickingInfo<CellTotal>) => {
+    if (!object) return null;
+    const label = describe?.(object.cell);
+    // A town's name is shown as plain text so it is never read as HTML.
+    if (label) return { text: `${label}\nTap to see what is happening here`, className: "map-tooltip" };
+    return {
       html: `<strong>${formatCount(object.harmonized)}</strong> harmonized ${unitLabel(unit)}<br/>${formatCount(object.stacked)} raw stacked`,
       className: "map-tooltip",
     };
+  };
 
   return (
     <div ref={container} className={drawing ? "map map--drawing" : "map"}>
