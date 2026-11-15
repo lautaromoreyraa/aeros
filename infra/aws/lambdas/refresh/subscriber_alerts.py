@@ -84,9 +84,11 @@ def run(
     subscriptions.purge_expired()
 
     senders: dict[str, notifier.Sender] = {}
+    place_senders: dict[str, notifier.PlaceSender] = {}
     token = alerts.read_optional_parameter(ssm, settings.telegram_token_parameter)
     if token:
         senders["telegram"] = notifier.telegram_sender(post or alerts._http_post, token)
+        place_senders["telegram"] = notifier.telegram_place_sender(post or alerts._http_post, token)
     send = alerts.email_sender_from_parameters(
         ssm,
         from_parameter=settings.email_from_parameter,
@@ -104,5 +106,6 @@ def run(
         fire_weather=_optional_file(s3, settings.bucket, settings.fire_weather_key, "fire weather"),
         web_url=settings.web_url,
         unsubscribe_url=lambda subscription: unsubscribe_url(settings.web_url, subscription),
+        place_senders=place_senders,
         now=now,
     )

@@ -20,18 +20,22 @@ from __future__ import annotations
 import hmac
 import re
 import secrets
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 import h3
 
+from alert_text import DEFAULT_LANGUAGE, pick_language
+
 CHANNELS = ("telegram", "email")
 RESOLUTION = 4
 #: A zone is a cell and its ring (7 cells); this leaves room for a few of them.
 MAX_CELLS = 60
 PENDING_TTL = timedelta(hours=24)
+#: Cells around a town that count as "near it": about 100 km.
+PLACE_RING = 2
 #: Least time between two confirmation e-mails to the same address.
 RESEND_COOLDOWN = timedelta(minutes=10)
 # Plain characters only: SES reads "Name <address>" as a display name plus an address,
@@ -69,6 +73,11 @@ class Subscription:
     confirmed_at: str | None = None
     #: What the notifier told this subscriber in the current window.
     memory: dict | None = None
+    #: "es" or "en": the language of every message this person gets.
+    language: str = DEFAULT_LANGUAGE
+    #: The town the person asked alerts about: {name, region, country, lat, lng}. Alerts are
+    #: then about fires near it, and the cells are the ones around it.
+    place: dict | None = None
 
     def to_dict(self) -> dict:
         return {**self.__dict__, "cells": list(self.cells)}
@@ -107,6 +116,12 @@ class MemoryStore:
         return list(self.items.values())
 
 
+def _clean(value: object, limit: int) -> str:
+    """Text a person can read back: trimmed, no control characters, not too long."""
+    text = "".join(ch for ch in str(value or "") if ch.isprintable()).strip()
+    return text[:limit]
+
+
 def _same(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode(), b.encode())
 
@@ -136,9 +151,14 @@ class Subscriptions:
         address: str | None,
         cells: Sequence[str],
         zone_id: str | None = None,
+        language: str | None = None,
+        place: Mapping | None = None,
     ) -> Subscription:
         if channel not in CHANNELS:
             raise InvalidSubscription("channel must be telegram or email")
+        clean_place = self._valid_place(place) if place is not None else None
+        if clean_place and not cells:
+            cells = self.cells_around(clean_place["lat"], clean_place["lng"])
         chosen = self._valid_cells(cells)
         if zone_id is not None and not _ZONE.match(zone_id):
             raise InvalidSubscription("zone_id may only hold letters, digits, - and _")
@@ -164,6 +184,8 @@ class Subscriptions:
             address=address,
             cells=chosen,
             zone_id=zone_id,
+            language=pick_language(language),
+            place=clean_place,
             status="pending",
             token=self._make_token(),
             created_at=now.isoformat(timespec="seconds"),
@@ -188,9 +210,41 @@ class Subscriptions:
         return unique
 
     def _inside(self, cell: str) -> bool:
+        return self._inside_point(*h3.cell_to_latlng(cell))
+
+    def _inside_point(self, lat: float, lng: float) -> bool:
         west, south, east, north = self.area  # type: ignore[misc]
-        lat, lng = h3.cell_to_latlng(cell)
         return south <= lat <= north and west <= lng <= east
+
+    def cells_around(self, lat: float, lng: float) -> tuple[str, ...]:
+        """The cells within about 100 km of a point, inside the monitored area."""
+        centre = h3.latlng_to_cell(lat, lng, RESOLUTION)
+        return tuple(
+            c for c in h3.grid_disk(centre, PLACE_RING) if not self.area or self._inside(c)
+        )
+
+    def _valid_place(self, place: object) -> dict:
+        """A town as the client sends it, cleaned: the name is shown back to the person."""
+        if not isinstance(place, Mapping):
+            raise InvalidSubscription("place must be an object with a name and a position")
+        name = _clean(place.get("name"), 80)
+        if not name:
+            raise InvalidSubscription("a place needs a name")
+        try:
+            lat, lng = round(float(place["lat"]), 2), round(float(place["lng"]), 2)
+        except (KeyError, TypeError, ValueError):
+            raise InvalidSubscription("a place needs a latitude and a longitude") from None
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise InvalidSubscription("a place needs a latitude and a longitude")
+        if self.area and not self._inside_point(lat, lng):
+            raise InvalidSubscription("this place is outside the monitored area")
+        return {
+            "name": name,
+            "region": _clean(place.get("region"), 60),
+            "country": _clean(place.get("country"), 60),
+            "lat": lat,
+            "lng": lng,
+        }
 
     # ---------- confirming ----------
 
@@ -228,7 +282,9 @@ class Subscriptions:
             if same and other.id != kept.id and other.status == "confirmed":
                 self.store.delete(other.id)
 
-    def confirm_telegram(self, subscription_id: str, chat_id: int | str) -> Subscription | None:
+    def confirm_telegram(
+        self, subscription_id: str, chat_id: int | str, language: str | None = None
+    ) -> Subscription | None:
         """The bot saw `/start <id>` from `chat_id`: that chat is the subscriber."""
         chat = str(chat_id)
         if not _CHAT_ID.match(chat):
@@ -242,12 +298,30 @@ class Subscriptions:
         confirmed = replace(
             found,
             address=chat,
+            # The app of the person who pressed Start says their language better than the site did.
+            language=pick_language(language) if language else found.language,
             status="confirmed",
             confirmed_at=self._now().isoformat(timespec="seconds"),
             expires_at=None,
         )
         self.store.put(confirmed)
         self._drop_others(confirmed)
+        return confirmed
+
+    def subscribe_place(
+        self, chat_id: int | str, place: Mapping, language: str | None = None
+    ) -> Subscription:
+        """A Telegram chat said which town it wants alerts about: that is the whole sign-up.
+
+        Writing to the bot is the double opt-in, so the subscription is born confirmed. It
+        replaces whatever that chat had before (see `_drop_others`).
+        """
+        chat = str(chat_id)
+        if not _CHAT_ID.match(chat):
+            raise InvalidSubscription("not a chat")
+        pending = self.create("telegram", None, (), language=language, place=place)
+        confirmed = self.confirm_telegram(pending.id, chat, language)
+        assert confirmed is not None
         return confirmed
 
     # ---------- leaving ----------

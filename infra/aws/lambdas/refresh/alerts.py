@@ -231,14 +231,39 @@ def send_email(ses, sender: str, recipients: list[str], subject: str, text: str)
     return sent
 
 
-def send_telegram(post: Post, token: str, chat_id: str, text: str) -> None:
+def send_telegram(
+    post: Post, token: str, chat_id: str, text: str, reply_markup: dict | None = None
+) -> None:
     # Plain text on purpose: no parse_mode means nothing in the text needs escaping.
-    answer = post(
-        f"{TELEGRAM_API}/bot{token}/sendMessage",
-        {"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
-    )
+    body: dict = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+    if reply_markup:
+        body["reply_markup"] = reply_markup
+    answer = post(f"{TELEGRAM_API}/bot{token}/sendMessage", body)
     if not answer.get("ok"):
         raise AlertError(f"Telegram refused the message: {answer.get('description', '?')}")
+
+
+def answer_telegram_button(post: Post, token: str, callback_id: str) -> None:
+    """Stops the spinner on a button the person pressed; Telegram wants every press answered."""
+    post(f"{TELEGRAM_API}/bot{token}/answerCallbackQuery", {"callback_query_id": callback_id})
+
+
+def send_telegram_venue(
+    post: Post, token: str, chat_id: str, lat: float, lng: float, title: str, address: str
+) -> None:
+    """A pin on a map with a name, which Telegram opens in the phone's map app."""
+    answer = post(
+        f"{TELEGRAM_API}/bot{token}/sendVenue",
+        {
+            "chat_id": chat_id,
+            "latitude": lat,
+            "longitude": lng,
+            "title": title,
+            "address": address,
+        },
+    )
+    if not answer.get("ok"):
+        raise AlertError(f"Telegram refused the location: {answer.get('description', '?')}")
 
 
 def _http_post(

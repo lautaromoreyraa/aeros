@@ -147,9 +147,17 @@ def build_report(days: list[Day], clim: Climatology | None, generated_at: dateti
 
     import h3
 
-    observed = Counter(
-        h3.latlng_to_cell(lat, lon, clim.resolution) for d in data_days for lat, lon in d.points
-    )
+    observed: Counter = Counter()
+    # Sum of the coordinates of this window's detections per cell: their mean says where, inside
+    # a 20 km cell, the fire is, which is what a person wants to see on a map.
+    sums: dict[str, list[float]] = {}
+    for d in data_days:
+        for lat, lon in d.points:
+            cell = h3.latlng_to_cell(lat, lon, clim.resolution)
+            observed[cell] += 1
+            total = sums.setdefault(cell, [0.0, 0.0])
+            total[0] += lat
+            total[1] += lon
     for cell in clim.static_cells:
         observed.pop(cell, None)
     if clim.domain is not None:
@@ -166,7 +174,9 @@ def build_report(days: list[Day], clim: Climatology | None, generated_at: dateti
         history = clim.by_cell.get(cell, {})
         scored = _score(count, statistics.median(history.get(y, 0.0) for y in clim.years))
         if scored["p_value"] < ALPHA and count > scored["expected"]:
-            flagged.append({"cell": cell, **scored})
+            n = observed[cell]
+            where = {"lat": round(sums[cell][0] / n, 2), "lng": round(sums[cell][1] / n, 2)}
+            flagged.append({"cell": cell, **scored, **where})
     report["cells"] = sorted(flagged, key=lambda c: (c["p_value"], -c["observed"], c["cell"]))
     return report
 
