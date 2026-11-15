@@ -149,6 +149,122 @@ def venue_text(language: str, name: str) -> tuple[str, str]:
     return "Zona con mucho fuego (aproximada)", f"{name} · dentro de unos 20 km"
 
 
+# ---------- a possible fire, as GOES-19 sees it ----------
+
+
+def _minutes_ago(last_seen: str, now: datetime, language: str) -> str:
+    """ "hace unos 15 minutos": relative, so nobody has to convert a time zone."""
+    try:
+        seen = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return ""
+    minutes = max(0, round((now - seen).total_seconds() / 60))
+    if minutes < 5:
+        return "a few minutes ago" if language == "en" else "hace pocos minutos"
+    if minutes < 90:
+        step = 5 * round(minutes / 5)
+        return f"about {step} minutes ago" if language == "en" else f"hace unos {step} minutos"
+    hours = round(minutes / 60)
+    return f"about {hours} hours ago" if language == "en" else f"hace unas {hours} horas"
+
+
+def fire_pin_text(language: str, offset: tuple[float, float, str]) -> tuple[str, str]:
+    """Title and address of the map pin of a possible fire; GOES places it within a few km."""
+    if language == "en":
+        return "Possible fire (approximate)", targeting.offset_en(*offset).rstrip(".")
+    where = _offset(*offset)
+    return "Posible incendio (ubicación aproximada)", where[0].upper() + where[1:]
+
+
+def fire_message(
+    fires: list[tuple[Mapping, tuple[float, float, str]]],
+    language: str = DEFAULT_LANGUAGE,
+    *,
+    scans: int,
+    now: datetime,
+    wind: targeting.Wind | None = None,
+    web_url: str = "",
+    unsubscribe: str = "",
+    pins: bool = False,
+    map_links: bool = False,
+    max_fires: int = 3,
+) -> tuple[str, str]:
+    """(subject, text) of a possible fire near one subscriber; `fires` come nearest first.
+
+    Each fire is a cell of `goes_latest.json` with the (km, bearing, label) from the person.
+    It says plainly that it may be a controlled burn: GOES sees heat, not its cause.
+    """
+    first, offset = fires[0]
+    ago = _minutes_ago(first.get("last_seen", ""), now, language)
+    seen = first.get("confident_scans") or 2
+    if language == "en":
+        where = targeting.offset_en(*offset).rstrip(".")
+        lines = [
+            "Possible fire near you",
+            f"The GOES-19 satellite sees active fire {where[0].lower() + where[1:]}, "
+            f"in {seen} of its last {scans} scans (one every 10 minutes)."
+            + (f" Last seen {ago}." if ago else ""),
+        ]
+        for _entry, other in fires[1:max_fires]:
+            lines.append(f"• Also: {targeting.offset_en(*other)}")
+        if len(fires) > max_fires:
+            lines.append(f"• and {len(fires) - max_fires} more nearby.")
+        if map_links:
+            lines.append(f"See it on a map: {targeting.map_link(*targeting.place_of(first))}")
+        if pins:
+            lines.append("The approximate location follows on a map.")
+        if wind is not None and wind.speed_kmh >= 1:
+            lines += ["", f"The wind blows {targeting.describe_wind(wind)}."]
+        lines += [
+            "",
+            "What to do:",
+            "• Do not light fires or burn grass or rubbish.",
+            "• If you see smoke or fire, call your local fire brigade at once.",
+            "• If there is smoke nearby, close the windows and avoid effort outdoors.",
+            "",
+            "This is an automatic alert from satellites: the location is approximate (a few km) "
+            "and it may be a controlled burn. It does not confirm a fire.",
+        ]
+        if web_url:
+            lines.append(f"Map: {web_url}")
+        if unsubscribe:
+            lines.append(f"To stop these alerts: {unsubscribe}")
+        return f"Possible fire {where[0].lower() + where[1:]}", "\n".join(lines)
+
+    where = _offset(*offset)
+    lines = [
+        "🔥 Posible incendio cerca de usted",
+        f"El satélite GOES-19 detecta fuego activo {where}, en {seen} de sus últimas "
+        f"{scans} pasadas (pasa cada 10 minutos)." + (f" Última detección: {ago}." if ago else ""),
+    ]
+    for _entry, other in fires[1:max_fires]:
+        lines.append(f"• También: {_offset(*other)}.")
+    if len(fires) > max_fires:
+        extra = len(fires) - max_fires
+        lines.append(f"• y {extra} {'foco más' if extra == 1 else 'focos más'} cerca.")
+    if map_links:
+        lines.append(f"Verlo en el mapa: {targeting.map_link(*targeting.place_of(first))}")
+    if pins:
+        lines.append("Abajo le mando la ubicación aproximada en el mapa.")
+    if wind is not None and wind.speed_kmh >= 1:
+        lines += ["", _wind(wind)]
+    lines += [
+        "",
+        "Qué conviene hacer:",
+        "• No haga fuego, no queme pastos ni basura y no tire colillas.",
+        "• Si ve humo o fuego, avise de inmediato a los bomberos de su zona.",
+        "• Si hay humo cerca, cierre las ventanas y evite el esfuerzo al aire libre.",
+        "",
+        "Es un aviso automático calculado con satélites: la ubicación es aproximada (unos "
+        "pocos km) y puede tratarse de una quema controlada. No confirma un incendio.",
+    ]
+    if web_url:
+        lines.append(f"Mapa: {web_url}")
+    if unsubscribe:
+        lines.append(f"Para dejar de recibir estos avisos: {unsubscribe}")
+    return f"Posible incendio {where}", "\n".join(lines)
+
+
 def _format_es(
     match: targeting.Match,
     report: Mapping,

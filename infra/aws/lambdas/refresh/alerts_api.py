@@ -247,16 +247,17 @@ _PAGES = {
     "es": {
         "confirmed": (
             "Ya está suscripto",
-            "Le vamos a mandar un correo cuando se detecte mucho más fuego de lo habitual cerca "
-            "de su zona. Cada mensaje trae un enlace para dejar de recibirlos.",
+            "Le vamos a mandar un correo cuando el satélite detecte un posible incendio cerca "
+            "de su zona, como mucho uno cada 12 horas. Cada mensaje trae un enlace para dejar "
+            "de recibirlos.",
         ),
         "stopped": ("Avisos cancelados", "No le vamos a mandar más avisos a esta dirección."),
     },
     "en": {
         "confirmed": (
             "You are subscribed",
-            "You will get an e-mail when a fire above its normal burns near your area. "
-            "Every message has a link to stop them.",
+            "You will get an e-mail when the satellite sees a possible fire near your area, "
+            "at most one every 12 hours. Every message has a link to stop them.",
         ),
         "stopped": ("Alerts stopped", "You will not get more alerts at this address."),
     },

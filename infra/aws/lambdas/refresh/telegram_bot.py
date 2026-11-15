@@ -12,8 +12,14 @@ The bot only talks in private chats and understands:
 * the name of a town, written as a plain message: that is the whole sign-up. One match
   subscribes the chat; several show a button each, and pressing one subscribes it. The bot
   never asks for a location: the person says where they live.
+* `/start` alone, `/ayuda` or `/help`: the guide, which says what aeros is, what it
+  will warn about and how often, and how to start (or what the chat already gets).
+* `/zona` or `/zone`: which town or area the chat gets alerts about.
 * `/stop`: ends every subscription of that chat.
-* anything else: how to use it.
+* any other command: a short pointer to the guide.
+
+There is no account or login: Telegram already says who is writing, so the chat is the
+identity, and asking a neighbour for anything more is a reason for them to give up.
 
 The webhook must be registered allowing `message` and `callback_query` updates.
 
@@ -32,11 +38,20 @@ from dataclasses import dataclass
 
 import places
 from alert_text import pick_language
-from subscriptions import InvalidSubscription, Subscriptions
+from subscriptions import InvalidSubscription, Subscription, Subscriptions
 
 logger = logging.getLogger()
 
 SECRET_HEADER = "x-telegram-bot-api-secret-token"
+#: Commands by name, in both languages; any other command gets the short help.
+_COMMANDS = {
+    "start": "start",
+    "stop": "stop",
+    "ayuda": "guide",
+    "help": "guide",
+    "zona": "zone",
+    "zone": "zone",
+}
 # What Telegram allows in the payload of a /start link.
 _PAYLOAD = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -82,7 +97,7 @@ def secret_is_valid(headers: Mapping[str, str], expected: str | None) -> bool:
 
 @dataclass(frozen=True)
 class Command:
-    kind: str  # "start", "stop", "help" or "ignore"
+    kind: str  # "start", "guide", "zone", "stop", "help", "search", "pick" or "ignore"
     chat_id: int | None = None
     payload: str = ""
     #: What Telegram says the language of the person's app is, like "es-AR".
@@ -114,46 +129,133 @@ def parse(update: Mapping) -> Command:
     name = head[1:].split("@")[0].lower()  # "/start@AerosBot" in a chat with several bots
     payload = rest.strip()
     return Command(
-        {"start": "start", "stop": "stop"}.get(name, "help"),
+        _COMMANDS.get(name, "help"),
         chat["id"],
         payload if _PAYLOAD.match(payload) else "",
         language,
     )
 
 
-def _where(web_url: str, language: str) -> str:
-    if not web_url:
-        return ""
-    return f" en {web_url}" if language == "es" else f" at {web_url}"
+def _guide(web_url: str, language: str, status: str) -> str:
+    """What the bot is and how to use it: the first thing a person reads after pressing Start.
+
+    Short blocks with a question each, because it is read on a phone by neighbours, not
+    analysts. `status` closes it: how to start, or what the chat already gets.
+    """
+    if language == "en":
+        lines = [
+            "Hello. I am the aeros fire alert bot.",
+            "",
+            "What is aeros?",
+            "A system that watches the Gran Chaco (Argentina, Paraguay and Bolivia) with "
+            "satellites. The GOES-19 weather satellite looks at it every 10 minutes and "
+            "sees the heat of a fire.",
+            "",
+            "What will I warn you about?",
+            "A possible fire within about 50 km of your town: your area of the map and the "
+            "neighbouring one. The alert says how far and which way, which way the wind blows "
+            "and what to do. The location is approximate and it may be a controlled burn: it "
+            "does not confirm a fire and does not replace the fire brigade.",
+            "",
+            "How often?",
+            "Only when there is a possible fire near you, and at most one message every 12 "
+            "hours. If nothing burns, I do not write.",
+            "",
+            status,
+            "",
+            "Commands:",
+            "/zone - see which town you get alerts about",
+            "/stop - stop the alerts",
+            "/help - show this message again",
+        ]
+        if web_url:
+            lines.append(f"Map of the Gran Chaco: {web_url}")
+        return "\n".join(lines)
+    lines = [
+        "Hola. Soy el bot de avisos de incendios de aeros.",
+        "",
+        "¿Qué es aeros?",
+        "Un sistema que vigila el Gran Chaco (Argentina, Paraguay y Bolivia) con satélites. "
+        "El satélite meteorológico GOES-19 lo mira cada 10 minutos y detecta el calor de "
+        "un fuego.",
+        "",
+        "¿Qué le voy a avisar?",
+        "Un posible incendio a menos de unos 50 km de su localidad: su zona del mapa y la "
+        "vecina. El aviso le dice a qué distancia y hacia dónde, hacia dónde sopla el viento "
+        "y qué conviene hacer. La ubicación es aproximada y puede ser una quema controlada: "
+        "no confirma un incendio ni reemplaza a los bomberos.",
+        "",
+        "¿Cada cuánto?",
+        "Solo cuando hay un posible incendio cerca, y como mucho un mensaje cada 12 horas. "
+        "Si no se quema nada, no le escribo.",
+        "",
+        status,
+        "",
+        "Comandos:",
+        "/zona - ver para qué localidad recibe avisos",
+        "/stop - dejar de recibir avisos",
+        "/ayuda - volver a ver este mensaje",
+    ]
+    if web_url:
+        lines.append(f"Mapa del Gran Chaco: {web_url}")
+    return "\n".join(lines)
 
 
-def _welcome(web_url: str, language: str) -> str:
-    where = _where(web_url, language)
+def _how_to_start(language: str) -> str:
     if language == "en":
         return (
-            "aeros fire alerts for the Gran Chaco. Write the name of your town (for example: "
-            f"Resistencia) and I will alert you when there is much more fire than usual near it. "
-            f"You can also pick your area on the map{where}. Send /stop to end your alerts."
+            "To start, write the name of your town, for example: Resistencia, or "
+            "Villa Ángela, Chaco. You do not need to sign up or share your location: I only "
+            "keep this chat and the town you choose."
         )
     return (
-        "Avisos de incendios de aeros para el Gran Chaco. Escriba el nombre de su localidad "
-        "(por ejemplo: Resistencia) y le aviso cuando haya mucho más fuego de lo habitual cerca. "
-        f"También puede elegir su zona en el mapa{where}. "
-        "Envíe /stop cuando quiera dejar de recibirlos."
+        "Para empezar, escriba el nombre de su localidad, por ejemplo: Resistencia, o "
+        "Villa Ángela, Chaco. No necesita registrarse ni compartir su ubicación: solo guardo "
+        "este chat y la localidad que elija."
+    )
+
+
+def _zone(subscription: Subscription | None, language: str) -> str:
+    """What a chat gets alerts about, or how to start when it gets none."""
+    if subscription is None:
+        if language == "en":
+            return "You get no alerts in this chat yet. " + _how_to_start(language)
+        return "Todavía no recibe avisos en este chat. " + _how_to_start(language)
+    if subscription.place:
+        town = places.label(subscription.place)
+        if language == "en":
+            return (
+                f"You get alerts about fire near {town} (up to about 50 km). "
+                "To change town, write another name. Send /stop to end the alerts."
+            )
+        return (
+            f"Recibe avisos de fuego cerca de {town} (hasta unos 50 km). "
+            "Para cambiar de localidad, escriba otro nombre. "
+            "Envíe /stop para dejar de recibirlos."
+        )
+    areas = len(subscription.cells)
+    if language == "en":
+        return (
+            f"You get alerts about the {'area' if areas == 1 else 'areas'} you picked on the "
+            "map. To use a town instead, write its name. Send /stop to end the alerts."
+        )
+    return (
+        f"Recibe avisos de {'la zona' if areas == 1 else 'las zonas'} que eligió en el mapa. "
+        "Para usar una localidad, escriba su nombre. Envíe /stop para dejar de recibirlos."
     )
 
 
 def _confirmed(cells: int, language: str) -> str:
     if language == "en":
         return (
-            f"You are subscribed: you will get an alert here when a fire above its normal "
-            f"burns near your {cells} {'cell' if cells == 1 else 'cells'}. One message per weekly "
-            "window, and another only if it gets worse. Send /stop at any time to end the alerts."
+            "You are subscribed: you will get an alert here when the satellite sees a possible "
+            f"fire in the {'area' if cells == 1 else 'areas'} you picked, at most one message "
+            "every 12 hours. Send /stop at any time to end the alerts."
         )
     return (
-        "Listo, ya está suscripto. Le vamos a escribir acá cuando se detecte mucho más fuego "
-        f"de lo habitual cerca de {'la zona' if cells == 1 else 'las zonas'} que eligió. "
-        "Es un mensaje por semana y otro solo si la situación empeora. "
+        "Listo, ya está suscripto. Le vamos a escribir acá cuando el satélite detecte un "
+        f"posible incendio en {'la zona' if cells == 1 else 'las zonas'} que eligió, como "
+        "mucho un mensaje cada 12 horas. "
         "Envíe /stop cuando quiera dejar de recibir los avisos."
     )
 
@@ -161,13 +263,13 @@ def _confirmed(cells: int, language: str) -> str:
 def _subscribed(town: str, language: str) -> str:
     if language == "en":
         return (
-            f"Done: I will alert you when there is much more fire than usual near {town} "
-            "(up to about 100 km). One message per weekly window, and another only if it gets "
-            "worse. To change town, write another name. Send /stop to end the alerts."
+            f"Done: I will alert you when the satellite sees a possible fire near {town} "
+            "(up to about 50 km), at most one message every 12 hours. To change town, write "
+            "another name. Send /stop to end the alerts."
         )
     return (
-        f"Listo: le voy a avisar cuando haya mucho más fuego de lo habitual cerca de {town} "
-        "(hasta unos 100 km). Es un mensaje por semana y otro solo si la situación empeora. "
+        f"Listo: le voy a avisar cuando el satélite detecte un posible incendio cerca de {town} "
+        "(hasta unos 50 km), como mucho un mensaje cada 12 horas. "
         "Para cambiar de localidad, escriba otro nombre. "
         "Envíe /stop cuando quiera dejar de recibir los avisos."
     )
@@ -222,10 +324,13 @@ def _stopped(ended: int, language: str) -> str:
 
 def _help(language: str) -> str:
     if language == "en":
-        return "Write the name of your town to get alerts, or send /stop to end your alerts."
+        return (
+            "Write the name of your town to get alerts. /zone shows what you get, /stop ends "
+            "the alerts and /help explains how it works."
+        )
     return (
-        "Escriba el nombre de su localidad para recibir avisos, "
-        "o envíe /stop para dejar de recibirlos."
+        "Escriba el nombre de su localidad para recibir avisos. /zona muestra qué recibe, "
+        "/stop los termina y /ayuda le explica cómo funciona."
     )
 
 
@@ -303,8 +408,13 @@ def handle(
         else:
             # The reply uses what the subscription now says, which is this person's app language.
             outcome, text = "confirmed", _confirmed(len(confirmed.cells), confirmed.language)
-    elif command.kind == "start":
-        outcome, text = "welcome", _welcome(web_url, language)
+    elif command.kind in ("start", "guide"):
+        current = subscriptions.of_chat(chat)
+        status = _how_to_start(language) if current is None else _zone(current, language)
+        outcome, text = "welcome", _guide(web_url, language, status)
+    elif command.kind == "zone":
+        current = subscriptions.of_chat(chat)
+        outcome, text = ("zone" if current else "no_zone"), _zone(current, language)
     elif command.kind == "stop":
         ended = subscriptions.unsubscribe_chat(chat)
         outcome, text = "stopped", _stopped(ended, language)

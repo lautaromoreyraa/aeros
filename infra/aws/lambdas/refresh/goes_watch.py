@@ -24,6 +24,9 @@ What may raise an alert:
 A cell is told once and again only after QUIET_HOURS without being told, so a
 fire that burns all afternoon is one message, not eighteen. The memory is a
 small JSON object in the data bucket, written only after a channel delivered.
+
+Subscribers are told too (see `fire_alerts`): each one about the persistent
+cells within 50 km of their town, at most once every 12 hours.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import alerts
+import subscriber_alerts
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -106,6 +110,8 @@ class Settings:
     output_key: str
     cells_key: str | None
     alert_settings: alerts.AlertSettings | None
+    #: Subscribers hear about a fire near them; None when the table is not configured.
+    subscriber_settings: subscriber_alerts.SubscriberSettings | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -124,6 +130,7 @@ class Settings:
             output_key=os.environ["GOES_LATEST_KEY"],
             cells_key=os.environ.get("CELLS_KEY") or None,
             alert_settings=base,
+            subscriber_settings=subscriber_alerts.SubscriberSettings.from_environment(),
         )
 
 
@@ -229,9 +236,14 @@ def summarize(
     cells = []
     for cell, group in by_cell.items():
         confident_scans = {p.scan_start for p in group if p.confident}
+        # Where it burns: the mean of the confident pixels, which a subscriber's distance and
+        # map pin use instead of the centre of a 25 km cell.
+        located = [p for p in group if p.confident] or group
         cells.append(
             {
                 "cell": cell,
+                "lat": round(sum(p.latitude for p in located) / len(located), 3),
+                "lng": round(sum(p.longitude for p in located) / len(located), 3),
                 "pixels": len(group),
                 "confident_pixels": sum(p.confident for p in group),
                 "confident_scans": len(confident_scans),
@@ -309,6 +321,7 @@ def handler(
     domain: Domain | None = None,
     post: alerts.Post | None = None,
     now: datetime | None = None,
+    subscriptions_store=None,
 ) -> dict:
     settings = settings or Settings.from_environment()
     if s3 is None or ssm is None:
@@ -362,7 +375,29 @@ def handler(
         except Exception:
             logger.exception("GOES alert failed")
             summary["alerts"] = "failed"
+    if settings.subscriber_settings and summary["persistent_cells"]:
+        # Independent of the fixed list: each subscriber has their own memory.
+        try:
+            summary["subscribers"] = subscriber_alerts.run(
+                report,
+                settings.subscriber_settings,
+                store=subscriptions_store or _dynamo_store(),
+                s3=s3,
+                ssm=ssm,
+                ses=ses,
+                post=post,
+                now=now,
+            )
+        except Exception:
+            logger.exception("subscriber fire alert failed")
+            summary["subscribers"] = "failed"
     return summary
+
+
+def _dynamo_store():
+    from dynamo_store import DynamoStore
+
+    return DynamoStore.from_environment()
 
 
 def notify(report: dict, settings: Settings, *, s3, ssm, ses, post, now: datetime) -> dict:

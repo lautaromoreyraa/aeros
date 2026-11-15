@@ -82,7 +82,7 @@ describe("subscriptions table", () => {
     const users: Array<[Template, string]> = [
       [web, "alerts_api.handler"],
       [refresh, "alerts_api.webhook"],
-      [refresh, "refresh.handler"],
+      [refresh, "goes_watch.handler"],
     ];
     for (const [template, handler] of users) {
       const found = statementsOfHandler(template, handler).filter((s) =>
@@ -195,18 +195,25 @@ describe("Telegram webhook", () => {
   });
 });
 
-describe("the daily refresh notifies subscribers", () => {
-  it("knows the table and the optional wind and fire-weather files", () => {
+describe("the GOES watch notifies subscribers", () => {
+  it("knows the table and the optional wind file", () => {
     refresh.hasResourceProperties("AWS::Lambda::Function", {
-      Handler: "refresh.handler",
+      Handler: "goes_watch.handler",
       Environment: {
         Variables: Match.objectLike({
           SUBSCRIPTIONS_TABLE: Match.anyValue(),
           WIND_KEY: "derived/wind.json",
-          FIRE_WEATHER_KEY: "derived/fire_weather.json",
         }),
       },
     });
+  });
+
+  it("leaves the daily refresh to the fixed list", () => {
+    const daily = Object.values(
+      refresh.findResources("AWS::Lambda::Function", { Properties: { Handler: "refresh.handler" } }),
+    );
+    expect(daily).toHaveLength(1);
+    expect(daily[0]!.Properties.Environment.Variables.SUBSCRIPTIONS_TABLE).toBeUndefined();
   });
 });
 
