@@ -40,10 +40,11 @@ import os
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import alerts
+import fire_alerts
 import fire_check
 import places
 import sms
@@ -68,6 +69,10 @@ MAX_BODY_BYTES = 8 * 1024
 #: Pending sign-ups across everyone: a floor against somebody filling the table
 #: or using the confirmation e-mail to write to strangers.
 MAX_PENDING = 200
+#: Most SMS sign-ups in an hour. Each one sends a billed text from one phone to a number
+#: nobody proved to own, so this is the ceiling on what the open form can be used for.
+MAX_SMS_SIGN_UPS = 30
+SMS_WINDOW = timedelta(hours=1)
 
 Reply = Callable[..., None]  # (chat_id, text, reply_markup=None)
 Find = Callable[[str, str], list[dict]]  # (query, language) -> towns
@@ -222,6 +227,10 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
     channel = request.get("channel")
     if channel == "email" and deps.send_mail is None:
         return _json(503, {"error": "e-mail alerts are not available yet"})
+    if channel == "sms" and deps.send_sms is None:
+        return _json(503, {"error": "SMS alerts are not available yet"})
+    if channel == "sms" and deps.subscriptions.recent_sms_sign_ups(SMS_WINDOW) >= MAX_SMS_SIGN_UPS:
+        return _json(429, {"error": "too many SMS sign-ups right now; try again later"})
 
     try:
         subscription = deps.subscriptions.create(
@@ -234,7 +243,8 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
         )
     except Cooldown:
         if channel == "sms":
-            return _json(429, {"error": "a confirmation text was just sent; wait a few minutes"})
+            # Says nothing about the number: not whether it is subscribed, nor that it left.
+            return _json(429, {"error": "this number cannot be signed up right now; try later"})
         return _json(429, {"error": "a confirmation e-mail was just sent; wait a few minutes"})
     except InvalidSubscription as exc:
         return _json(400, {"error": str(exc)})
@@ -246,17 +256,25 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
         return _json(202, answer)
 
     if subscription.channel == "sms":
-        if deps.send_sms is None:
-            deps.subscriptions.store.delete(subscription.id)
-            return _json(503, {"error": "SMS alerts are not available yet"})
+        # No reply is asked for: the number is subscribed and this one text tells it so.
+        town = (subscription.place or {}).get("name")
         try:
             assert deps.send_sms is not None and subscription.address
-            deps.send_sms(subscription.address, sms.confirmation(subscription.language))
+            deps.send_sms(
+                subscription.address,
+                sms.welcome(subscription.language, town, fire_alerts.FIRE_RADIUS_KM),
+            )
         except Exception as exc:
+            # The person never heard of it, so the subscription must not stay.
             deps.subscriptions.store.delete(subscription.id)
-            logger.error("confirmation text failed: %s", type(exc).__name__)
-            return _json(503, {"error": "could not send the confirmation text"})
-        return _json(202, answer)
+            logger.error("welcome text failed: %s", type(exc).__name__)
+            return _json(503, {"error": "could not send the text to this number"})
+        deps.subscriptions.replace_older(subscription)
+        # The town goes back so the page can show which one the area code gave.
+        subscribed: dict = {"id": subscription.id, "status": "subscribed"}
+        if subscription.place:
+            subscribed["place"] = subscription.place
+        return _json(201, subscribed)
 
     try:
         assert deps.send_mail is not None and subscription.address

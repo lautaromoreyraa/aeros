@@ -1,11 +1,20 @@
 """Alert subscriptions: who asked to hear about fires near which cells.
 
 A subscription keeps a channel, an address and the cells chosen, and nothing
-else about the person. It is born pending and only counts once confirmed, with
-a double opt-in on every channel: the person presses Start in the Telegram bot,
-follows the link e-mailed to the address, or replies YES to the SMS. A pending one
-expires after a day,
-so a mistyped or malicious address never lingers.
+else about the person. On Telegram and e-mail it is born pending and only counts
+once confirmed, with a double opt-in: the person presses Start in the Telegram
+bot or follows the link e-mailed to the address. A pending one expires after a
+day, so a mistyped or malicious address never lingers.
+
+SMS asks for no reply. A phone with signal and no data cannot open a link, and
+the team chose not to make people answer a text: the number typed in the form
+is subscribed at once and gets one welcome text that says so and how to leave
+(STOP). With no town given, the town is the one of the number's area code. The
+price is that a number can be typed by someone else. So a number can only be
+signed up once every few minutes, only so many numbers can be signed up in an
+hour, the cells are always the ones around the town (never ones the form
+picked), and STOP ends it and keeps the number from being signed up again for a
+day: a "stopped" row stays behind to remember it.
 
 Telegram is the delicate one. The browser cannot know a chat id, and accepting
 one from it would let anybody subscribe somebody else's chat and make the bot
@@ -28,6 +37,7 @@ from typing import Protocol
 
 import h3
 
+import area_codes
 import sms as sms_channel
 from alert_text import DEFAULT_LANGUAGE, pick_language
 
@@ -40,8 +50,10 @@ PENDING_TTL = timedelta(hours=24)
 #: cell, about 25 km across) and the neighbouring ones, so about 50 km. `fire_alerts` measures
 #: the 50 km from the town itself; these cells are what the map draws.
 PLACE_RING = 1
-#: Least time between two confirmation e-mails to the same address.
+#: Least time between two confirmation e-mails to the same address, or two sign-ups of a phone.
+#: (STOP_BLOCK, below, is how long a phone that said STOP cannot be signed up again.)
 RESEND_COOLDOWN = timedelta(minutes=10)
+STOP_BLOCK = timedelta(hours=24)
 # Plain characters only: SES reads "Name <address>" as a display name plus an address,
 # so brackets, quotes and commas must not get through.
 _EMAIL = re.compile(r"^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$")
@@ -71,7 +83,7 @@ class Subscription:
     address: str | None
     cells: tuple[str, ...]
     zone_id: str | None
-    status: str  # "pending" or "confirmed"
+    status: str  # "pending", "confirmed", or "stopped" (a phone that said STOP)
     #: Secret of the confirmation and unsubscribe links of an e-mail subscription.
     token: str
     created_at: str
@@ -168,6 +180,22 @@ class Subscriptions:
     ) -> Subscription:
         if channel not in CHANNELS:
             raise InvalidSubscription("channel must be telegram, email or sms")
+        if channel == "sms":
+            address = normalize_phone(address)
+            if address is None:
+                raise InvalidSubscription(
+                    "a phone number in international form is needed, like +5493624000000"
+                )
+            if place is None:
+                # No town came with the number: the one of its area code stands in for it.
+                place = area_codes.town_of(address)
+                if place is None:
+                    raise InvalidSubscription(
+                        "name a town: this number's area code does not tell which one"
+                    )
+            # Always the cells around the town: whoever typed the number does not get to
+            # point somebody else's phone at cells of their choosing.
+            cells = ()
         clean_place = self._valid_place(place) if place is not None else None
         if clean_place and not cells:
             cells = self.cells_around(clean_place["lat"], clean_place["lng"])
@@ -182,17 +210,16 @@ class Subscriptions:
             # within minutes of the last: nobody may use this to flood a mailbox.
             self._replace_pending("email", address)
         elif channel == "sms":
-            address = normalize_phone(address)
-            if address is None:
-                raise InvalidSubscription(
-                    "a phone number in international form is needed, like +5493624000000"
-                )
-            # Same cooldown as e-mail: each confirmation is a billed SMS.
-            self._replace_pending("sms", address)
+            assert address is not None  # checked above
+            # Each sign-up sends a billed text to a phone nobody proved to own.
+            self._pause_phone(address)
         else:
             address = None  # set by the bot, never by the browser
 
         now = self._now()
+        stamp = now.isoformat(timespec="seconds")
+        # An SMS sign-up asks for no reply, so it counts from the start.
+        confirmed = channel == "sms"
         subscription = Subscription(
             id=self._make_id(),
             channel=channel,
@@ -201,13 +228,46 @@ class Subscriptions:
             zone_id=zone_id,
             language=pick_language(language),
             place=clean_place,
-            status="pending",
+            status="confirmed" if confirmed else "pending",
             token=self._make_token(),
-            created_at=now.isoformat(timespec="seconds"),
-            expires_at=(now + PENDING_TTL).isoformat(timespec="seconds"),
+            created_at=stamp,
+            expires_at=None if confirmed else (now + PENDING_TTL).isoformat(timespec="seconds"),
+            confirmed_at=stamp if confirmed else None,
         )
         self.store.put(subscription)
         return subscription
+
+    def replace_older(self, kept: Subscription) -> None:
+        """An SMS sign-up whose welcome text left replaces what that number had before.
+
+        Not done on creating it: if the text fails the new one is dropped, and the
+        person must still have the subscription they had.
+        """
+        for other in self.store.all():
+            same = other.channel == "sms" and other.address == kept.address
+            if same and other.id != kept.id:
+                self.store.delete(other.id)
+
+    def recent_sms_sign_ups(self, window: timedelta) -> int:
+        """How many SMS sign-ups were made in the last `window`: each one sent a text."""
+        now = self._now()
+        return sum(
+            1
+            for sub in self.store.all()
+            if sub.channel == "sms"
+            and sub.status != "stopped"
+            and now - datetime.fromisoformat(sub.created_at) < window
+        )
+
+    def _pause_phone(self, phone: str) -> None:
+        """No sign-up of a phone signed up minutes ago, or that said STOP within the day."""
+        now = self._now()
+        for old in self.store.all():
+            if old.channel != "sms" or old.address != phone:
+                continue
+            wait = STOP_BLOCK if old.status == "stopped" else RESEND_COOLDOWN
+            if now - datetime.fromisoformat(old.created_at) < wait:
+                raise Cooldown
 
     def _replace_pending(self, channel: str, address: str) -> None:
         """A new request for the same address replaces an older pending one, after a pause."""
@@ -294,10 +354,10 @@ class Subscriptions:
     def answer_sms(self, address: str, body: str) -> tuple[str, str]:
         """What a reply from this phone means, and the language to answer in.
 
-        YES confirms the pending sign-up of the number that replied, never a
-        number typed by someone else. STOP removes every SMS subscription of
-        that number. The result is one of confirmed, already, stopped, unknown
-        or ignored.
+        STOP removes every SMS subscription of the number that replied. Nothing
+        else changes anything, since a sign-up needs no reply: the answer only
+        says whether the number is subscribed. The result is one of already,
+        stopped, unknown or ignored.
         """
         phone = normalize_phone(address)
         if phone is None:
@@ -305,25 +365,11 @@ class Subscriptions:
         language = self._sms_language(phone)
         if sms_channel.is_stop(body):
             return ("stopped" if self._drop_phone(phone) else "unknown"), language
-        if sms_channel.is_yes(body):
-            pending = [
-                live
-                for sub in self.store.all()
-                if sub.channel == "sms" and sub.address == phone
-                for live in [self._live(sub.id)]
-                if live is not None and live.status == "pending"
-            ]
-            if pending:
-                pending.sort(key=lambda item: item.created_at)
-                confirmed = self._confirm(pending[-1])
-                return "confirmed", confirmed.language
-            if any(
-                sub.channel == "sms" and sub.address == phone and sub.status == "confirmed"
-                for sub in self.store.all()
-            ):
-                return "already", language
-            return "unknown", language
-        return "ignored", language
+        subscribed = any(
+            sub.channel == "sms" and sub.address == phone and sub.status == "confirmed"
+            for sub in self.store.all()
+        )
+        return ("already" if subscribed else "unknown"), language
 
     def _sms_language(self, phone: str) -> str:
         found = [
@@ -334,10 +380,30 @@ class Subscriptions:
         return max(found, key=lambda item: item.created_at).language
 
     def _drop_phone(self, phone: str) -> int:
-        gone = [sub for sub in self.store.all() if sub.channel == "sms" and sub.address == phone]
-        for sub in gone:
+        """STOP: the number's subscriptions go, and one "stopped" row remembers it asked.
+
+        Without that row, whoever typed the number could type it again a moment later.
+        """
+        rows = [sub for sub in self.store.all() if sub.channel == "sms" and sub.address == phone]
+        live = [sub for sub in rows if sub.status != "stopped"]
+        if not live:
+            return 0
+        for sub in rows:
             self.store.delete(sub.id)
-        return len(gone)
+        last = max(live, key=lambda item: item.created_at)
+        self.store.put(
+            replace(
+                last,
+                id=self._make_id(),
+                token=self._make_token(),
+                status="stopped",
+                created_at=self._now().isoformat(timespec="seconds"),
+                expires_at=None,
+                confirmed_at=None,
+                memory=None,
+            )
+        )
+        return len(live)
 
     def _confirm(self, found: Subscription) -> Subscription:
         confirmed = replace(

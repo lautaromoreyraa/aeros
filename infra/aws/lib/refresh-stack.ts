@@ -38,6 +38,7 @@ export const REFRESH_CODE_EXCLUDE = [
   "!alert_text.py",
   "!places.py",
   "!sms.py",
+  "!area_codes.py",
   // radio_relay.py stays off this list: it runs beside a field radio, not in Lambda.
 ];
 
@@ -369,7 +370,7 @@ export class RefreshStack extends Stack {
    */
   private smsWebhookFunction(props: RefreshStackProps, logGroup: logs.LogGroup): lambda.Function {
     const fn = new lambda.Function(this, "SmsWebhookHandler", {
-      description: "SMS webhook: httpSMS replies, or Twilio, confirm and end subscriptions",
+      description: "SMS webhook: a STOP reply through httpSMS or Twilio ends a subscription",
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: "alerts_api.sms_webhook",

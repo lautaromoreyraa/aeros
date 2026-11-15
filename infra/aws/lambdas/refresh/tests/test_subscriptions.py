@@ -120,20 +120,38 @@ def test_addresses_that_ses_would_read_as_a_name_plus_an_address_are_refused(ser
         service.create("email", address, [ORIGIN])
 
 
-def test_an_sms_number_is_stored_in_international_form_and_confirmed_by_reply(service, clock):
+def test_an_sms_number_is_stored_in_international_form_and_counts_with_no_reply(service, clock):
     sub = service.create("sms", "+54 9 (362) 400-0000", [ORIGIN], language="es")
-    assert sub.address == "+5493624000000" and sub.status == "pending"
+    assert sub.address == "+5493624000000" and sub.status == "confirmed"
+    assert sub.expires_at is None and sub.confirmed_at == sub.created_at
+    assert service.confirmed()[0].id == sub.id
     with pytest.raises(s.Cooldown):
         service.create("sms", "+5493624000000", [ORIGIN])
-    assert service.answer_sms("+5493624000000", "Sí, dale") == ("confirmed", "es")
-    assert service.confirmed()[0].id == sub.id
-    assert service.answer_sms("+5493624000000", "YES") == ("already", "es")
-    assert service.answer_sms("+5493624000000", "STOP") == ("stopped", "es")
+    assert service.answer_sms("+5493624000000", "hola") == ("already", "es")
+    assert service.answer_sms("+5493624000000", "Stop.") == ("stopped", "es")
     assert service.confirmed() == []
+    assert service.answer_sms("+5493624000000", "STOP") == ("unknown", "es")
+    assert service.answer_sms("not-a-number", "STOP")[0] == "ignored"
+
+
+def test_a_later_sms_sign_up_replaces_the_older_one_only_when_asked(service, clock):
+    first = service.create("sms", "+5493624000000", [ORIGIN])
     clock.advance(minutes=10)
-    again = service.create("sms", "+5493624000000", [NEIGHBOR])
-    assert service.answer_sms("not-a-number", "YES")[0] == "ignored"
-    assert service.store.get(again.id).status == "pending"
+    second = service.create("sms", "+5493624000000", [NEIGHBOR])
+    assert {sub.id for sub in service.confirmed()} == {first.id, second.id}
+    service.replace_older(second)
+    assert [sub.id for sub in service.confirmed()] == [second.id]
+
+
+def test_an_sms_sign_up_with_no_town_takes_the_one_of_the_area_code(service):
+    sub = service.create("sms", "+5493725400000", ())
+    assert sub.place["name"] == "General José de San Martín"
+    assert (sub.place["lat"], sub.place["lng"]) == (-26.54, -59.34)
+    assert len(sub.cells) == 7
+    named = {"name": "Charata", "lat": -27.21, "lng": -61.19}
+    assert service.create("sms", "+5493624111111", (), place=named).place["name"] == "Charata"
+    with pytest.raises(s.InvalidSubscription, match="name a town"):
+        service.create("sms", "+5492994000000", ())
 
 
 def test_a_short_or_local_phone_number_is_refused(service):

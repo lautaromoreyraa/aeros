@@ -233,8 +233,9 @@ export function LandingPage({ region, warning, onEnter }: Props) {
               Find your town or share your location, and choose Telegram, SMS or e-mail. Internet reaches Telegram and
               e-mail. Cellular signal without mobile data reaches SMS. Where there are no towers, one gateway that
               still has a connection can put the same short text on a LoRa radio at the post. The website does not
-              transmit that radio. You confirm first, then you hear about a possible fire within about 50 km, at most
-              once every 12 hours.
+              transmit that radio. On Telegram and e-mail you confirm first; by SMS a phone number is enough, and a
+              text tells you that you are subscribed. Then you hear about a possible fire within about 50 km, at
+              most once every 12 hours.
             </p>
           </div>
           <AlertSignup />
