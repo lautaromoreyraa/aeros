@@ -1,5 +1,6 @@
 """Command line entry point: `aeros demo`, `aeros fetch`, `aeros fetch-recent`,
-`aeros build-db`, `aeros run`, `aeros wind` and `aeros fire-weather`."""
+`aeros build-db`, `aeros run`, `aeros wind`, `aeros fire-weather`,
+`aeros fuel-conditions` and `aeros forecast`."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from aeros import (
     goes,
     grid,
     pipeline,
+    power,
     publish,
     regions,
     sectors,
@@ -48,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     run.add_argument("--unit", choices=["hotspots", "cell_days"], default="hotspots")
     run.add_argument("--split-year", type=int, default=2019)
+    run.add_argument(
+        "--conditions",
+        type=Path,
+        help="`aeros fuel-conditions` output: lets the forecast try fuel and weather",
+    )
     run.add_argument(
         "--regions",
         default="",
@@ -134,6 +141,26 @@ def main(argv: list[str] | None = None) -> int:
     fw.add_argument("--half-window", type=int, default=15, help="days around the season")
     fw.add_argument("--pause", type=float, default=20.0, help="seconds between history requests")
 
+    fuel = sub.add_parser(
+        "fuel-conditions",
+        help="soil wetness and a Hot-Dry-Windy proxy per cell and week, from NASA POWER",
+    )
+    fuel.add_argument("harmonized", type=Path, help="harmonized_cells.parquet: its cells are used")
+    fuel.add_argument("--out", type=Path, default=Path("data/processed/conditions.parquet"))
+    fuel.add_argument("--cache", type=Path, default=Path("data/raw/power"))
+    fuel.add_argument("--end", type=date.fromisoformat, default=date.today())
+    fuel.add_argument("--pause", type=float, default=0.5, help="seconds between requests")
+
+    fc = sub.add_parser(
+        "forecast",
+        help="refit the weekly forecast on a harmonized table, with and without the conditions",
+    )
+    fc.add_argument("harmonized", type=Path)
+    fc.add_argument("--conditions", type=Path, help="`aeros fuel-conditions` output")
+    fc.add_argument("--unit", choices=["hotspots", "cell_days"], default="hotspots")
+    fc.add_argument("--out", type=Path, help="write forecast.json here")
+    fc.add_argument("--compare-all", action="store_true", help="also score the soil wetness sets")
+
     check = sub.add_parser(
         "verify-archive",
         help="check every yearly country file on disk against the size FIRMS serves;"
@@ -219,6 +246,29 @@ def main(argv: list[str] | None = None) -> int:
         args.out.write_text(json.dumps(field, separators=(",", ":")))
         print(json.dumps(fireweather.summarize(field), indent=1))
         return 0
+    if args.command == "fuel-conditions":
+        cells = pd.read_parquet(args.harmonized, columns=["cell"])["cell"].unique()
+        table = power.build(
+            cells, args.end, args.cache, pause=args.pause, log=lambda m: print(m, flush=True)
+        )
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        table.to_parquet(args.out, index=False)
+        print(
+            json.dumps(
+                {"cells": int(table["cell"].nunique()), "weeks": int(table["week"].nunique())}
+            )
+        )
+        return 0
+    if args.command == "forecast":
+        harmonized = pd.read_parquet(args.harmonized)
+        conditions = pd.read_parquet(args.conditions) if args.conditions else None
+        choice = pipeline.fit_forecast(harmonized, conditions, compare_all=args.compare_all)
+        print(json.dumps(choice.comparison, indent=1))
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            payload = choice.to_json(args.unit)
+            args.out.write_text(json.dumps(payload, separators=(",", ":")))
+        return 0
     if args.command == "verify-archive":
         report = archive.verify(args.folders)
         summary = {k: len(v) for k, v in report.items()}
@@ -268,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
         unit=args.unit,
         split_year=args.split_year,
         study_regions=study,
+        conditions=pd.read_parquet(args.conditions) if args.conditions else None,
     )
     print(json.dumps(result.report.as_dict(), indent=2))
     return 0
