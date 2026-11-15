@@ -1,6 +1,7 @@
 import { Suspense, lazy, useMemo } from "react";
 import type { EarlyWarning } from "../api/types";
 import { AlertBanner } from "../components/AlertBanner";
+import { FireReport } from "../components/FireReport";
 import { FireWeatherDays } from "../components/FireWeatherDays";
 import type { RiskCell } from "../components/RiskMap";
 import { useFireWeather } from "../hooks/useFireWeather";
@@ -139,6 +140,14 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
               count, so a gap never looks like a quiet day.
             </p>
           )}
+        </section>
+
+        <section className="panel" aria-labelledby="report-title">
+          <h2 id="report-title" className="panel__title">
+            Seeing a fire?
+          </h2>
+          <p className="summary__note">Share where you are and see what the satellites saw around you.</p>
+          <FireReport />
         </section>
 
         {weather && (
