@@ -1,4 +1,4 @@
-import { aggregateCalendar, inRange } from "../util/aggregation";
+import { aggregateCalendar, closeOpenMonth, inRange } from "../util/aggregation";
 import type {
   CalendarDataSource,
   CalendarQuery,
@@ -57,7 +57,7 @@ export class StaticCalendarSource implements CalendarDataSource {
       meta,
       criticalPeriod,
       cells,
-      region: regionRecords,
+      region: closeOpenMonth(regionRecords),
       validation,
       morning,
     }));
