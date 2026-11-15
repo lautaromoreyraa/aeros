@@ -256,3 +256,14 @@ def test_a_subscription_stored_before_languages_existed_reads_as_spanish():
         "expires_at": None, "confirmed_at": None, "memory": None,
     }  # fmt: skip
     assert s.Subscription.from_dict(old).language == "es"
+
+
+def test_a_town_can_carry_a_custom_radius_km(service):
+    place_with_radius = {
+        "name": "Resistencia",
+        "lat": -27.45,
+        "lng": -58.98,
+        "radius_km": 15.0,
+    }
+    sub = service.create("email", "ana@example.com", [], place=place_with_radius)
+    assert sub.place["radius_km"] == 15.0
