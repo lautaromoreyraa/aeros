@@ -236,7 +236,10 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
           {wind && (
             <p className="terrain__legend">
               Wind at 10 m, {wind.field.hours[wind.hour]?.slice(11, 16)} UTC: faint, slow streaks are a light breeze;
-              bright, fast ones a strong wind. Data: {wind.field.source}.
+              bright, fast ones a strong wind.{" "}
+              <a className="credit-link" href="https://open-meteo.com/">
+                Weather data by Open-Meteo.com
+              </a>
             </p>
           )}
         </div>

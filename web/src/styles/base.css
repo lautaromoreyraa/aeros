@@ -49,6 +49,14 @@ button {
   text-underline-offset: 2px;
 }
 
+/* The data credits under the dashboard and the landing, one source a line. */
+.credits {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 96ch;
+  margin-top: var(--space-3);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
