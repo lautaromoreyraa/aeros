@@ -76,6 +76,11 @@
   pointer-events: none;
 }
 
+/* The map stays draggable through the legend, except for its credit link. */
+.terrain__legend a {
+  pointer-events: auto;
+}
+
 /* The dashboard of one zone, floating over the map so the terrain stays in
    view around it. */
 .terrain__panel {
@@ -143,6 +148,11 @@
 .terrain__tabpanel {
   display: grid;
   gap: var(--space-3);
+}
+
+.terrain__weather {
+  display: grid;
+  gap: var(--space-2);
 }
 
 /* The header tabs shrink and stretch on phones; these must not follow them. */

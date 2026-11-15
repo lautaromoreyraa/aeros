@@ -187,6 +187,46 @@
   font-weight: 600;
 }
 
+/* ---------- Fire weather of the next days ---------- */
+
+/* One column per day: the strip narrows as the first days pass. */
+.day-strip--weather {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+.day__level {
+  font-weight: 600;
+}
+
+/* The chip warms up with the level, and it always names the level too, so
+   the colour is never the only cue. */
+.day--fire-elevated {
+  border-color: color-mix(in srgb, #fbb61a 60%, var(--color-border));
+  background: color-mix(in srgb, #fbb61a 18%, var(--color-surface-2));
+}
+
+.day--fire-high {
+  border-color: color-mix(in srgb, #ed6925 70%, var(--color-border));
+  background: color-mix(in srgb, #ed6925 26%, var(--color-surface-2));
+}
+
+.day--fire-extreme {
+  border-color: #d7301f;
+  background: color-mix(in srgb, #d7301f 34%, var(--color-surface-2));
+}
+
+.day--fire-high .day__source,
+.day--fire-extreme .day__source {
+  color: var(--color-text);
+}
+
+/* No value for that day: absent, as a missing day of the window. */
+.day--fire-none {
+  border-style: dashed;
+}
+
 /* ---------- Tables ---------- */
 
 .table-scroll {

@@ -1,11 +1,14 @@
 import { Suspense, lazy, useMemo } from "react";
 import type { EarlyWarning } from "../api/types";
 import { AlertBanner } from "../components/AlertBanner";
+import { FireWeatherDays } from "../components/FireWeatherDays";
 import type { RiskCell } from "../components/RiskMap";
+import { useFireWeather } from "../hooks/useFireWeather";
 import type { Loadable } from "../hooks/useOutlook";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { ratioColor } from "../util/forecast";
 import { alertDecision, daysBetween, formatDay, formatPValue, windowCoverage } from "../util/earlyWarning";
+import { daysAhead, nodesNear, summarizeDays } from "../util/fireWeather";
 import { formatCount, formatPlace, formatRatio } from "../util/format";
 import { cellCenters } from "../util/geo";
 
@@ -29,6 +32,15 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
   const decision = useMemo(() => alertDecision(report), [report]);
   const context = useMemo(() => region.centers.map((cell) => cell.cell), [region.centers]);
   const centers = useMemo(() => region.centers.map((cell) => cell.center), [region.centers]);
+  const fireWeather = useFireWeather();
+  // Only the forecast points over the region count: the box around it also
+  // takes in the dry Andes, which would read as extreme every day.
+  const weather = useMemo(() => {
+    if (fireWeather.status !== "ready" || !fireWeather.data) return null;
+    const field = fireWeather.data;
+    const nodes = nodesNear(field.grid, centers);
+    return { field, areas: nodes.length, ...daysAhead(summarizeDays(field, nodes), new Date().toISOString().slice(0, 10)) };
+  }, [fireWeather, centers]);
   const places = useMemo(
     () => new Map(cellCenters(decision.cells.map((cell) => cell.cell)).map((cell) => [cell.cell, cell.center])),
     [decision.cells],
@@ -128,6 +140,31 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
             </p>
           )}
         </section>
+
+        {weather && (
+          <section className="panel" aria-labelledby="fire-weather-title">
+            <div className="panel__head">
+              <h2 id="fire-weather-title" className="panel__title">
+                {weather.stale
+                  ? "Fire weather"
+                  : `Fire weather, next ${weather.days.length === 1 ? "day" : `${weather.days.length} days`}`}
+              </h2>
+              <span className="panel__meta">Issued {formatDay(weather.field.generated_at.slice(0, 10))}</span>
+            </div>
+            <FireWeatherDays days={weather.days} label="Fire weather by day" />
+            <p className="summary__note">
+              {weather.stale && "Every day of this forecast is already past. "}
+              Each day shows the driest and windiest of the {weather.areas} forecast points over the region, ranked
+              against the same days of {weather.field.climatology.years[0]}–{weather.field.climatology.years[1]}.
+              Extreme: drier and windier than {weather.field.levels.extreme} % of them. A forecast, not a measurement.
+            </p>
+            <p className="summary__note">
+              <a className="credit-link" href="https://open-meteo.com/">
+                Weather data by Open-Meteo.com
+              </a>
+            </p>
+          </section>
+        )}
 
         {report.region && (
           <section className="panel" aria-labelledby="ew-region-title">

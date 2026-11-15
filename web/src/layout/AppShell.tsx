@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { DataCredits } from "../components/DataCredits";
 
 export type Section = "calendar" | "terrain" | "warning" | "forecast";
 
@@ -81,9 +82,12 @@ export function AppShell({ section, onSectionChange, alerting, banner, theme, on
         {children}
       </main>
       <footer className="shell__footer">
-        Hotspot counts are model outputs aggregated to H3 cells; months before 2012 are translated from MODIS to
-        VIIRS-equivalent values with a 90 % interval. The early warning and the forecast are statistical, not
-        official fire alerts.
+        <p>
+          Hotspot counts are model outputs aggregated to H3 cells; months before 2012 are translated from MODIS to
+          VIIRS-equivalent values with a 90 % interval. The early warning and the forecast are statistical, not
+          official fire alerts.
+        </p>
+        <DataCredits />
       </footer>
     </div>
   );

@@ -2,6 +2,7 @@ import { type CSSProperties, Suspense, lazy, useCallback, useEffect, useMemo, us
 import type { EarlyWarning } from "../api/types";
 import { AlertPreview } from "../components/AlertPreview";
 import { AlertSignup } from "../components/AlertSignup";
+import { DataCredits } from "../components/DataCredits";
 import { useInView } from "../hooks/useInView";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { Loadable } from "../hooks/useOutlook";
@@ -260,8 +261,11 @@ export function LandingPage({ region, warning, onEnter }: Props) {
       </main>
 
       <footer className="landing__footer">
-        Hotspot counts are model outputs aggregated to H3 cells. The early warning is statistical, not an official
-        fire alert. Earth imagery: NASA Visible Earth, Blue Marble and Black Marble.
+        <p>
+          Hotspot counts are model outputs aggregated to H3 cells. The early warning is statistical, not an official
+          fire alert. Earth imagery: NASA Visible Earth, Blue Marble and Black Marble.
+        </p>
+        <DataCredits />
       </footer>
     </div>
   );
