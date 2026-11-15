@@ -33,6 +33,7 @@ class SubscriberSettings:
     wind_key: str | None = None
     fire_weather_key: str | None = None
     email_from_parameter: str = alerts.EMAIL_FROM_PARAMETER
+    resend_key_parameter: str = alerts.RESEND_KEY_PARAMETER
     telegram_token_parameter: str = alerts.TELEGRAM_TOKEN_PARAMETER
 
     @classmethod
@@ -48,6 +49,7 @@ class SubscriberSettings:
             wind_key=env.get("WIND_KEY") or None,
             fire_weather_key=env.get("FIRE_WEATHER_KEY") or None,
             email_from_parameter=env.get("ALERT_EMAIL_FROM_PARAMETER", alerts.EMAIL_FROM_PARAMETER),
+            resend_key_parameter=env.get("ALERT_RESEND_KEY_PARAMETER", alerts.RESEND_KEY_PARAMETER),
             telegram_token_parameter=env.get(
                 "ALERT_TELEGRAM_TOKEN_PARAMETER", alerts.TELEGRAM_TOKEN_PARAMETER
             ),
@@ -85,13 +87,14 @@ def run(
     token = alerts.read_optional_parameter(ssm, settings.telegram_token_parameter)
     if token:
         senders["telegram"] = notifier.telegram_sender(post or alerts._http_post, token)
-    sender = alerts.read_optional_parameter(ssm, settings.email_from_parameter)
-    if sender:
-        if ses is None:
-            import boto3
-
-            ses = boto3.client("sesv2")
-        senders["email"] = notifier.email_sender(ses, sender)
+    send = alerts.email_sender_from_parameters(
+        ssm,
+        from_parameter=settings.email_from_parameter,
+        resend_key_parameter=settings.resend_key_parameter,
+        ses=ses,
+    )
+    if send:
+        senders["email"] = notifier.mail_sender(send)
 
     return notifier.notify(
         report,
