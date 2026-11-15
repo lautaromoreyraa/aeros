@@ -93,8 +93,9 @@ export function ForecastPage({ state, onRetry, region, theme, selection: chosen 
         <div className="notice" role="note">
           <p>
             <strong>Statistical forecast, not a guarantee.</strong> It projects how many hotspots the coming weeks are likely
-            to bring from recent activity and what these weeks usually bring. It does not know the weather, and one week in
-            ten is expected to fall outside the 90 % band.
+            to bring from recent activity, what these weeks usually bring and how dry and windy the last week was against
+            its normal (NASA POWER). It does not know the weather to come, and one week in ten is expected to fall outside
+            the 90 % band.
           </p>
         </div>
       </div>
