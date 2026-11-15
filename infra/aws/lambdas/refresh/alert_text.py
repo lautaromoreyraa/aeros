@@ -72,6 +72,16 @@ def _place(lat: float, lng: float) -> str:
     return f"{_number(abs(lat), 1)}° {south_north}, {_number(abs(lng), 1)}° {west_east}"
 
 
+def _offset(km: float, bearing_deg: float, label: str) -> str:
+    """ "a unos 75 km al noreste de Resistencia": how far and which way from the person's town."""
+    where = "la zona que eligió" if label == "zone" else label
+    if km < 5:
+        return f"muy cerca de {where}"
+    step = 5 if km < 100 else 10
+    direction = _COMPASS[round(bearing_deg / 45) % 8]
+    return f"a unos {step * round(km / step)} km al {direction} de {where}"
+
+
 def _times(ratio: float | None) -> str:
     """How many times the usual, in words a neighbour says."""
     if ratio is None or not math.isfinite(ratio) or ratio < 1.5:
@@ -152,6 +162,7 @@ def _format_es(
     pins: bool,
     map_links: bool,
     max_places: int,
+    distances: Mapping[str, tuple[float, float, str]] | None,
 ) -> tuple[str, str]:
     start, end = (report.get("window") or ["?", "?"])[:2]
     sector_of = sector_of or {}
@@ -175,7 +186,12 @@ def _format_es(
         lat, lng = targeting.place_of(entry)
         name = sector_of.get(entry["cell"], "Gran Chaco")
         # With a pin or a link the reader sees the place on a map: no coordinates to decipher.
-        where = "" if (pins or map_links) else f" (cerca de {_place(lat, lng)})"
+        if distances and entry["cell"] in distances:
+            where = f", {_offset(*distances[entry['cell']])}"
+        elif pins or map_links:
+            where = ""
+        else:
+            where = f" (cerca de {_place(lat, lng)})"
         lines.append(
             f"• {name}{where}: {_times(entry.get('ratio'))}. "
             f"Se detectaron {_number(entry['observed'])} puntos de calor desde satélite; "
@@ -232,6 +248,7 @@ def format_message(
     pins: bool = False,
     map_links: bool = False,
     max_places: int = targeting.MAX_PLACES,
+    distances: Mapping[str, tuple[float, float, str]] | None = None,
 ) -> tuple[str, str]:
     """(subject, text) for one subscriber, in their language.
 
@@ -248,8 +265,19 @@ def format_message(
     )
     if language == "en":
         return targeting.format_message(
-            match, report, map_links=map_links, max_places=max_places, **options
+            match,
+            report,
+            map_links=map_links,
+            max_places=max_places,
+            distances=distances,
+            **options,
         )
     return _format_es(
-        match, report, pins=pins, map_links=map_links, max_places=max_places, **options
+        match,
+        report,
+        pins=pins,
+        map_links=map_links,
+        max_places=max_places,
+        distances=distances,
+        **options,
     )

@@ -244,13 +244,14 @@ def test_a_failing_pin_does_not_fail_the_alert_or_make_it_repeat(caplog):
     assert again["sent"] == 0
 
 
-def test_without_a_place_sender_telegram_keeps_the_coordinates_in_the_text():
+def test_without_a_place_sender_telegram_still_says_how_far_in_words():
     service = s.Subscriptions(s.MemoryStore())
     subscribe(service, "telegram", "11")
     box = Outbox()
     run(service, report(entry(lat=-27.45, lng=-58.97)), box, place_senders=False)
     assert [e[0] for e in box.events] == ["message"]
-    assert "° S" in box.events[0][2]
+    assert "de la zona que eligió" in box.events[0][2]
+    assert "° S" not in box.events[0][2]
 
 
 def test_the_real_place_sender_names_the_pin_in_the_subscribers_language():

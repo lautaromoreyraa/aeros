@@ -149,6 +149,10 @@ def notify(
             pins=place_sender is not None,
             map_links=subscriber.channel == "email",
             max_places=PLACES_SHOWN,
+            distances={
+                e["cell"]: targeting.offset_from(subscriber, e)
+                for e in match.flagged[:PLACES_SHOWN]
+            },
         )
         try:
             sender(subscriber, subject, text)

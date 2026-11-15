@@ -28,7 +28,7 @@ class Chat:
     def __init__(self):
         self.said: list[tuple[int, str]] = []
 
-    def __call__(self, chat_id, text):
+    def __call__(self, chat_id, text, markup=None):
         self.said.append((chat_id, text))
 
 

@@ -34,6 +34,7 @@ export const REFRESH_CODE_EXCLUDE = [
   "!subscriber_alerts.py",
   "!alerts_api.py",
   "!alert_text.py",
+  "!places.py",
 ];
 
 function logGroupFor(scope: Construct, id: string): logs.LogGroup {

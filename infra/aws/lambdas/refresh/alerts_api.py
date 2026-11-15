@@ -5,9 +5,13 @@ Two Lambda handlers share this module because they share the rules:
 * `api_handler` sits behind CloudFront (origin access control) under `/api/alerts/`:
 
     POST   /api/alerts/subscriptions                    {channel, address?, cells, zone_id?}
+    GET    /api/alerts/places?q=<name>&language=<es|en>       towns called like that
     GET    /api/alerts/subscriptions/{id}/confirm?token=      e-mail link
     GET    /api/alerts/subscriptions/{id}/unsubscribe?token=  e-mail link, one click
     DELETE /api/alerts/subscriptions/{id}?token=
+
+  A sign-up names a town (`place`: {name, lat, lng}, as the places search returns it) or lists
+  cells; with a town the cells around it are derived on the server.
 
   CloudFront signs requests to the function URL, and for a POST or DELETE with
   a body it needs the browser to send `x-amz-content-sha256` (the SHA-256 of
@@ -35,7 +39,9 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 import alerts
+import places
 import telegram_bot
+from alert_text import pick_language
 from subscriptions import (
     Cooldown,
     InvalidSubscription,
@@ -47,6 +53,7 @@ from subscriptions import (
 logger = logging.getLogger()
 
 PREFIX = "/api/alerts/subscriptions"
+PLACES = "/api/alerts/places"
 #: What ids look like; anything else is a 404 before it reaches the table.
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 MAX_BODY_BYTES = 8 * 1024
@@ -54,7 +61,9 @@ MAX_BODY_BYTES = 8 * 1024
 #: or using the confirmation e-mail to write to strangers.
 MAX_PENDING = 200
 
-Reply = Callable[[int, str], None]
+Reply = Callable[..., None]  # (chat_id, text, reply_markup=None)
+Find = Callable[[str, str], list[dict]]  # (query, language) -> towns
+Answer = Callable[[str], None]
 SendMail = Callable[[str, str, str], None]  # address, subject, text
 
 
@@ -66,6 +75,10 @@ class Dependencies:
     bot_username: str | None = None
     send_mail: SendMail | None = None
     reply: Reply | None = None
+    #: Looks a town up by name; without it the bot cannot sign anyone up by town.
+    find: Find | None = None
+    #: Answers a button press on Telegram.
+    answer: Answer | None = None
     webhook_secret: str | None = None
 
 
@@ -126,6 +139,8 @@ def api_handler(event: Mapping, context=None, *, deps: Dependencies | None = Non
 
     if path == PREFIX and method == "POST":
         return _create(event, deps)
+    if path == PLACES and method == "GET":
+        return _places(query, deps)
     if path.startswith(PREFIX + "/"):
         parts = path[len(PREFIX) + 1 :].split("/")
         subscription_id, action = parts[0], parts[1] if len(parts) == 2 else ""
@@ -139,6 +154,19 @@ def api_handler(event: Mapping, context=None, *, deps: Dependencies | None = Non
         if len(parts) == 1 and method == "DELETE":
             return _unsubscribe(deps, subscription_id, token, html=False)
     return _json(404, {"error": "not found"})
+
+
+def _places(query: Mapping, deps: Dependencies) -> dict:
+    """Towns called like `q`, for the site's search box: only the name typed is looked up."""
+    if deps.find is None:
+        return _json(503, {"error": "town search is not available yet"})
+    language = pick_language(query.get("language"))
+    try:
+        found = deps.find(str(query.get("q", "")), language)
+    except places.PlacesError as exc:
+        logger.error("%s", exc)
+        return _json(502, {"error": "could not look the town up; try again in a moment"})
+    return _json(200, {"places": found})
 
 
 def _create(event: Mapping, deps: Dependencies) -> dict:
@@ -166,6 +194,7 @@ def _create(event: Mapping, deps: Dependencies) -> dict:
             request.get("cells") if isinstance(request.get("cells"), list) else [],
             request.get("zone_id") if isinstance(request.get("zone_id"), str) else None,
             request.get("language") if isinstance(request.get("language"), str) else None,
+            place=request.get("place") if isinstance(request.get("place"), dict) else None,
         )
     except Cooldown:
         return _json(429, {"error": "a confirmation e-mail was just sent; wait a few minutes"})
@@ -272,7 +301,14 @@ def webhook_handler(event: Mapping, context=None, *, deps: Dependencies | None =
     if not isinstance(update, dict) or deps.reply is None:
         return _json(200, {})
     # A storage failure raises: Telegram retries a non-200 later, which is what we want.
-    telegram_bot.handle(update, deps.subscriptions, deps.reply, web_url=deps.web_url)
+    telegram_bot.handle(
+        update,
+        deps.subscriptions,
+        deps.reply,
+        web_url=deps.web_url,
+        find=deps.find,
+        answer=deps.answer,
+    )
     return _json(200, {})
 
 
@@ -312,8 +348,12 @@ def _api_dependencies() -> Dependencies:
             assert send
             send([address], subject, text)
 
+        service = _subscriptions()
+        area = service.area
+        assert area
         _cache["api"] = Dependencies(
-            _subscriptions(),
+            service,
+            find=lambda query, language: places.search(query, language, area),
             web_url=os.environ.get("ALERT_WEB_URL", ""),
             bot_username=_parameter(ssm, "ALERT_TELEGRAM_BOT_PARAMETER"),
             send_mail=send_mail if send else None,
@@ -328,14 +368,23 @@ def _webhook_dependencies() -> Dependencies:
         ssm = boto3.client("ssm")
         token = _parameter(ssm, "ALERT_TELEGRAM_TOKEN_PARAMETER")
 
-        def reply(chat_id: int, text: str) -> None:
+        def reply(chat_id: int, text: str, markup: dict | None = None) -> None:
             assert token
-            alerts.send_telegram(alerts._http_post, token, str(chat_id), text)
+            alerts.send_telegram(alerts._http_post, token, str(chat_id), text, markup)
 
+        def answer(callback_id: str) -> None:
+            assert token
+            alerts.answer_telegram_button(alerts._http_post, token, callback_id)
+
+        service = _subscriptions()
+        area = service.area
+        assert area
         _cache["webhook"] = Dependencies(
-            _subscriptions(),
+            service,
             web_url=os.environ.get("ALERT_WEB_URL", ""),
             reply=reply if token else None,
+            find=lambda query, language: places.search(query, language, area),
+            answer=answer if token else None,
             webhook_secret=_parameter(ssm, "ALERT_TELEGRAM_WEBHOOK_SECRET_PARAMETER"),
         )
     return _cache["webhook"]

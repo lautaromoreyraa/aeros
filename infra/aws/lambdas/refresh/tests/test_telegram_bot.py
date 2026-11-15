@@ -19,9 +19,11 @@ def update(text, chat_id=42, chat_type="private", language="en"):
 class Outbox:
     def __init__(self):
         self.sent: list[tuple[int, str]] = []
+        self.markups: list[dict | None] = []
 
-    def __call__(self, chat_id, text):
+    def __call__(self, chat_id, text, markup=None):
         self.sent.append((chat_id, text))
+        self.markups.append(markup)
 
 
 @pytest.fixture
@@ -65,7 +67,8 @@ def test_a_payload_that_is_not_a_link_token_is_dropped():
 
 
 def test_only_commands_in_private_chats_are_read():
-    assert bot.parse(update("hello")).kind == "ignore"
+    assert bot.parse(update("hello")).kind == "search"  # a town being named
+    assert bot.parse(update("hello", chat_type="group")).kind == "ignore"
     assert bot.parse(update("/start abc", chat_type="group")).kind == "ignore"
     assert bot.parse(update("/start abc", chat_type="supergroup")).kind == "ignore"
     for other in (
@@ -105,9 +108,9 @@ def test_a_link_that_is_unknown_expired_or_already_taken_says_to_pick_the_area_a
 
 def test_start_without_a_link_welcomes_and_any_other_command_helps(service, outbox):
     assert bot.handle(update("/start"), service, outbox) == "welcome"
-    assert "pick it on the map" in outbox.sent[-1][1]
+    assert "Write the name of your town" in outbox.sent[-1][1]
     assert bot.handle(update("/anything"), service, outbox) == "help"
-    assert "/start" in outbox.sent[-1][1] and "/stop" in outbox.sent[-1][1]
+    assert "town" in outbox.sent[-1][1] and "/stop" in outbox.sent[-1][1]
 
 
 def test_stop_ends_the_subscriptions_of_that_chat_and_counts_them(service, outbox):
@@ -120,7 +123,7 @@ def test_stop_ends_the_subscriptions_of_that_chat_and_counts_them(service, outbo
 
 
 def test_messages_that_are_not_for_the_bot_get_no_reply(service, outbox):
-    assert bot.handle(update("hello"), service, outbox) == "ignored"
+    assert bot.handle(update("hello", chat_type="group"), service, outbox) == "ignored"
     assert bot.handle(update("/start abc", chat_type="group"), service, outbox) == "ignored"
     assert outbox.sent == []
 
@@ -128,7 +131,7 @@ def test_messages_that_are_not_for_the_bot_get_no_reply(service, outbox):
 def test_a_reply_that_fails_does_not_undo_the_subscription_or_leak_the_error(service, caplog):
     sub = service.create("telegram", None, [ORIGIN])
 
-    def broken(chat_id, text):
+    def broken(chat_id, text, markup=None):
         raise RuntimeError("POST https://api.telegram.org/bot123456:SECRET/sendMessage failed")
 
     with caplog.at_level("ERROR"):
@@ -174,4 +177,4 @@ def test_stop_and_help_in_spanish(service, outbox):
     bot.handle(update("/stop", language="es"), service, outbox)
     assert "No tenía avisos activos" in outbox.sent[-1][1]
     bot.handle(update("/ayuda", language="es"), service, outbox)
-    assert "Elija su zona" in outbox.sent[-1][1]
+    assert "Escriba el nombre de su localidad" in outbox.sent[-1][1]
