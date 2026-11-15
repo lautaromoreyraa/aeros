@@ -61,21 +61,21 @@ export default function HexMap(props: Props) {
   const fit = () => initialView(centers, container.current?.clientWidth ?? 0, container.current?.clientHeight ?? 0);
   const [viewState, setViewState] = useState<MapViewState>(() => initialView(centers, 0, 0));
 
-  // Frame the region for the map's real size, which differs a lot between a
-  // desktop column and a phone. The container can still be unsized when the
-  // map mounts (right after the intro), so the first real size wins; from
-  // then on the visitor owns the camera.
+  // Until the visitor moves the camera or a focus moves it, the map frames the
+  // region for whatever size it has; after that the camera is theirs and only
+  // Reset view hands the framing back. The observer stays connected for the
+  // map's life: the container can still be unsized when the map mounts, and it
+  // changes whenever the layout does.
+  const owned = useRef(false);
   useEffect(() => {
     const element = container.current;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       if (!entry || entry.contentRect.width === 0 || entry.contentRect.height === 0) return;
-      setViewState(fit());
-      observer.disconnect();
+      if (!owned.current) setViewState(fit());
     });
     observer.observe(element);
     return () => observer.disconnect();
-    // Runs once: re-framing on every resize would fight the visitor's camera.
   }, []);
 
   // Corners are placed on the ground, so drawing happens from straight above
@@ -94,6 +94,7 @@ export default function HexMap(props: Props) {
     const { west, south, east, north } = boundsOf(points);
     const rect = element.getBoundingClientRect();
     const viewport = new WebMercatorViewport({ width: rect.width, height: rect.height });
+    owned.current = true;
     const { longitude, latitude, zoom } = viewport.fitBounds(
       [
         [west, south],
@@ -185,7 +186,14 @@ export default function HexMap(props: Props) {
     <div ref={container} className={drawing ? "map map--drawing" : "map"}>
       <DeckGL
         viewState={viewState}
-        onViewStateChange={({ viewState: next }) => setViewState(next as MapViewState)}
+        onViewStateChange={({ viewState: next, interactionState }) => {
+          const gesture = interactionState?.isDragging || interactionState?.isPanning || interactionState?.isRotating || interactionState?.isZooming;
+          if (gesture) owned.current = true;
+          // A change without a gesture or a transition is the controller echoing
+          // the last state it knew, which can be stale against a framing we just
+          // set; taking it would put the old camera back.
+          if (gesture || interactionState?.inTransition) setViewState(next as MapViewState);
+        }}
         controller={{ doubleClickZoom: !drawing, dragRotate: !drawing }}
         layers={layers}
         getTooltip={tooltip as never}
@@ -217,7 +225,10 @@ export default function HexMap(props: Props) {
         <button
           type="button"
           className="map__button"
-          onClick={() => setViewState(fit())}
+          onClick={() => {
+            owned.current = false;
+            setViewState(fit());
+          }}
         >
           Reset view
         </button>
