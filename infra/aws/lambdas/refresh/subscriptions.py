@@ -346,6 +346,14 @@ class Subscriptions:
     def confirmed(self) -> list[Subscription]:
         return [s for s in self.store.all() if s.status == "confirmed" and s.address]
 
+    def of_chat(self, chat_id: int | str) -> Subscription | None:
+        """The confirmed subscription of a Telegram chat; `_drop_others` keeps at most one."""
+        chat = str(chat_id)
+        for subscription in self.confirmed():
+            if subscription.channel == "telegram" and subscription.address == chat:
+                return subscription
+        return None
+
     def purge_expired(self) -> int:
         """For stores without their own expiry: drops pending subscriptions past their day."""
         now = self._now()

@@ -370,9 +370,11 @@ def test_without_a_geocoder_a_message_is_just_help(service):
 
 def test_start_asks_for_the_town_and_never_for_a_location(service):
     outcome, outbox = run(service, message("/start"))
-    assert outcome == "welcome" and "Escriba el nombre de su localidad" in outbox.sent[0][1]
+    text = outbox.sent[0][1]
+    assert outcome == "welcome" and "escriba el nombre de su localidad" in text
     assert outbox.sent[0][2] is None  # no keyboard, no location button
-    assert "ubicación" not in outbox.sent[0][1]
+    # The only word about the location is that it is not needed.
+    assert text.count("ubicación") == 1 and "ni compartir su ubicación" in text
 
 
 def test_stop_ends_the_alerts_of_a_town_too(service):

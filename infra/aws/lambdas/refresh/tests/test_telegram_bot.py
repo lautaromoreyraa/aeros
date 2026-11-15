@@ -108,9 +108,83 @@ def test_a_link_that_is_unknown_expired_or_already_taken_says_to_pick_the_area_a
 
 def test_start_without_a_link_welcomes_and_any_other_command_helps(service, outbox):
     assert bot.handle(update("/start"), service, outbox) == "welcome"
-    assert "Write the name of your town" in outbox.sent[-1][1]
+    assert "write the name of your town" in outbox.sent[-1][1]
     assert bot.handle(update("/anything"), service, outbox) == "help"
     assert "town" in outbox.sent[-1][1] and "/stop" in outbox.sent[-1][1]
+    assert "/help" in outbox.sent[-1][1]  # the short help points to the guide
+
+
+# ---------- the guide and /zona ----------
+
+RESISTENCIA = {
+    "name": "Resistencia",
+    "region": "Chaco",
+    "country": "Argentina",
+    "lat": -27.45,
+    "lng": -58.98,
+}
+
+
+def test_the_guide_says_what_aeros_is_what_it_warns_about_how_often_and_how_to_start(
+    service, outbox
+):
+    bot.handle(update("/start", language="es"), service, outbox, web_url="https://aeros.example")
+    guide = outbox.sent[-1][1]
+    for part in (
+        "¿Qué es aeros?",
+        "satélites de la NASA",
+        "¿Qué le voy a avisar?",
+        "hasta unos 100 km",
+        "no confirma un incendio",
+        "¿Cada cuánto?",
+        "Como mucho un mensaje por semana",
+        "Para empezar, escriba el nombre de su localidad",
+        "No necesita registrarse ni compartir su ubicación",
+        "/zona",
+        "/stop",
+        "/ayuda",
+        "Mapa del Gran Chaco: https://aeros.example",
+    ):
+        assert part in guide, part
+    # /ayuda and /help show the same guide.
+    assert bot.handle(update("/ayuda", language="es"), service, outbox) == "welcome"
+    assert "¿Qué es aeros?" in outbox.sent[-1][1]
+    assert bot.handle(update("/help", language="en"), service, outbox) == "welcome"
+    assert "What is aeros?" in outbox.sent[-1][1] and "/zone" in outbox.sent[-1][1]
+
+
+def test_the_guide_of_a_chat_that_already_has_alerts_says_what_it_gets(service, outbox):
+    service.subscribe_place(42, RESISTENCIA, "es")
+    bot.handle(update("/start", language="es"), service, outbox)
+    guide = outbox.sent[-1][1]
+    assert "Recibe avisos de fuego cerca de Resistencia, Chaco, Argentina" in guide
+    assert "Para empezar" not in guide
+
+
+def test_zona_says_the_town_the_area_or_how_to_start(service, outbox):
+    assert bot.handle(update("/zona", language="es"), service, outbox) == "no_zone"
+    assert "Todavía no recibe avisos" in outbox.sent[-1][1]
+
+    service.subscribe_place(42, RESISTENCIA, "es")
+    assert bot.handle(update("/zona", language="es"), service, outbox) == "zone"
+    assert "cerca de Resistencia, Chaco, Argentina" in outbox.sent[-1][1]
+
+    sub = service.create("telegram", None, [ORIGIN, NEIGHBOR])
+    service.confirm_telegram(sub.id, 7)
+    assert bot.handle(update("/zone", chat_id=7), service, outbox) == "zone"
+    assert "the areas you picked on the map" in outbox.sent[-1][1]
+
+    bot.handle(update("/stop"), service, outbox)
+    assert bot.handle(update("/zona", language="es"), service, outbox) == "no_zone"
+
+
+def test_of_chat_finds_only_the_confirmed_subscription_of_that_chat(service):
+    pending = service.create("telegram", None, [ORIGIN])
+    assert service.of_chat(42) is None  # pending: nobody owns it yet
+    service.confirm_telegram(pending.id, 42)
+    assert service.of_chat(42).id == pending.id
+    assert service.of_chat("42").id == pending.id
+    assert service.of_chat(43) is None
 
 
 def test_stop_ends_the_subscriptions_of_that_chat_and_counts_them(service, outbox):
@@ -149,12 +223,12 @@ def test_a_reply_that_fails_does_not_undo_the_subscription_or_leak_the_error(ser
 
 def test_the_bot_answers_in_the_language_of_the_persons_app(service, outbox):
     assert bot.handle(update("/start", language="es-AR"), service, outbox) == "welcome"
-    assert "Avisos de incendios de aeros" in outbox.sent[-1][1]
-    assert "Envíe /stop" in outbox.sent[-1][1]
+    assert "bot de avisos de incendios de aeros" in outbox.sent[-1][1]
+    assert "/stop - dejar de recibir avisos" in outbox.sent[-1][1]
     bot.handle(update("/start", language="en-GB"), service, outbox)
-    assert "aeros fire alerts" in outbox.sent[-1][1]
+    assert "aeros fire alert bot" in outbox.sent[-1][1]
     bot.handle(update("/start", language=None), service, outbox)
-    assert "Avisos de incendios" in outbox.sent[-1][1]  # unknown language: Spanish
+    assert "bot de avisos de incendios" in outbox.sent[-1][1]  # unknown language: Spanish
 
 
 def test_confirming_in_spanish_stores_the_language_for_every_alert(service, outbox):
@@ -177,4 +251,6 @@ def test_stop_and_help_in_spanish(service, outbox):
     bot.handle(update("/stop", language="es"), service, outbox)
     assert "No tenía avisos activos" in outbox.sent[-1][1]
     bot.handle(update("/ayuda", language="es"), service, outbox)
+    assert "escriba el nombre de su localidad" in outbox.sent[-1][1]
+    bot.handle(update("/otra", language="es"), service, outbox)
     assert "Escriba el nombre de su localidad" in outbox.sent[-1][1]
