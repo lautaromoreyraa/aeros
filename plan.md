@@ -66,9 +66,21 @@ Synthetic archive with known truth (`python -m aeros demo`), kept as a method ch
 
 ```mermaid
 flowchart LR
+  subgraph GCP["GCP training gym (planned): Free Trial, disposable"]
+    GCS[("Cloud Storage: global detection store<br/>(Parquet), cell x week feature tables")]
+    BQ["BigQuery: feature joins,<br/>NOAA GSOD public weather"]
+    EE["Earth Engine:<br/>biome, land cover"]
+    TRAIN["model/ training:<br/>global historical patterns"]
+    GCS --> BQ --> TRAIN
+    EE --> BQ
+  end
   FIRMS[NASA FIRMS archive + NRT] --> PIPE[model/ pipeline]
+  PIPE -. "batch only: Parquet detection store<br/>(raw FIRMS files stay local)" .-> GCS
   PIPE --> PQ[(S3 Parquet: harmonized cells, weighted hotspots)]
   PIPE --> JSON[(S3 JSON: calendar, cells, validation, critical period, meta)]
+  TRAIN -. "batch only: aggregates,<br/>model artifacts, predictions" .-> PAT[("S3 (planned): pattern predictions,<br/>model artifacts")]
+  PAT --> NRT
+  PAT --> API
   PQ --> API[Lambda + DuckDB: /calendar, /hotspots.csv]
   JSON --> CF[CloudFront]
   API --> CF
@@ -110,6 +122,25 @@ flowchart LR
 - `infra/aws/test/free-tier.test.ts` checks, on the synthesized templates, that no billed or unavailable service appears, DynamoDB stays inside its allowance, alarms stay under ten, every function is arm64 and at most 512 MB, and that the scheduled functions, even if every run lasted its whole timeout, use at most three quarters of the monthly Lambda GB-seconds (GOES watch 4,320 runs at 2 minutes and 0.5 GB is 259,200 of 400,000).
 - The Free plan ends after six months or when its credits are spent; the account must then be upgraded, and the USD 1 alert is the early sign.
 
+### Cloud boundary: AWS serves, GCP learns
+
+Big data and machine learning are planned on Google Cloud's Free Trial; AWS keeps the app. No Google Cloud resource exists yet and nothing in the code depends on one.
+
+Data gravity decides placement: each cloud stores only what its own compute reads. Nothing crosses clouds on a request path — only batch artifacts do.
+
+| Side | Owns | Reads | Never does |
+|---|---|---|---|
+| GCP gym | Global detection store (Parquet), cell x week feature tables, training runs | Cloud Storage, BigQuery public datasets (NOAA GSOD), ERA5 in the public `gcp-public-data-arco-era5` bucket, Earth Engine exports | Serve the app; be required for the app to work; hold raw FIRMS files |
+| AWS serving | Harmonized aggregates, model artifacts, pattern predictions, alerts | S3 `DATA_LAYOUT`, Open-Meteo for current weather | Read Cloud Storage or BigQuery per request |
+
+Invariants (enforceable in review):
+
+1. The trained model, its predictions and all aggregates are S3 artifacts — GCP outputs land under `harmonized/` or `derived/` like any pipeline output.
+2. Training is re-runnable off GCP: the same `model/` package, and the Parquet store is rebuilt from the raw FIRMS files, which stay local. When the credit expires, retraining degrades to a slower local run, never to zero.
+3. The serving path (web, API, alerts) has no GCP dependency — if GCP disappeared today, the app works unchanged.
+4. Raw FIRMS files are never uploaded. Only the Parquet store and outputs go to GCP, and only aggregates, model artifacts and predictions go on to AWS.
+5. GCP stays inside the `gcp_free_trial` convention: Free Trial only (USD 300, 90 days, never upgraded to a paid account), one project, one US region (us-central1, us-east1 or us-west1), a budget alert at USD 10, CPU-only training. The gym is deleted, not downsized, when the credit runs out.
+
 ## 5. Team workflow
 
 - Branches `feature/<kebab-case>` cut from the tip of `develop`, one owner per branch.
@@ -141,7 +172,8 @@ flowchart LR
 | Wind grid | `aeros wind` writes `wind.json`: hourly 10 m wind for the next 48 hours on a 12 x 12 grid over the study box, as the two components `u` (eastward) and `v` (northward) in m/s, from the Open-Meteo forecast API (no key, CC BY 4.0). The interface draws its wind layer from it and the alert's risk zone will read the downwind direction from it; a forecast, never part of the harmonized record. Publishing it hourly from AWS waits for the account |
 | Fire weather | `aeros fire-weather` writes `fire_weather.json`: the surface Hot-Dry-Windy index (vapour pressure deficit in hPa times 10 m wind in m/s, highest hour of the day) for the next 4 days on an 8 x 8 grid over the study box, with each node's percentile against the same season of the past 10 years of ERA5, and a level (normal, elevated, high, extreme). Open-Meteo forecast and archive, no key, CC BY 4.0, so the submission credits it. A forecast model is ranked against a reanalysis: read a high rank as unusually dry and windy, not as a measured percentile |
 | AWS deploy | ready, waiting for the account: `cdk bootstrap`, `cdk deploy`, the FIRMS MAP_KEY and the Telegram parameters in Parameter Store, the Telegram `setWebhook`, and the model outputs uploaded to the data bucket. Reserved concurrency is off by default so the deploy works on a new account |
-| Biome as a model feature, Theil–Sen trend | optional |
+| Biome as a model feature, Theil–Sen trend | optional; the biome can come from the Earth Engine export of the GCP gym |
+| Global ML gym (GCP) | planned; nothing depends on GCP yet. The boundary is in section 4 and follows the decision "Google Cloud (Free Trial) for big data and ML; AWS keeps the app side". GCP holds what training reads (the global detection store in Parquet, cell x week features, NOAA GSOD via BigQuery, biome via Earth Engine); AWS holds what the app serves; raw FIRMS files stay local. An alert combines the learned pattern, the current NRT reading and the Open-Meteo weather. Steps, claimable in order: (1) global FIRMS archive downloaded locally: the yearly all-countries files 2000-2025 for MODIS, Suomi NPP and NOAA-20 (48 zips, 9.3 GB) into `data/raw/firms-global/`, the last twelve months from Archive Download orders; (2) `aeros build-db` worldwide and the Parquet store uploaded to Cloud Storage; (3) BigQuery feature table cell x week with the weather join; (4) Earth Engine biome export per H3 cell; (5) train in the gym, land the model and its pattern predictions in S3 `derived/`; (6) the NRT refresh reads the predictions — no live GCP call |
 
 ## 7. Submission checklist (Space Apps)
 
