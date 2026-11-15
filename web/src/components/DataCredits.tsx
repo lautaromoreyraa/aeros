@@ -2,7 +2,8 @@
  * Every outside source behind the app, credited the way each one asks:
  * FIRMS with NASA's acknowledgement, GOES as derived NOAA data (never as
  * NOAA's own product), Open-Meteo with its link and licence, and Copernicus
- * for the ERA5 reanalysis the fire-weather ranks are measured against.
+ * for the ERA5 reanalysis the fire-weather ranks are measured against, and
+ * GeoNames for the towns a cell is named after.
  */
 export function DataCredits() {
   return (
@@ -34,6 +35,17 @@ export function DataCredits() {
         : the wind layer comes from its forecast, and the fire-weather index and its ranks are computed from its forecast
         and ERA5 archive. Contains modified Copernicus Climate Change Service information 2026; neither the European
         Commission nor ECMWF is responsible for any use of it.
+      </p>
+      <p>
+        Place names:{" "}
+        <a className="credit-link" href="https://www.geonames.org/">
+          GeoNames
+        </a>
+        , under{" "}
+        <a className="credit-link" href="https://creativecommons.org/licenses/by/4.0/">
+          CC BY 4.0
+        </a>
+        .
       </p>
     </div>
   );
