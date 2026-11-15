@@ -151,6 +151,7 @@ def _format_es(
     fire_weather: Mapping | None,
     pins: bool,
     map_links: bool,
+    max_places: int,
 ) -> tuple[str, str]:
     start, end = (report.get("window") or ["?", "?"])[:2]
     sector_of = sector_of or {}
@@ -170,7 +171,7 @@ def _format_es(
             f"En toda la región hay {_times(region_ratio).replace('lo habitual', 'lo normal')}."
         )
     lines += ["", "Dónde:"]
-    for entry in match.flagged[: targeting.MAX_PLACES]:
+    for entry in match.flagged[:max_places]:
         lat, lng = targeting.place_of(entry)
         name = sector_of.get(entry["cell"], "Gran Chaco")
         # With a pin or a link the reader sees the place on a map: no coordinates to decipher.
@@ -184,9 +185,9 @@ def _format_es(
             lines.append(
                 f"  Ver la ubicación aproximada en el mapa: {targeting.map_link(lat, lng)}"
             )
-    if areas > targeting.MAX_PLACES:
-        extra = areas - targeting.MAX_PLACES
-        lines.append(f"• y {extra} {'zona más' if extra == 1 else 'zonas más'}.")
+    if areas > max_places:
+        extra = areas - max_places
+        lines.append(f"• y {extra} {'zona más' if extra == 1 else 'zonas más'} con mucho fuego.")
     if pins:
         lines.append("Abajo le mando la ubicación aproximada en el mapa.")
 
@@ -230,6 +231,7 @@ def format_message(
     fire_weather: Mapping | None = None,
     pins: bool = False,
     map_links: bool = False,
+    max_places: int = targeting.MAX_PLACES,
 ) -> tuple[str, str]:
     """(subject, text) for one subscriber, in their language.
 
@@ -245,5 +247,9 @@ def format_message(
         fire_weather=fire_weather,
     )
     if language == "en":
-        return targeting.format_message(match, report, map_links=map_links, **options)
-    return _format_es(match, report, pins=pins, map_links=map_links, **options)
+        return targeting.format_message(
+            match, report, map_links=map_links, max_places=max_places, **options
+        )
+    return _format_es(
+        match, report, pins=pins, map_links=map_links, max_places=max_places, **options
+    )

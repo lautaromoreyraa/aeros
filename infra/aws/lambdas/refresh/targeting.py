@@ -245,6 +245,22 @@ def reach(
     return matches
 
 
+def nearest_first(match: Match) -> Match:
+    """The same match with its zones ordered by how close they burn to the subscriber's cells.
+
+    The first zone is the one a person wants to see on a map: the fire closest to where they
+    live, not the biggest one in the region. Ties go to the stronger signal.
+    """
+    centres = [h3.cell_to_latlng(c) for c in match.subscriber.cells]
+
+    def key(entry: Mapping) -> tuple[float, float]:
+        lat, lng = place_of(entry)
+        km = min(distance_km(lat, lng, c_lat, c_lng) for c_lat, c_lng in centres)
+        return round(km, 1), -(entry.get("ratio") or 0.0)
+
+    return Match(match.subscriber, tuple(sorted(match.flagged, key=key)))
+
+
 def window_id(report: Mapping) -> str:
     start, end = (report.get("window") or ["?", "?"])[:2]
     return f"{start}/{end}"
@@ -373,6 +389,7 @@ def format_message(
     wind: Wind | None = None,
     fire_weather: Mapping | None = None,
     map_links: bool = False,
+    max_places: int = MAX_PLACES,
 ) -> tuple[str, str]:
     """(subject, text) with the fields of the interface's alert message, for one subscriber.
 
@@ -389,7 +406,7 @@ def format_message(
     subject = f"Early warning: {' and '.join(parts)}"
 
     lines = [subject, f"Window: {_day(start)} – {_day(end)}"]
-    for entry in match.flagged[:MAX_PLACES]:
+    for entry in match.flagged[:max_places]:
         lat, lng = place_of(entry)
         expected = entry["expected"]
         shown = f"{expected:.1f}" if expected < 10 else _count(expected)
@@ -400,8 +417,8 @@ def format_message(
         )
         if map_links:
             lines.append(f"  Approximate location: {map_link(lat, lng)}")
-    if areas > MAX_PLACES:
-        lines.append(f"+ {areas - MAX_PLACES} more")
+    if areas > max_places:
+        lines.append(f"+ {areas - max_places} more")
     if wind is not None and wind.speed_kmh >= 1:
         lines.append(f"Wind near the fire: {describe_wind(wind)}.")
     if fire_weather and _severity(fire_weather["level"]) > 0:

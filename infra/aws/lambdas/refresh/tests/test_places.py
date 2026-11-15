@@ -176,16 +176,41 @@ def test_a_telegram_subscriber_gets_the_message_then_one_pin_per_zone():
     assert "Abajo le mando la ubicación" in box.events[0][2]
 
 
-def test_no_more_than_three_pins_and_the_cell_centre_when_there_is_no_detection_point():
+def test_one_pin_only_and_the_others_are_counted_in_the_text():
     service = s.Subscriptions(s.MemoryStore())
     sub = service.create("telegram", None, list(h3.grid_disk(CELL, 1)))
     service.confirm_telegram(sub.id, "11")
     cells = h3.grid_disk(CELL, 1)[:5]
     box = Outbox()
     run(service, report(*[entry(c) for c in cells]), box)
-    places = box.events[1][1]
-    assert len(places) == 3
-    assert places[0][:2] == h3.cell_to_latlng(cells[0])
+    (_, places) = box.events[1]
+    assert len(places) == 1 and places[0][:2] == h3.cell_to_latlng(CELL)
+    assert "• y 4 zonas más con mucho fuego." in box.events[0][2]
+    assert box.events[0][2].count("• Gran Chaco") == 1
+
+
+FAR = h3.latlng_to_cell(-20.8, -61.2, RES)  # the strongest fire of the region, in Paraguay
+NEAR = h3.grid_ring(CELL, 2)[0]
+
+
+def test_the_zone_shown_is_the_nearest_to_the_subscriber_not_the_strongest():
+    subscriber = targeting.Subscriber("i", "telegram", "1", frozenset([CELL]))
+    both = targeting.Match(subscriber, (entry(FAR, ratio=339.7), entry(NEAR, ratio=5.0)))
+    first = targeting.nearest_first(both).flagged[0]
+    assert first["cell"] == NEAR
+    # Equally near: the stronger signal first.
+    twin = targeting.Match(subscriber, (entry(NEAR, ratio=5.0), entry(CELL, ratio=9.0)))
+    assert targeting.nearest_first(twin).flagged[0]["cell"] == CELL
+
+
+def test_the_pin_marks_the_nearest_fire_even_when_a_neighbouring_one_is_stronger():
+    service = s.Subscriptions(s.MemoryStore())
+    subscribe(service, "telegram", "11")  # subscribed to CELL only
+    box = Outbox()
+    neighbour = h3.grid_ring(CELL, 1)[0]  # its risk zone reaches CELL, and it burns much more
+    run(service, report(entry(neighbour, ratio=339.7), entry(CELL, ratio=5.0)), box)
+    (_, places) = box.events[1]
+    assert len(places) == 1 and places[0][:2] == h3.cell_to_latlng(CELL)
 
 
 def test_e_mail_gets_links_and_never_a_pin():

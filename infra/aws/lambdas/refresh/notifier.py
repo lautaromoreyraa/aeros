@@ -43,6 +43,10 @@ def telegram_sender(post: alerts.Post, token: str) -> Sender:
     return send
 
 
+#: Zones a message names and pins on a map: the one nearest to the subscriber, and a count
+#: of the others. More than one pin is a puzzle for someone who just wants to know if it is near.
+PLACES_SHOWN = 1
+
 #: Sends the pins of a message: the subscriber and the (lat, lng, name) of each zone.
 PlaceSender = Callable[[Subscription, list[tuple[float, float, str]]], None]
 
@@ -112,6 +116,7 @@ def notify(
     for match in targeting.reach(subscribers, report, zones):
         summary["reached"] += 1
         subscriber = match.subscriber
+        match = targeting.nearest_first(match)
         sender = senders.get(subscriber.channel)
         if sender is None:
             summary["no_channel"] += 1
@@ -143,6 +148,7 @@ def notify(
             fire_weather=weather,
             pins=place_sender is not None,
             map_links=subscriber.channel == "email",
+            max_places=PLACES_SHOWN,
         )
         try:
             sender(subscriber, subject, text)
@@ -159,7 +165,7 @@ def notify(
         if place_sender is not None:
             places = [
                 (*targeting.place_of(entry), (sector_of or {}).get(entry["cell"], "Gran Chaco"))
-                for entry in match.flagged[: targeting.MAX_PLACES]
+                for entry in match.flagged[:PLACES_SHOWN]
             ]
             try:
                 place_sender(subscriber, places)

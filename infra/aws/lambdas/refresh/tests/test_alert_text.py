@@ -145,7 +145,7 @@ def test_several_zones_show_the_first_three_and_count_the_rest():
     m = match(*[(c, 50, 2.0, 25.0) for c in cells])
     subject, text = spanish(m)
     assert "en 5 zonas cerca de usted" in subject
-    assert "• y 2 zonas más." in text
+    assert "• y 2 zonas más con mucho fuego." in text
 
 
 def test_a_whole_region_alert_says_so_in_plain_words():
