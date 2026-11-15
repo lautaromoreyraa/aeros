@@ -1,6 +1,6 @@
 import type { CalendarRecord, Unit } from "../api/types";
 import { criticalPeriod } from "../util/criticalPeriod";
-import { SOURCE_LABELS, formatCount, formatRatio, unitLabel } from "../util/format";
+import { SOURCE_LABELS, formatCount, formatRatio } from "../util/format";
 import { MONTH_LABELS } from "../util/months";
 import { recordAt, seasonToDate, verdictOf } from "../util/sectorKpis";
 import { VERDICT_LABELS } from "./SectorList";
@@ -30,23 +30,23 @@ export function SectorOverview({ records, unit, year, month }: Props) {
     <div className="overview">
       <p className="overview__value">
         {formatCount(record.harmonized)}
-        <span> harmonized {unitLabel(unit)}</span>
+        <span> {unit === "cell_days" ? "cell-days with fire" : "fire detections"}</span>
       </p>
       <p className="overview__interval">
-        90 % interval {formatCount(record.low)}–{formatCount(record.high)}
+        Likely between {formatCount(record.low)} and {formatCount(record.high)}
       </p>
       <p>
         <span className={`chip chip--${verdict}`}>{VERDICT_LABELS[verdict]}</span>
       </p>
       <dl className="overview__facts">
         <div>
-          <dt>Against the median of {MONTH_LABELS[month - 1]}</dt>
+          <dt>A usual {MONTH_LABELS[month - 1]}</dt>
           <dd>
-            {formatRatio(record.anomaly_ratio)} <small>median {formatCount(record.median_same_month)}</small>
+            {formatCount(record.median_same_month)} <small>this one {formatRatio(record.anomaly_ratio)} that</small>
           </dd>
         </div>
         <div>
-          <dt>Season to date</dt>
+          <dt>This fire season so far</dt>
           <dd>
             {formatCount(season.total)}
             {season.change !== null && (
@@ -59,13 +59,13 @@ export function SectorOverview({ records, unit, year, month }: Props) {
           </dd>
         </div>
         <div>
-          <dt>Critical period</dt>
+          <dt>Fire season here</dt>
           <dd>
-            {criticalLabel} <small>{Math.round(critical.share * 100)} % of a median year</small>
+            {criticalLabel} <small>when {Math.round(critical.share * 100)} % of a year's fire happens</small>
           </dd>
         </div>
         <div>
-          <dt>Seen by</dt>
+          <dt>How it was counted</dt>
           <dd>
             <small>{SOURCE_LABELS[record.source] ?? record.source}</small>
           </dd>

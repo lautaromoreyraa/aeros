@@ -112,7 +112,13 @@ export default function App() {
               </div>
             )}
             {state.data && section === "terrain" && (
-              <TerrainPage region={state.data} unit={unit} onUnitChange={setUnit} />
+              <TerrainPage
+                region={state.data}
+                unit={unit}
+                onUnitChange={setUnit}
+                earlyWarning={report}
+                alertDecision={decision}
+              />
             )}
             {state.data && section === "warning" && (
               <EarlyWarningPage state={warning.state} onRetry={warning.retry} region={state.data} theme={resolved} />

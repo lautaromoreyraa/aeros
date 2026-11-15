@@ -81,6 +81,19 @@
   pointer-events: auto;
 }
 
+/* The colour scale: what a column's colour means, at a glance. */
+.terrain__scale {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.terrain__ramp {
+  width: 96px;
+  height: 8px;
+  border-radius: 999px;
+}
+
 /* The dashboard of one zone, floating over the map so the terrain stays in
    view around it. */
 .terrain__panel {
@@ -153,6 +166,31 @@
 .terrain__weather {
   display: grid;
   gap: var(--space-2);
+}
+
+.terrain__week {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.terrain__week-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.terrain__week-status {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.4;
+}
+
+.terrain__week-status--alert {
+  color: var(--color-danger, #ef4444);
+}
+
+.terrain__week-evidence {
+  margin: 0;
 }
 
 /* The header tabs shrink and stretch on phones; these must not follow them. */

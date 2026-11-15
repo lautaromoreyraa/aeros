@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Unit } from "../api/types";
+import { gridDisk } from "h3-js";
+import type { EarlyWarning, Unit } from "../api/types";
 import { AnnualChart } from "../components/AnnualChart";
 import { CalendarHeatmap, countScaleMax, type CalendarView } from "../components/CalendarHeatmap";
 import { FireWeatherDays } from "../components/FireWeatherDays";
@@ -9,20 +10,25 @@ import { SectorOverview } from "../components/SectorOverview";
 import type { MapFocus } from "../components/HexMap";
 import { useFireWeather } from "../hooks/useFireWeather";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
+import { usePlaces } from "../hooks/usePlaces";
+import { useRememberedChoice } from "../hooks/useRememberedChoice";
 import type { LoadedRegion } from "../hooks/useRegion";
 import { useSectorCalendars } from "../hooks/useSectorCalendars";
 import { useWind } from "../hooks/useWind";
 import { cellTotals, yearlyTotals, type CellTotal } from "../util/aggregation";
 import type { Area, LngLat } from "../util/area";
-import { FIRE } from "../util/colorRamp";
+import { BLAZE, toCss } from "../util/colorRamp";
 import { criticalPeriod } from "../util/criticalPeriod";
+import type { AlertDecision } from "../util/earlyWarning";
 import { formatDay } from "../util/earlyWarning";
 import { daysAhead, nodesNear, summarizeDays } from "../util/fireWeather";
 import { unitLabel } from "../util/format";
 import { monthKey, monthOfYear, yearOf } from "../util/months";
+import { COUNTRY_NAMES, placeLabel, placeNear } from "../util/places";
 import { eraComparison, recordAt } from "../util/sectorKpis";
 import { WHOLE_REGION, cellsOfSector, demoSectors } from "../util/sectors";
 import { hourIndexAt } from "../util/wind";
+import { cellWeekSummary } from "../util/cellWeekSummary";
 
 const HexMap = lazy(() => import("../components/HexMap"));
 
@@ -49,6 +55,8 @@ interface Props {
   region: LoadedRegion;
   unit: Unit;
   onUnitChange: (unit: Unit) => void;
+  earlyWarning: EarlyWarning | null;
+  alertDecision: AlertDecision;
 }
 
 const busiestCell = (totals: CellTotal[], cells: string[]): string | null => {
@@ -67,19 +75,26 @@ const percent = (change: number) => `${change >= 0 ? "+" : "−"}${Math.abs(Math
  * composes; the figures come from `util/sectorKpis` and the sectors from
  * `util/sectors`.
  */
-export function TerrainPage({ region, unit, onUnitChange }: Props) {
+export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDecision }: Props) {
   const reducedMotion = usePrefersReducedMotion();
   /** The zone whose dashboard is open; `null` while the map is shown alone. */
   const [sectorId, setSectorId] = useState<string | null>(null);
   /** The tapped cell: the camera closes in on it and the line starts there. */
   const [anchor, setAnchor] = useState<string | null>(null);
+  /** The anchor came from a tap on the map, not from a pick in the zone list. */
+  const [tapped, setTapped] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   // Wind is one more layer of the terrain, always on.
   const windState = useWind();
+  const places = usePlaces(region.cells.resolution);
+  const [windPlaying, setWindPlaying] = useRememberedChoice("aeros-wind", !reducedMotion);
   const wind = useMemo(
-    () => (windState?.status === "ready" ? { field: windState.data, hour: hourIndexAt(windState.data, Date.now()) } : null),
-    [windState],
+    () =>
+      windState?.status === "ready"
+        ? { field: windState.data, hour: hourIndexAt(windState.data, Date.now()), playing: windPlaying, onToggle: () => setWindPlaying(!windPlaying) }
+        : null,
+    [windState, windPlaying, setWindPlaying],
   );
   const [tab, setTab] = useState<Tab>("overview");
   const [month, setMonth] = useState(region.lastMonth);
@@ -111,7 +126,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
     if (sectorId === null) return null;
     // A tap closes in on that cell, near enough to read the towns in it; the
     // list frames the whole zone, as it names no cell.
-    if (anchor && selected?.has(anchor)) return { cells: [anchor], anchor };
+    if (anchor && selected?.has(anchor)) return { cells: gridDisk(anchor, 1), anchor };
     return { cells: [...(selected ?? new Set(region.centers.map((cell) => cell.cell)))], anchor };
   }, [sectorId, anchor, selected, region.centers]);
   const sectorOfCell = useMemo(
@@ -130,6 +145,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
   const close = useCallback(() => {
     setSectorId(null);
     setAnchor(null);
+    setTapped(false);
   }, []);
   const pick = useCallback(
     (cell: string | null) => {
@@ -137,6 +153,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
       if (!cell || !id) return close();
       setSectorId(id);
       setAnchor(cell);
+      setTapped(true);
     },
     [sectorOfCell, close],
   );
@@ -147,6 +164,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
       if (id === null) return close();
       setSectorId(id);
       setAnchor(cells ? busiestCell(totals, cells) : null);
+      setTapped(false);
     },
     [sectors, totals, close],
   );
@@ -177,11 +195,43 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
     ...sectors.map(({ id, name, place }) => ({ id, name, place })),
   ];
   const current = zones.find((zone) => zone.id === sectorId);
-  const units = unitLabel(region.unit);
+  // A tapped cell is named after the town people know it by; a zone picked
+  // from the list keeps the zone's own name.
+  const here = tapped && anchor && places ? placeNear(places, anchor) : null;
+
+  // Plain-language week summary for the tapped cell.
+  const anchorCenter = anchor
+    ? (region.centers.find((c) => c.cell === anchor)?.center ?? null)
+    : null;
+  const weekSummary =
+    earlyWarning && anchor && anchorCenter
+      ? cellWeekSummary(anchor, earlyWarning, alertDecision, anchorCenter)
+      : null;
+  const describe = useCallback(
+    (cell: string) => {
+      const near = places ? placeNear(places, cell) : null;
+      return near ? placeLabel(near) : null;
+    },
+    [places],
+  );
+
+  const windTime = wind
+    ? (() => {
+        const parsed = Date.parse(wind.field.hours[wind.hour] ?? "");
+        return Number.isNaN(parsed) ? "" : ` (${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(parsed)})`;
+      })()
+    : "";
+  const windLegend = wind
+    ? windPlaying
+      ? `Wind now${windTime}: the streaks move the way it blows; brighter and faster means stronger.`
+      : `Wind now${windTime}: each arrow points the way it blows; brighter and longer means stronger.${
+          reducedMotion ? " Paused because this device asks for less motion; press Play wind to see it move." : ""
+        }`
+    : null;
 
   return (
     <div className="terrain">
-      <section className="terrain__map" aria-label={`Terrain of ${units} per H3 cell`}>
+      <section className="terrain__map" aria-label={`Map of how much fire each area has had since ${yearOf(region.firstMonth)}`}>
         <Suspense fallback={<div className="map map--loading">Loading map…</div>}>
           <HexMap
             totals={totals}
@@ -195,12 +245,14 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             onAddVertex={NOTHING}
             theme="dark"
             reducedMotion={reducedMotion}
-            ramp={FIRE}
+            ramp={BLAZE}
+            legible
             onPick={pick}
             focus={mapFocus}
             panel={panelRef}
             wind={wind}
             basemap="physical"
+            describe={describe}
           />
         </Suspense>
 
@@ -227,7 +279,16 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
               </option>
             ))}
           </select>
-          <p className="terrain__legend">Column height and colour: mean harmonized {units} over the whole record.</p>
+          <div className="terrain__legend terrain__scale">
+            <span>No risk</span>
+            <span
+              className="terrain__ramp"
+              style={{ background: `linear-gradient(to right, ${BLAZE.map((stop) => toCss(stop)).join(", ")})` }}
+              aria-hidden="true"
+            />
+            <span>High risk</span>
+          </div>
+          <p className="terrain__legend">Taller and redder: higher fire risk in that area since {yearOf(region.firstMonth)}.</p>
           {windState?.status === "error" && (
             <p className="terrain__legend" role="status">
               The wind could not be loaded: {windState.message}
@@ -235,8 +296,7 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
           )}
           {wind && (
             <p className="terrain__legend">
-              Wind at 10 m, {wind.field.hours[wind.hour]?.slice(11, 16)} UTC: faint, slow streaks are a light breeze;
-              bright, fast ones a strong wind.{" "}
+              {windLegend}{" "}
               <a className="credit-link" href="https://open-meteo.com/">
                 Weather data by Open-Meteo.com
               </a>
@@ -249,16 +309,58 @@ export function TerrainPage({ region, unit, onUnitChange }: Props) {
             <div className="terrain__head">
               <div>
                 <h2 id="terrain-zone-title" ref={headingRef} tabIndex={-1} className="panel__title">
-                  {current.name}
+                  {here ? placeLabel(here) : current.name}
                 </h2>
-                <p className="summary__note">{current.place}</p>
+                <p className="summary__note">
+                  {here ? `${COUNTRY_NAMES[here.place.country] ?? here.place.country} · ${current.name} zone` : current.place}
+                </p>
               </div>
-              <button type="button" className="terrain__close" onClick={close} aria-label={`Close ${current.name}`}>
+              <button
+                type="button"
+                className="terrain__close"
+                onClick={close}
+                aria-label={`Close ${here ? placeLabel(here) : current.name}`}
+              >
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                   <path d="M3 3l10 10M13 3 3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>
               </button>
             </div>
+
+            {tapped && weekSummary && (
+              <section className="terrain__week" aria-label="This week">
+                <h3 className="terrain__week-title">
+                  This week ({weekSummary.windowLabel})
+                </h3>
+                {weekSummary.flagged ? (
+                  <>
+                    <p className="terrain__week-status terrain__week-status--alert">
+                      {weekSummary.observedLabel} where {weekSummary.expectedLabel} is usual
+                      — about <strong>{weekSummary.ratioLabel}</strong> the usual.
+                    </p>
+                    <p className="terrain__week-evidence summary__note">
+                      Based on {weekSummary.dataDaysLabel} with satellite data
+                      {weekSummary.satellitesLabel ? ` (${weekSummary.satellitesLabel})` : ""}
+                      {" · "}
+                      {weekSummary.oddsLabel}
+                      {" · "}
+                      <a
+                        className="credit-link"
+                        href={weekSummary.firmsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Check this spot on NASA FIRMS
+                      </a>
+                    </p>
+                  </>
+                ) : (
+                  <p className="terrain__week-status">
+                    Nothing unusual here this week.
+                  </p>
+                )}
+              </section>
+            )}
 
             {zoneWeather && (
               <div className="terrain__weather">

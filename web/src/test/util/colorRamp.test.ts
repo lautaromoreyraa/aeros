@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BLAZE,
   DIVERGING,
   VIRIDIS,
   luminance,
@@ -49,6 +50,24 @@ describe("scales", () => {
     const [r, g, b] = sampleRamp(DIVERGING, 0.5);
     expect(r).toBe(g);
     expect(g).toBe(b);
+  });
+
+  it("runs from bluish-white (null) through yellow (low) to red (high fire)", () => {
+    // t=0: bluish-white — blue channel dominates, high lightness
+    const [r0, g0, b0] = BLAZE[0]!;
+    expect(b0).toBeGreaterThan(200);
+    expect(r0).toBeGreaterThan(200);
+    expect(g0).toBeGreaterThan(200);
+    // t=1: red — red channel dominates
+    const [rn, gn, bn] = BLAZE[BLAZE.length - 1]!;
+    expect(rn).toBeGreaterThan(180);
+    expect(gn).toBeLessThan(80);
+    expect(bn).toBeLessThan(80);
+    // mid-point (yellow): green and red both high, blue low
+    const [rm, gm, bm] = sampleRamp(BLAZE, 0.33);
+    expect(rm).toBeGreaterThan(220);
+    expect(gm).toBeGreaterThan(170);
+    expect(bm).toBeLessThan(80);
   });
 });
 

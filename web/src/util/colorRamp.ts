@@ -35,6 +35,20 @@ export const FIRE: Rgb[] = [
   [252, 255, 164],
 ];
 
+/**
+ * Bluish-white to yellow to red: no fire reads as near-white (neutral, calm),
+ * low probability reads as yellow (attention without alarm), and confirmed or
+ * high-probability fire reads as red (the universal danger signal). Intermediate
+ * stops in orange bridge the two warm ends.
+ */
+export const BLAZE: Rgb[] = [
+  [220, 230, 245],
+  [253, 220, 40],
+  [248, 160, 20],
+  [238, 90, 20],
+  [220, 30, 30],
+];
+
 /** Blue to orange through a neutral grey (PuOr-like, colour-blind safe). */
 export const DIVERGING: Rgb[] = [
   [33, 102, 172],
