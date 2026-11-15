@@ -247,3 +247,18 @@ def test_a_subscriber_near_a_persistent_fire_is_told_too():
     assert any(
         body.get("chat_id") == "777" and "Posible incendio" in body.get("text", "") for body in sent
     )
+
+
+def test_an_old_newest_scan_is_published_as_stale_and_nobody_is_told():
+    # NOAA is late: the three scans the watch finds ended an hour ago.
+    bucket = Bucket([None, 10, 13], now=NOW - timedelta(hours=1))
+    summary, s3, sent = run([None, 10, 13], bucket=bucket)
+    report = s3.json("derived/goes_latest.json")
+    assert report["stale"] is True and report["newest_scan_age_minutes"] >= 60
+    assert summary["stale"] is True and sent == []
+
+
+def test_a_fresh_layer_is_not_stale():
+    _, s3, _ = run([None, 10, 13])
+    report = s3.json("derived/goes_latest.json")
+    assert report["stale"] is False and report["newest_scan_age_minutes"] == 10
