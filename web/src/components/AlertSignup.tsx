@@ -1,4 +1,5 @@
 import { type FormEvent, useId, useState } from "react";
+import { signedJsonPost } from "../api/signedPost";
 import {
   CHANNELS,
   type Channel,
@@ -106,11 +107,8 @@ export function AlertSignup() {
     setFieldError(null);
     setStatus({ kind: "sending" });
     try {
-      const response = await fetch(`${ALERTS_API}/alerts/subscriptions`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(subscriptionRequest(channel, place, language, address)),
-      });
+      const body = JSON.stringify(subscriptionRequest(channel, place, language, address));
+      const response = await fetch(`${ALERTS_API}/alerts/subscriptions`, await signedJsonPost(body));
       if (!response.ok) throw new Error(await failure(response));
       const answer = (await response.json()) as SubscriptionAnswer;
       setStatus(
