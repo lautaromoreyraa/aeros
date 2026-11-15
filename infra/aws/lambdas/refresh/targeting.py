@@ -330,6 +330,18 @@ def _ratio(value: float | None) -> str:
     return f"{value:.0f}×" if value >= 10 else f"{value:.1f}×"
 
 
+def place_of(entry: Mapping) -> tuple[float, float]:
+    """Where a flagged cell burns: the mean of its detections, or the cell's centre without it."""
+    if entry.get("lat") is not None and entry.get("lng") is not None:
+        return float(entry["lat"]), float(entry["lng"])
+    return h3.cell_to_latlng(entry["cell"])
+
+
+def map_link(lat: float, lng: float) -> str:
+    """A link every phone opens in its map app."""
+    return f"https://www.google.com/maps?q={lat:.3f},{lng:.3f}"
+
+
 def _place(lat: float, lng: float) -> str:
     return f"{abs(lat):.1f}° {'S' if lat < 0 else 'N'}, {abs(lng):.1f}° {'W' if lng < 0 else 'E'}"
 
@@ -360,6 +372,7 @@ def format_message(
     unsubscribe: str = "",
     wind: Wind | None = None,
     fire_weather: Mapping | None = None,
+    map_links: bool = False,
 ) -> tuple[str, str]:
     """(subject, text) with the fields of the interface's alert message, for one subscriber.
 
@@ -377,7 +390,7 @@ def format_message(
 
     lines = [subject, f"Window: {_day(start)} – {_day(end)}"]
     for entry in match.flagged[:MAX_PLACES]:
-        lat, lng = h3.cell_to_latlng(entry["cell"])
+        lat, lng = place_of(entry)
         expected = entry["expected"]
         shown = f"{expected:.1f}" if expected < 10 else _count(expected)
         name = sector_of.get(entry["cell"], "Gran Chaco")
@@ -385,6 +398,8 @@ def format_message(
             f"- {name}, {_place(lat, lng)}: {_ratio(entry.get('ratio'))} the usual "
             f"({_count(entry['observed'])} hotspots, {shown} expected)"
         )
+        if map_links:
+            lines.append(f"  Approximate location: {map_link(lat, lng)}")
     if areas > MAX_PLACES:
         lines.append(f"+ {areas - MAX_PLACES} more")
     if wind is not None and wind.speed_kmh >= 1:

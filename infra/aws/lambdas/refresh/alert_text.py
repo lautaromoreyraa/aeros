@@ -22,8 +22,6 @@ import math
 from collections.abc import Mapping
 from datetime import date, datetime
 
-import h3
-
 import targeting
 
 LANGUAGES = ("es", "en")
@@ -134,6 +132,13 @@ def _coverage(report: Mapping) -> str:
     return f"{line}."
 
 
+def venue_text(language: str, name: str) -> tuple[str, str]:
+    """Title and address of the map pin Telegram shows for a zone; the pin is approximate."""
+    if language == "en":
+        return "Area with a lot of fire (approximate)", f"{name} · within about 20 km"
+    return "Zona con mucho fuego (aproximada)", f"{name} · dentro de unos 20 km"
+
+
 def _format_es(
     match: targeting.Match,
     report: Mapping,
@@ -144,6 +149,8 @@ def _format_es(
     unsubscribe: str,
     wind: targeting.Wind | None,
     fire_weather: Mapping | None,
+    pins: bool,
+    map_links: bool,
 ) -> tuple[str, str]:
     start, end = (report.get("window") or ["?", "?"])[:2]
     sector_of = sector_of or {}
@@ -164,16 +171,24 @@ def _format_es(
         )
     lines += ["", "Dónde:"]
     for entry in match.flagged[: targeting.MAX_PLACES]:
-        lat, lng = h3.cell_to_latlng(entry["cell"])
+        lat, lng = targeting.place_of(entry)
         name = sector_of.get(entry["cell"], "Gran Chaco")
+        # With a pin or a link the reader sees the place on a map: no coordinates to decipher.
+        where = "" if (pins or map_links) else f" (cerca de {_place(lat, lng)})"
         lines.append(
-            f"• {name} (cerca de {_place(lat, lng)}): {_times(entry.get('ratio'))}. "
+            f"• {name}{where}: {_times(entry.get('ratio'))}. "
             f"Se detectaron {_number(entry['observed'])} puntos de calor desde satélite; "
             f"lo normal serían {_expected(entry['expected'])}."
         )
+        if map_links:
+            lines.append(
+                f"  Ver la ubicación aproximada en el mapa: {targeting.map_link(lat, lng)}"
+            )
     if areas > targeting.MAX_PLACES:
         extra = areas - targeting.MAX_PLACES
         lines.append(f"• y {extra} {'zona más' if extra == 1 else 'zonas más'}.")
+    if pins:
+        lines.append("Abajo le mando la ubicación aproximada en el mapa.")
 
     conditions = []
     if wind is not None and wind.speed_kmh >= 1:
@@ -213,8 +228,14 @@ def format_message(
     unsubscribe: str = "",
     wind: targeting.Wind | None = None,
     fire_weather: Mapping | None = None,
+    pins: bool = False,
+    map_links: bool = False,
 ) -> tuple[str, str]:
-    """(subject, text) for one subscriber, in their language."""
+    """(subject, text) for one subscriber, in their language.
+
+    `pins` says map pins follow the message (Telegram); `map_links` puts a link under each zone
+    (e-mail). Either one replaces the coordinates with the place on a map.
+    """
     options = dict(
         region_ratio=region_ratio,
         sector_of=sector_of,
@@ -224,5 +245,5 @@ def format_message(
         fire_weather=fire_weather,
     )
     if language == "en":
-        return targeting.format_message(match, report, **options)
-    return _format_es(match, report, **options)
+        return targeting.format_message(match, report, map_links=map_links, **options)
+    return _format_es(match, report, pins=pins, map_links=map_links, **options)

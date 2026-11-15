@@ -241,6 +241,24 @@ def send_telegram(post: Post, token: str, chat_id: str, text: str) -> None:
         raise AlertError(f"Telegram refused the message: {answer.get('description', '?')}")
 
 
+def send_telegram_venue(
+    post: Post, token: str, chat_id: str, lat: float, lng: float, title: str, address: str
+) -> None:
+    """A pin on a map with a name, which Telegram opens in the phone's map app."""
+    answer = post(
+        f"{TELEGRAM_API}/bot{token}/sendVenue",
+        {
+            "chat_id": chat_id,
+            "latitude": lat,
+            "longitude": lng,
+            "title": title,
+            "address": address,
+        },
+    )
+    if not answer.get("ok"):
+        raise AlertError(f"Telegram refused the location: {answer.get('description', '?')}")
+
+
 def _http_post(
     url: str, body: dict, headers: dict[str, str] | None = None, service: str = "Telegram"
 ) -> dict:

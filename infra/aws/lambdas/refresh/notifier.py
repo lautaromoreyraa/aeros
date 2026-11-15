@@ -21,8 +21,6 @@ import logging
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
-import h3
-
 import alert_text
 import alerts
 import targeting
@@ -41,6 +39,23 @@ def telegram_sender(post: alerts.Post, token: str) -> Sender:
 
     def send(subscription: Subscription, subject: str, text: str) -> None:
         alerts.send_telegram(post, token, str(subscription.address), text)
+
+    return send
+
+
+#: Sends the pins of a message: the subscriber and the (lat, lng, name) of each zone.
+PlaceSender = Callable[[Subscription, list[tuple[float, float, str]]], None]
+
+
+def telegram_place_sender(post: alerts.Post, token: str) -> PlaceSender:
+    """One map pin per zone, after the message, with a name in the reader's language."""
+
+    def send(subscription: Subscription, places: list[tuple[float, float, str]]) -> None:
+        for lat, lng, name in places:
+            title, address = alert_text.venue_text(subscription.language, name)
+            alerts.send_telegram_venue(
+                post, token, str(subscription.address), lat, lng, title, address
+            )
 
     return send
 
@@ -71,6 +86,7 @@ def notify(
     sector_of: Mapping[str, str] | None = None,
     web_url: str = "",
     unsubscribe_url: Callable[[Subscription], str] | None = None,
+    place_senders: Mapping[str, PlaceSender] | None = None,
     now: datetime | None = None,
 ) -> dict:
     """Sends what each subscriber has not been told yet; returns what happened, in counts."""
@@ -107,7 +123,8 @@ def notify(
             summary["unchanged"] += 1
             continue
 
-        lat, lng = h3.cell_to_latlng(match.flagged[0]["cell"])
+        lat, lng = targeting.place_of(match.flagged[0])
+        place_sender = (place_senders or {}).get(subscriber.channel)
         language = getattr(subscriber, "language", alert_text.DEFAULT_LANGUAGE)
         stop = (
             alert_text.telegram_stop(language)
@@ -124,6 +141,8 @@ def notify(
             unsubscribe=stop,
             wind=targeting.wind_at(wind_field, lat, lng, when),
             fire_weather=weather,
+            pins=place_sender is not None,
+            map_links=subscriber.channel == "email",
         )
         try:
             sender(subscriber, subject, text)
@@ -137,4 +156,15 @@ def notify(
             targeting.next_memory(subscriber.memory, match, report, weather_level=level),
         )
         summary["sent"] += 1
+        if place_sender is not None:
+            places = [
+                (*targeting.place_of(entry), (sector_of or {}).get(entry["cell"], "Gran Chaco"))
+                for entry in match.flagged[: targeting.MAX_PLACES]
+            ]
+            try:
+                place_sender(subscriber, places)
+            except Exception as exc:
+                # The message already went out and was remembered: a pin that fails is only a pity.
+                logger.error("a location could not be delivered: %s", type(exc).__name__)
+                summary["pins_failed"] = summary.get("pins_failed", 0) + 1
     return summary

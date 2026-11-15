@@ -233,7 +233,9 @@ def daily(store, **overrides):
 
 def test_the_daily_run_tells_the_subscribers_after_publishing_the_report(store):
     summary, calls = daily(store)
-    assert summary["subscribers"]["sent"] == 2 and len(calls) == 1
+    assert summary["subscribers"]["sent"] == 2
+    # The Telegram message and, right after it, the pin of the zone.
+    assert [url.rsplit("/", 1)[1] for url, _ in calls] == ["sendMessage", "sendVenue"]
 
 
 def test_a_second_run_with_the_same_report_tells_nobody_again(store):
