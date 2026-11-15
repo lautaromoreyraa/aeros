@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   alertLanguage,
+  answeredPlace,
+  canSignUp,
   normalizeEmail,
+  normalizePhone,
   placeFromPosition,
   placeLabel,
   placesUrl,
@@ -18,6 +21,13 @@ describe("normalizeEmail", () => {
   });
 });
 
+describe("normalizePhone", () => {
+  it("keeps a number in international form", () => {
+    expect(normalizePhone("+54 9 (362) 400-0000")).toEqual({ address: "+5493624000000" });
+    expect(normalizePhone("362 400 0000")).toHaveProperty("error");
+  });
+});
+
 describe("subscriptionRequest", () => {
   it("sends the town, never cells or zones", () => {
     const body = subscriptionRequest("telegram", RESISTENCIA, "es");
@@ -25,9 +35,36 @@ describe("subscriptionRequest", () => {
     expect(body).not.toHaveProperty("cells");
   });
 
-  it("carries an address only for e-mail", () => {
+  it("carries an address for e-mail and SMS, never for Telegram", () => {
     expect(subscriptionRequest("email", RESISTENCIA, "en", "a@b.co")).toHaveProperty("address", "a@b.co");
+    expect(subscriptionRequest("sms", RESISTENCIA, "es", "+5493624000000")).toHaveProperty("address", "+5493624000000");
     expect(subscriptionRequest("telegram", RESISTENCIA, "es", "a@b.co")).not.toHaveProperty("address");
+  });
+
+  it("leaves the town out of an SMS sign-up that has none", () => {
+    expect(subscriptionRequest("sms", null, "es", "+5493624000000")).toEqual({
+      channel: "sms",
+      language: "es",
+      address: "+5493624000000",
+    });
+  });
+});
+
+describe("canSignUp", () => {
+  it("lets only SMS go without a town", () => {
+    expect(canSignUp("sms", null)).toBe(true);
+    expect(canSignUp("telegram", null)).toBe(false);
+    expect(canSignUp("email", null)).toBe(false);
+    expect(canSignUp("email", RESISTENCIA)).toBe(true);
+  });
+});
+
+describe("answeredPlace", () => {
+  it("reads the town the service chose and ignores a malformed one", () => {
+    expect(answeredPlace({ id: "x", status: "subscribed", place: RESISTENCIA })).toEqual(RESISTENCIA);
+    expect(answeredPlace({ id: "x", status: "subscribed" })).toBeNull();
+    const broken = { id: "x", status: "subscribed", place: { name: "Resistencia" } } as never;
+    expect(answeredPlace(broken)).toBeNull();
   });
 });
 

@@ -93,9 +93,9 @@ describe("AWS Free plan", () => {
         expect(r.Properties.MemorySize ?? 128, id).toBeLessThanOrEqual(512);
       }
     }
-    // API, alert subscriptions, daily refresh, GOES watch and Telegram webhook:
-    // no custom-resource functions.
-    expect(count).toBe(5);
+    // API, alert subscriptions, daily refresh, GOES watch, Telegram webhook
+    // and the SMS webhook: no custom-resource functions.
+    expect(count).toBe(6);
   });
 
   it("reserves no concurrency by default, because a new account cannot", () => {
@@ -132,7 +132,7 @@ describe("AWS Free plan", () => {
         expect(r.Properties.RetentionInDays, id).toBe(7);
       }
     }
-    expect(count).toBe(5);
+    expect(count).toBe(6);
   });
 
   it("puts every stack in the context Region and never names us-east-1", () => {

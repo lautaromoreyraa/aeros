@@ -1,5 +1,6 @@
 import base64
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import h3
@@ -131,7 +132,6 @@ def test_a_body_sent_base64_encoded_is_read(deps):
 @pytest.mark.parametrize(
     "fields",
     [
-        {"channel": "sms"},
         {"cells": []},
         {"cells": ["nope"]},
         {"address": "not-an-address"},
@@ -167,6 +167,247 @@ def test_a_failed_confirmation_e_mail_leaves_no_pending_sign_up(deps):
     assert response["statusCode"] == 503
     assert deps.subscriptions.store.all() == []
     assert "SES" not in response["body"]
+
+
+def test_an_sms_sign_up_subscribes_the_number_at_once_and_tells_it_so(deps):
+    sent = []
+    deps.send_sms = lambda address, text: sent.append((address, text))
+    town = {"name": "Presidencia Roque Sáenz Peña", "lat": -26.79, "lng": -60.44}
+    response = create(deps, channel="sms", address="+54 9 364 400 0000", cells=[], place=town)
+    assert response["statusCode"] == 201
+    body = answer(response)
+    assert body["status"] == "subscribed" and body["place"]["name"] == town["name"]
+    stored = deps.subscriptions.store.get(body["id"])
+    assert stored.address == "+5493644000000" and stored.status == "confirmed"
+    assert stored.expires_at is None
+    (number, text), = sent
+    assert number == "+5493644000000"
+    assert "subscribed" in text and "50 km of Presidencia Roque Saenz Pena" in text
+    assert "STOP" in text and "YES" not in text and "http" not in text
+    assert text.isascii() and len(text) <= 160
+
+
+def test_an_sms_sign_up_without_a_town_uses_the_one_of_the_area_code(deps):
+    sent = []
+    deps.send_sms = lambda address, text: sent.append(text)
+    response = create(deps, channel="sms", address="+5493624000000", cells=[], language="es")
+    assert response["statusCode"] == 201
+    body = answer(response)
+    assert body["place"]["name"] == "Resistencia"
+    stored = deps.subscriptions.store.get(body["id"])
+    assert stored.place["name"] == "Resistencia" and len(stored.cells) == 7
+    assert "suscripcion exitosa" in sent[0] and "50 km de Resistencia" in sent[0]
+
+
+def test_an_sms_sign_up_without_a_town_and_with_an_unknown_area_code_asks_for_the_town(deps):
+    sent = []
+    deps.send_sms = lambda address, text: sent.append(text)
+    for number in ("+5492994000000", "+14155550100"):
+        response = create(deps, channel="sms", address=number, cells=[])
+        assert response["statusCode"] == 400 and "name a town" in answer(response)["error"]
+    assert deps.subscriptions.store.all() == [] and sent == []
+
+
+def test_an_sms_sign_up_ignores_cells_and_keeps_the_ones_around_the_town(deps):
+    deps.send_sms = lambda address, text: None
+    far = h3.latlng_to_cell(-20.0, -64.0, 4)
+    body = answer(create(deps, channel="sms", address="+5493624000000", cells=[far]))
+    stored = deps.subscriptions.store.get(body["id"])
+    assert stored.place["name"] == "Resistencia" and far not in stored.cells
+
+
+def test_a_town_name_that_is_not_a_town_never_reaches_the_text(deps):
+    sent = []
+    deps.send_sms = lambda address, text: sent.append(text)
+    for index, name in enumerate(
+        ["X. Pay at http://evil.example/p", "Call +5491100000000 now", "Chaco\nAeros: pay"]
+    ):
+        town = {"name": name, "lat": -27.46, "lng": -58.99}
+        number = f"+549362400000{index}"
+        assert create(deps, channel="sms", address=number, place=town)["statusCode"] == 201
+    for text in sent:
+        assert "near the area you chose" in text
+        assert "evil" not in text and "+549" not in text and "pay" not in text.lower()
+
+
+def test_only_so_many_sms_sign_ups_fit_in_an_hour(deps):
+    sent = []
+    deps.send_sms = lambda address, text: sent.append(address)
+    for index in range(a.MAX_SMS_SIGN_UPS):
+        assert create(deps, channel="sms", address=f"+54936240001{index:02d}")["statusCode"] == 201
+    refused = create(deps, channel="sms", address="+5493624000999")
+    assert refused["statusCode"] == 429 and "too many" in answer(refused)["error"]
+    assert len(sent) == a.MAX_SMS_SIGN_UPS
+    assert create(deps)["statusCode"] == 202  # e-mail is not counted
+
+
+def test_a_number_that_said_stop_cannot_be_signed_up_again_that_day(deps):
+    deps.send_sms = lambda address, text: None
+    create(deps, channel="sms", address="+5493624000000")
+    assert deps.subscriptions.answer_sms("+5493624000000", "STOP")[0] == "stopped"
+    assert deps.subscriptions.confirmed() == []
+    again = create(deps, channel="sms", address="+5493624000000")
+    assert again["statusCode"] == 429 and "+549" not in again["body"]
+    (marker,) = deps.subscriptions.store.all()
+    assert marker.status == "stopped"
+    deps.subscriptions.store.put(replace(marker, created_at="2026-11-13T21:00:00+00:00"))
+    assert create(deps, channel="sms", address="+5493624000000")["statusCode"] == 201
+    assert [sub.status for sub in deps.subscriptions.store.all()] == ["confirmed"]
+
+
+def test_a_second_sms_sign_up_of_a_number_waits_and_then_replaces_the_first(deps):
+    deps.send_sms = lambda address, text: None
+    first = answer(create(deps, channel="sms", address="+5493624000000"))
+    assert create(deps, channel="sms", address="+5493624000000")["statusCode"] == 429
+    old = deps.subscriptions.store.get(first["id"])
+    deps.subscriptions.store.put(replace(old, created_at="2026-11-14T21:00:00+00:00"))
+    second = answer(create(deps, channel="sms", address="+5493624000000"))
+    assert [sub.id for sub in deps.subscriptions.store.all()] == [second["id"]]
+
+
+def test_a_welcome_text_that_fails_keeps_the_subscription_the_number_had(deps):
+    deps.send_sms = lambda address, text: None
+    first = answer(create(deps, channel="sms", address="+5493624000000"))
+    old = deps.subscriptions.store.get(first["id"])
+    deps.subscriptions.store.put(replace(old, created_at="2026-11-14T21:00:00+00:00"))
+
+    def broken(address, text):
+        raise RuntimeError("gateway down")
+
+    deps.send_sms = broken
+    assert create(deps, channel="sms", address="+5493624000000")["statusCode"] == 503
+    assert [sub.id for sub in deps.subscriptions.store.all()] == [first["id"]]
+
+
+def test_an_sms_sign_up_with_something_that_is_not_a_phone_number_is_a_400(deps):
+    deps.send_sms = lambda address, text: None
+    response = create(deps, channel="sms", address="ana@example.com")
+    assert response["statusCode"] == 400 and "international" in answer(response)["error"]
+    assert deps.subscriptions.store.all() == []
+
+
+def test_sms_is_unavailable_when_twilio_is_not_configured(deps):
+    assert create(deps, channel="sms", address="+5493624000000")["statusCode"] == 503
+    assert deps.subscriptions.store.all() == []
+
+
+def test_a_signed_stop_ends_the_alerts_and_a_bad_signature_does_nothing(deps):
+    import hashlib
+    import hmac
+    from urllib.parse import urlencode
+
+    import sms
+
+    deps.send_sms = lambda address, text: None
+    created = answer(create(deps, channel="sms", address="+5493624000000"))
+    token = "twilio-secret"
+    deps.twilio_token = token
+    params = {"From": "+5493624000000", "Body": "STOP", "MessageSid": "SM1"}
+    url = "https://sms.example/twilio"
+    payload = url + "".join(key + params[key] for key in sorted(params))
+    digest = hmac.new(token.encode(), payload.encode(), hashlib.sha1).digest()
+    signature = base64.b64encode(digest).decode()
+    event = {
+        "rawPath": "/twilio",
+        "rawQueryString": "",
+        "requestContext": {"domainName": "sms.example"},
+        "headers": {"X-Twilio-Signature": "nope"},
+        "body": urlencode(params),
+        "isBase64Encoded": False,
+    }
+    refused = a.sms_webhook_handler(event, deps=deps)
+    assert refused["statusCode"] == 403
+    assert deps.subscriptions.store.get(created["id"]).status == "confirmed"
+    event["headers"] = {"X-Twilio-Signature": signature}
+    response = a.sms_webhook_handler(event, deps=deps)
+    assert response["statusCode"] == 200 and "text/xml" in response["headers"]["content-type"]
+    assert "stopped" in response["body"]
+    assert deps.subscriptions.store.get(created["id"]) is None
+    assert sms.signature_is_valid(url, params, signature, token)
+
+
+def _bearer(key: str, payload: dict | None = None) -> str:
+    import hashlib
+    import hmac
+    import json
+
+    def part(value: dict) -> str:
+        raw = base64.urlsafe_b64encode(json.dumps(value).encode()).decode()
+        return raw.rstrip("=")
+
+    header = part({"alg": "HS256", "typ": "JWT"})
+    body = part(payload or {"sub": "httpsms"})
+    digest = hmac.new(key.encode(), f"{header}.{body}".encode(), hashlib.sha256).digest()
+    signature = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+    return f"Bearer {header}.{body}.{signature}"
+
+
+def test_a_signed_httpsms_stop_ends_the_alerts_and_a_bad_token_does_nothing(deps):
+    deps.send_sms = lambda address, text: None
+    created = answer(create(deps, channel="sms", address="+5493624000000"))
+    deps.httpsms_signing_key = "signing-key"
+    event = {
+        "headers": {"Authorization": _bearer("other-key")},
+        "body": json.dumps(
+            {
+                "type": "message.phone.received",
+                "data": {"contact": "+5493624000000", "content": "Stop."},
+            }
+        ),
+        "isBase64Encoded": False,
+    }
+    assert a.sms_webhook_handler(event, deps=deps)["statusCode"] == 403
+    assert deps.subscriptions.store.get(created["id"]).status == "confirmed"
+    event["headers"] = {"Authorization": _bearer("signing-key")}
+    assert a.sms_webhook_handler(event, deps=deps)["statusCode"] == 200
+    assert deps.subscriptions.store.get(created["id"]) is None
+
+
+def test_an_httpsms_delivery_event_is_acknowledged_and_changes_nothing(deps):
+    deps.send_sms = lambda address, text: None
+    created = answer(create(deps, channel="sms", address="+5493624000000"))
+    deps.httpsms_signing_key = "signing-key"
+    event = {
+        "headers": {"Authorization": _bearer("signing-key")},
+        "body": json.dumps({"type": "message.phone.sent", "data": {"contact": "+5493624000000"}}),
+        "isBase64Encoded": False,
+    }
+    assert a.sms_webhook_handler(event, deps=deps)["statusCode"] == 200
+    assert deps.subscriptions.store.get(created["id"]).status == "confirmed"
+
+
+def test_httpsms_posts_the_text_and_a_refusal_does_not_reveal_the_api_key(monkeypatch):
+    import io
+    import urllib.error
+    import urllib.request
+    from email.message import Message
+
+    import sms
+
+    seen = {}
+
+    def post(url, key, payload):
+        seen["url"] = url
+        seen["payload"] = payload
+        return {}
+
+    sms.send_httpsms("secret-key", "+5491100000000", "+5493624000000", "hola", post=post)
+    assert seen["url"] == sms.HTTPSMS_API
+    assert seen["payload"] == {
+        "content": "hola",
+        "from": "+5491100000000",
+        "to": "+5493624000000",
+    }
+
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(
+            sms.HTTPSMS_API, 401, "no", Message(), io.BytesIO(b"secret-key")
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    with pytest.raises(sms.SmsError, match="HTTP 401") as caught:
+        sms.send_httpsms("secret-key", "+5491100000000", "+5493624000000", "hola")
+    assert "secret-key" not in str(caught.value)
 
 
 def test_email_is_unavailable_when_the_sender_is_not_configured(deps):
