@@ -62,7 +62,8 @@ export function AlertSignup() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
   const channels: { value: Channel; label: string }[] = [
-    { value: "telegram", label: lang === "es" ? "Telegram" : "Telegram" },
+    { value: "telegram", label: "Telegram" },
+    { value: "sms", label: "SMS" },
     { value: "email", label: lang === "es" ? "Correo electrónico" : "Email" },
   ];
 
@@ -147,11 +148,11 @@ export function AlertSignup() {
   if (status.kind === "sms")
     return (
       <div className="signup signup--done" role="status">
-        <p className="signup__title">You are subscribed</p>
+        <p className="signup__title">{lang === "es" ? "Quedó suscripto" : "You are subscribed"}</p>
         <p>
-          We sent a text to the phone to say so. From now on it gets a text when the satellites see a possible fire
-          within about 50 km of {status.place ? placeLabel(status.place) : "your town"}. Nothing to reply: it
-          arrives without mobile data, as long as the phone has signal.
+          {lang === "es"
+            ? `Le enviamos un mensaje de texto para confirmarlo. Desde ahora recibirá un mensaje cuando los satélites vean un posible incendio a menos de unos 50 km de ${status.place ? placeLabel(status.place) : "su localidad"}. No hay nada que responder: llega sin datos móviles, siempre que el teléfono tenga señal.`
+            : `We sent a text to the phone to say so. From now on it gets a text when the satellites see a possible fire within about 50 km of ${status.place ? placeLabel(status.place) : "your town"}. Nothing to reply: it arrives without mobile data, as long as the phone has signal.`}
         </p>
       </div>
     );
@@ -224,7 +225,7 @@ export function AlertSignup() {
 
       {channel === "sms" && (
         <label className="signup__group" htmlFor={`${id}-phone`}>
-          <span className="signup__label">Phone number with country code</span>
+          <span className="signup__label">{lang === "es" ? "Número de teléfono con código de país" : "Phone number with country code"}</span>
           <input
             id={`${id}-phone`}
             type="tel"
@@ -236,8 +237,13 @@ export function AlertSignup() {
             onChange={(event) => setPhone(event.target.value)}
           />
           <span className="signup__hint">
-            Works without mobile data. The phone still needs cellular signal.
-            {!place && " With no town chosen above, the alerts are about the town of this number's area code."}
+            {lang === "es"
+              ? "Funciona sin datos móviles. El teléfono igual necesita señal celular."
+              : "Works without mobile data. The phone still needs cellular signal."}
+            {!place &&
+              (lang === "es"
+                ? " Si no elige una localidad arriba, los avisos serán sobre la localidad del código de área de este número."
+                : " With no town chosen above, the alerts are about the town of this number's area code.")}
           </span>
           {fieldError && (
             <span id={`${id}-error`} className="signup__error">
