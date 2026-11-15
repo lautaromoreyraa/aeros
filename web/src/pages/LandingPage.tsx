@@ -230,8 +230,11 @@ export function LandingPage({ region, warning, onEnter }: Props) {
               Get the warning for your area
             </h2>
             <p>
-              Find your town or share your location, and choose Telegram, SMS or e-mail. SMS needs no mobile data. You
-              confirm first, then you hear about a possible fire within about 50 km of it, at most once every 12 hours.
+              Find your town or share your location, and choose Telegram, SMS or e-mail. Internet reaches Telegram and
+              e-mail. Cellular signal without mobile data reaches SMS. Where there are no towers, one gateway that
+              still has a connection can put the same short text on a LoRa radio at the post. The website does not
+              transmit that radio. You confirm first, then you hear about a possible fire within about 50 km, at most
+              once every 12 hours.
             </p>
           </div>
           <AlertSignup />

@@ -39,7 +39,9 @@ async function failure(response: Response): Promise<string> {
 /**
  * Sign-up for alerts about a possible fire near a town: find the town (or
  * share a location), pick Telegram, SMS or e-mail, confirm. Nothing is sent
- * until the person confirms. SMS needs cellular signal, not mobile data.
+ * until the person confirms. SMS needs cellular signal, not mobile data. A
+ * LoRa radio is not a channel here: a gateway that has a connection relays
+ * the same short text onto the mesh.
  */
 export function AlertSignup() {
   const id = useId();

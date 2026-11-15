@@ -261,4 +261,9 @@ describe("shipped code", () => {
   it("ships nothing that is not a module of the handlers", () => {
     expect([...exclude].filter((f) => !modules.includes(f.slice(0, -3)))).toEqual([]);
   });
+
+  it("keeps the field radio relay out of the Lambda zip", () => {
+    expect(modules).toContain("radio_relay");
+    expect(exclude.has("radio_relay.py")).toBe(false);
+  });
 });

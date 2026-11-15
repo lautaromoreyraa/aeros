@@ -38,6 +38,7 @@ export const REFRESH_CODE_EXCLUDE = [
   "!alert_text.py",
   "!places.py",
   "!sms.py",
+  // radio_relay.py stays off this list: it runs beside a field radio, not in Lambda.
 ];
 
 function logGroupFor(scope: Construct, id: string): logs.LogGroup {
