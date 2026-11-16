@@ -49,6 +49,10 @@ export function DataCredits() {
         .
       </p>
       <p>
+        Super Intelligence tools, including large language models, assisted the code, this interface, and the figures.
+        The fire counts and the Earth imagery are observations from the sources above, not generated data or pictures.
+      </p>
+      <p>
         Past fire weather for the forecast: these data were obtained from the{" "}
         <a className="credit-link" href="https://power.larc.nasa.gov/">
           NASA Langley Research Center (LaRC) POWER Project

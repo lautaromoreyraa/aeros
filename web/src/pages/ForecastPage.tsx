@@ -2,6 +2,7 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import type { Forecast } from "../api/types";
 import { AreaControls } from "../components/AreaControls";
 import { ForecastChart } from "../components/ForecastChart";
+import { SiMark } from "../components/SiMark";
 import type { RiskCell } from "../components/RiskMap";
 import type { AreaSelection } from "../hooks/useAreaSelection";
 import type { Loadable } from "../hooks/useOutlook";
@@ -83,6 +84,7 @@ export function ForecastPage({ state, onRetry, region, theme, selection: chosen 
   if (!forecast || weeks.length === 0)
     return (
       <section className="panel outlook-empty">
+        <SiMark place="section" />
         <h2 className="panel__title">{t.forecast.emptyTitle}</h2>
         <p className="summary__note">{t.forecast.emptyNote}</p>
       </section>
@@ -116,6 +118,7 @@ export function ForecastPage({ state, onRetry, region, theme, selection: chosen 
             theme={theme}
           />
         </Suspense>
+        <SiMark place="map" />
         <div className="map__legend ratio-legend">
           <span>{t.forecast.legendTitle(weekLabel(current.week_start, lang))}</span>
           <span className="ratio-legend__bar" style={{ background: RAMP }} aria-hidden="true" />
@@ -181,6 +184,7 @@ export function ForecastPage({ state, onRetry, region, theme, selection: chosen 
         <h2 id="forecast-weeks-title" className="panel__title">
           {t.forecast.nextWeeks(weeks.length)}
         </h2>
+        <SiMark place="section" />
         <div className="forecast-body">
           <ForecastChart weeks={weeks} unit={forecast.unit} horizon={horizon} />
           <div className="table-scroll">

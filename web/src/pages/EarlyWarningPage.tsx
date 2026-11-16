@@ -3,6 +3,7 @@ import type { EarlyWarning } from "../api/types";
 import { AlertBanner } from "../components/AlertBanner";
 import { FireReport } from "../components/FireReport";
 import { FireWeatherDays } from "../components/FireWeatherDays";
+import { SiMark } from "../components/SiMark";
 import type { RiskCell } from "../components/RiskMap";
 import { useFireWeather } from "../hooks/useFireWeather";
 import type { Loadable } from "../hooks/useOutlook";
@@ -77,6 +78,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
   if (!report)
     return (
       <section className="panel outlook-empty">
+        <SiMark place="section" />
         <h2 className="panel__title">{t.earlyWarning.emptyTitle}</h2>
         <p className="summary__note">{t.earlyWarning.emptyNote}</p>
       </section>
@@ -110,6 +112,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
         <Suspense fallback={<div className="map map--loading">{t.earlyWarning.mapLoading}</div>}>
           <RiskMap cells={mapCells} context={context} centers={centers} theme={theme} />
         </Suspense>
+        <SiMark place="map" />
         <div className="map__legend">
           <span>{decision.cells.length > 0 ? t.earlyWarning.legendOutlined : t.earlyWarning.legendNone}</span>
         </div>
@@ -209,6 +212,7 @@ export function EarlyWarningPage({ state, onRetry, region, theme }: Props) {
           <h2 id="flagged-title" className="panel__title">
             {lang === "es" ? "Celdas por encima de su actividad habitual" : "Cells above their usual activity"}
           </h2>
+          <SiMark place="section" />
           <div className="table-scroll">
             <table className="data-table">
               <thead>

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { CalendarRecord, Unit } from "../api/types";
 import { useI18n } from "../i18n/I18nContext";
+import { SiMark } from "./SiMark";
 import { DIVERGING, VIRIDIS, ratioScale, readableTextOn, sampleRamp, sqrtScale, toCss } from "../util/colorRamp";
 import { monthLabel } from "../util/months";
 import { coverageLabel, coverageOf, formatCount, formatRatio, unitLabel } from "../util/format";
@@ -154,6 +155,7 @@ export function CalendarHeatmap({ records, view, unit, criticalMonths, peakMonth
           ))}
         </tbody>
       </table>
+      <SiMark place="figure" />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { SiMark } from "../components/SiMark";
 import { usePastFire } from "../hooks/usePastFire";
 import { useI18n } from "../i18n/I18nContext";
 import { formatCount } from "../util/format";
@@ -100,6 +101,7 @@ export function PastFiresPage() {
             />
           </Suspense>
         )}
+        <SiMark place="map" dark />
       </section>
 
       {fire && (

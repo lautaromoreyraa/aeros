@@ -312,6 +312,7 @@
 /* ---------- The message an alert sends ---------- */
 
 .warn {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-7);
@@ -492,6 +493,7 @@
 /* ---------- Sign-up ---------- */
 
 .alerts {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-7);
@@ -635,6 +637,7 @@
 /* ---------- End ---------- */
 
 .landing__end {
+  position: relative;
   display: grid;
   justify-items: start;
   gap: var(--space-6);
