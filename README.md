@@ -13,9 +13,87 @@ Satellite fire early warning, built on 26 years of MODIS and VIIRS hotspots brou
 |---|---|
 | Anyone asking whether a season was worse | One harmonized record, 2000 to today, with a 90 % interval for any area and period |
 | Fire brigades, land managers, local governments | A calendar of burning activity by month and year, the anomaly against the history, the critical months, and a CSV |
-| People who live there | A message by Telegram or e-mail when GOES-19 sees a possible fire within about 50 km of their town |
+| People who live there | A message by SMS, Telegram or e-mail when an anomalous fire risk is detected near their location |
 
-What is live today and what still waits for a deploy step is in section 6 of [`plan.md`](plan.md).
+- **Visual Story Deck**: [`slides/visual-deck.html`](slides/visual-deck.html) (1080p slide deck covering the planetary problem, data crossing, and multi-channel warning matrix)
+- **Interactive Pitch Deck**: [`slides/index.html`](slides/index.html)
+- **Detailed System Architecture**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- What is live today and what still waits for a deploy step is in section 6 of [`plan.md`](plan.md).
+
+## Architecture and Data Flow
+
+Aeros integrates 26 years of NASA satellite observations, machine learning risk projections, and AWS serverless computing to deliver early warnings across multiple channels.
+
+```mermaid
+flowchart TB
+  subgraph ingestion["1. Satellite Ingestion & Environmental Data"]
+    direction TB
+    FIRMS["NASA FIRMS<br/>26-Year MODIS Terra/Aqua (1000m)<br/>VIIRS SNPP/NOAA-20/21 (375m)"]
+    GOES["NOAA GOES-19 ABI<br/>L2 Fire Detection (ABI-L2-FDCF)<br/>10-minute cadence"]
+    METEO["Weather & Fuel Dryness<br/>Open-Meteo ERA5 Reanalysis<br/>NASA POWER Surface Meteorology"]
+  end
+
+  subgraph analytics["2. Harmonization & Modeling Engine"]
+    direction TB
+    H3["Discrete Global Grid System<br/>Uber H3 Spatial Resampling (Res 5–7)<br/>Equal-area hexagon aggregation"]
+    CALIB["Sensor Neutralization<br/>Corrects +230% artificial sensor shift<br/>26-year baseline distributions"]
+    POISSON["Statistical Anomaly Detector<br/>Poisson Tail Probability (p < 0.01)<br/>Flags counts > 2x historical median"]
+    GBM["ML Predictive Forecaster<br/>Gradient Boosting (scikit-learn)<br/>1–4 week ahead fire risk projection"]
+  end
+
+  subgraph cloud["3. Serverless Cloud Infrastructure (AWS Free-Tier Compliant)"]
+    direction TB
+    EB["Amazon EventBridge<br/>Automated 10-minute triggers"]
+    LAMBDA["AWS Lambda (arm64, 512MB)<br/>Stateless execution & proximity matching"]
+    DDB["Amazon DynamoDB<br/>Single-table subscriber store<br/>Geodesic 15km radius filtering"]
+    S3CF["Amazon S3 + CloudFront<br/>Global edge cache & static hosting"]
+  end
+
+  subgraph dispatch["4. Multichannel Warning Delivery Matrix"]
+    direction TB
+    SMS["SMS Gateway (Twilio / httpSMS)<br/>160-char high-urgency message<br/>Zero-data & low-connectivity rural zones"]
+    TG["Telegram Bot Service<br/>Interactive alerts with coordinates,<br/>wind heading, and risk level cards"]
+    SES["Amazon SES Email<br/>Full operational situational report<br/>for land managers and civil defense"]
+  end
+
+  subgraph frontend["5. Interactive 3D Digital Twin & Dashboard"]
+    direction TB
+    TWIN["3D Planetary Globe (Three.js 4K)<br/>Terrain Map (MapLibre GL)<br/>Wind vector overlays & cell drilldown"]
+  end
+
+  FIRMS --> H3
+  H3 --> CALIB
+  CALIB --> POISSON
+  METEO & CALIB --> GBM
+  GOES --> LAMBDA
+  POISSON & GBM --> LAMBDA
+  EB --> LAMBDA
+  LAMBDA <--> DDB
+  LAMBDA --> SMS & TG & SES
+  CALIB & GBM & GOES --> S3CF
+  S3CF --> TWIN
+```
+
+### Multichannel Alert Routing
+
+Alert delivery is customized to the user's infrastructure constraints:
+
+```mermaid
+flowchart TD
+  TRIGGER["Real-Time Anomaly Trigger<br/>GOES-19 hotspot or Poisson p < 0.01"] --> COORD["Extract Event Centroid & Radiative Power (MW)"]
+  COORD --> QUERY["Query DynamoDB Subscriptions"]
+  QUERY --> GEO{"Geodesic Distance &le; 15 km?"}
+  GEO -- "No" --> DISCARD["Suppress (Prevent alert fatigue)"]
+  GEO -- "Yes" --> ROUTE{"Selected Delivery Channel"}
+
+  ROUTE -- "SMS" --> C_SMS["SMS Gateway (Twilio / httpSMS)<br/>160-char text optimized for low connectivity<br/>Works without internet or data coverage"]
+  ROUTE -- "Telegram" --> C_TG["Telegram Bot (@AerosAlertBot)<br/>Rich card with coordinates, wind vector,<br/>and emergency checklist"]
+  ROUTE -- "Email" --> C_EMAIL["Amazon SES Email<br/>Full briefing with meteorological context,<br/>historical comparison, and response checklist"]
+
+  C_SMS --> RECV1["Rural Residents & Field Volunteer Crews"]
+  C_TG --> RECV2["Local Brigades & Command Coordinators"]
+  C_EMAIL --> RECV3["Civil Defense & Environmental Authorities"]
+```
 
 ## Run it
 
@@ -43,6 +121,8 @@ cd infra/mcp && npm ci && npx tsc --noEmit && npx vitest run
 | `infra/aws/` | AWS CDK stacks and the Python functions behind the API and the alerts |
 | `infra/mcp/` | The team context server every assistant reads and writes |
 | `prompts/` | The prompts that steered the product |
+| `slides/` | Standalone interactive pitch deck and 1080p visual presentation |
+| `docs/` | System architecture documentation and visual storytelling assets |
 
 ## How AI was used
 

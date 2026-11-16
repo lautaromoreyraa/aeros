@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aeros · Visual Presentation Deck</title>
+  <style>
+    :root {
+      --bg-space: #07090e;
+      --bg-card: #0d121d;
+      --bg-card-hover: #151d2d;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(56, 189, 248, 0.35);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-faint: #64748b;
+      --accent-cyan: #38bdf8;
+      --accent-orange: #fb923c;
+      --accent-red: #ef4444;
+      --accent-green: #34d399;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-space);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Header Bar */
+    header {
+      height: 56px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(7, 9, 14, 0.95);
+      backdrop-filter: blur(12px);
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn--primary {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-cyan);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+
+    .btn--primary:hover {
+      background: rgba(56, 189, 248, 0.25);
+    }
+
+    /* Main Deck Stage */
+    main {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 16px 24px;
+    }
+
+    .slide-viewport {
+      position: relative;
+      width: 100%;
+      max-width: 1600px;
+      aspect-ratio: 16 / 9;
+      max-height: calc(100vh - 160px);
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slide-item {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: scale(0.98);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slide-item.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1);
+    }
+
+    .slide-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      display: block;
+    }
+
+    /* Slide Navigation Overlay Arrows */
+    .nav-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(13, 18, 29, 0.7);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: all 0.2s ease;
+      z-index: 20;
+    }
+
+    .nav-arrow:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: var(--accent-cyan);
+      transform: translateY(-50%) scale(1.08);
+    }
+
+    .nav-arrow--prev { left: 32px; }
+    .nav-arrow--next { right: 32px; }
+
+    /* Notes / Narrative Drawer */
+    .notes-drawer {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(120%);
+      width: 90%;
+      max-width: 900px;
+      background: rgba(13, 18, 29, 0.95);
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      padding: 18px 24px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 40;
+    }
+
+    .notes-drawer.open {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .notes-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .notes-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .notes-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .notes-content {
+      font-size: 0.92rem;
+      line-height: 1.5;
+      color: var(--text-main);
+    }
+
+    .notes-content strong {
+      color: #fff;
+    }
+
+    /* Bottom Controller & Thumbnails */
+    footer {
+      height: 72px;
+      padding: 0 24px;
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(7, 9, 14, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-shrink: 0;
+      z-index: 50;
+    }
+
+    .counter-block {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.86rem;
+      color: var(--text-muted);
+    }
+
+    .counter-current {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+    }
+
+    .thumbs-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .thumb-btn {
+      width: 80px;
+      height: 45px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 2px solid transparent;
+      background: #000;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      opacity: 0.55;
+      position: relative;
+    }
+
+    .thumb-btn:hover {
+      opacity: 0.85;
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .thumb-btn.active {
+      opacity: 1;
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    }
+
+    .thumb-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .shortcuts-hint {
+      font-size: 0.76rem;
+      color: var(--text-faint);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .kbd {
+      padding: 2px 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    /* Fullscreen Mode Tuning */
+    :fullscreen .slide-viewport {
+      max-width: 100vw;
+      max-height: 100vh;
+      border-radius: 0;
+      box-shadow: none;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <span>Aeros</span>
+      <span class="brand-tag">Visual Story Deck</span>
+      <span style="color: var(--text-muted); font-size: 0.85rem;">· Planetary Fire Anticipation</span>
+    </div>
+    <div class="header-actions">
+      <button id="notes-toggle-btn" class="btn" title="Toggle Speaker Narrative (N)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Notes <span class="kbd">N</span>
+      </button>
+      <button id="fullscreen-btn" class="btn" title="Toggle Fullscreen (F)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        Fullscreen <span class="kbd">F</span>
+      </button>
+      <a href="index.html" class="btn btn--primary" title="Return to pitch presentation">
+        Pitch Deck
+      </a>
+    </div>
+  </header>
+
+  <main id="stage">
+    <button class="nav-arrow nav-arrow--prev" id="prev-btn" aria-label="Previous slide">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+
+    <div class="slide-viewport" id="viewport">
+      <!-- SLIDE 1: Problem & Pain Point -->
+      <div class="slide-item active clip" id="slide-1" data-start="0" data-duration="5" data-slide-index="1">
+        <img src="../docs/1.jpg" alt="Slide 1: 26 Years of Fires, One Consistent View" class="slide-img" />
+      </div>
+
+      <!-- SLIDE 2: Data Crossing & Pipeline -->
+      <div class="slide-item clip" id="slide-2" data-start="5" data-duration="5" data-slide-index="2">
+        <img src="../docs/2.jpg" alt="Slide 2: From Satellites to Alerts in Your Pocket" class="slide-img" />
+      </div>
+
+      <!-- SLIDE 3: Multichannel Message Dispatch -->
+      <div class="slide-item clip" id="slide-3" data-start="10" data-duration="5" data-slide-index="3">
+        <img src="../docs/3.jpg" alt="Slide 3: Early Warnings With or Without Internet (SMS, Telegram, Email)" class="slide-img" />
+      </div>
+
+      <!-- Narrative Overlay Drawer -->
+      <div class="notes-drawer" id="notes-drawer">
+        <div class="notes-header">
+          <span class="notes-title" id="notes-label">Slide 01 · Technical Brief</span>
+          <button class="notes-close" id="notes-close">&times;</button>
+        </div>
+        <div class="notes-content" id="notes-body">
+          Loading notes...
+        </div>
+      </div>
+    </div>
+
+    <button class="nav-arrow nav-arrow--next" id="next-btn" aria-label="Next slide">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </main>
+
+  <footer>
+    <div class="counter-block">
+      <span class="counter-current" id="slide-num">01</span>
+      <span>/</span>
+      <span id="slide-total">03</span>
+    </div>
+
+    <div class="thumbs-container">
+      <button class="thumb-btn active" data-target="1" title="Slide 1: 26 Years of Fires">
+        <img src="../docs/1.jpg" alt="Thumb 1" class="thumb-img" />
+      </button>
+      <button class="thumb-btn" data-target="2" title="Slide 2: Satellites to Alerts">
+        <img src="../docs/2.jpg" alt="Thumb 2" class="thumb-img" />
+      </button>
+      <button class="thumb-btn" data-target="3" title="Slide 3: Multichannel Alerts">
+        <img src="../docs/3.jpg" alt="Thumb 3" class="thumb-img" />
+      </button>
+    </div>
+
+    <div class="shortcuts-hint">
+      <span>Navigate: <span class="kbd">&larr;</span> <span class="kbd">&rarr;</span> <span class="kbd">Space</span></span>
+      <span>·</span>
+      <span>Notes: <span class="kbd">N</span></span>
+      <span>·</span>
+      <span>Fullscreen: <span class="kbd">F</span></span>
+    </div>
+  </footer>
+
+  <script>
+    const slides = [
+      {
+        id: 1,
+        title: "Slide 01 · The Planetary Sensor Gap & Problem",
+        notes: "<strong>The Pain Point:</strong> Historical fire archives span 26 years (NASA FIRMS MODIS since 2000, VIIRS 375m since 2012). However, when sensors transition from 1km to 375m pixels, raw counts exhibit an artificial +230% detection jump due to sensor optical sensitivity rather than genuine fire proliferation. During the Corrientes 2022 catastrophe, over 1 million hectares (12% of the province) burned while volunteer brigades had no anticipation. <strong>AEROS Solution:</strong> Harmonizes 26 years of MODIS and VIIRS records onto an equal-area H3 hexagonal grid to isolate genuine ecological anomalies."
+      },
+      {
+        id: 2,
+        title: "Slide 02 · End-to-End Data Crossing Pipeline",
+        notes: "<strong>Data Harmonization Architecture:</strong> (1) <em>Detection:</em> Poisson statistical model flags anomalies exceeding 2x historical median (p < 0.01). (2) <em>Prediction:</em> Gradient Boosting integrates ERA5 weather (wind, humidity, 2m temp) and NASA POWER fuel dryness 1–4 weeks out, while NOAA GOES-19 ABI scans every 10 minutes. (3) <em>Processing:</em> AWS serverless pipeline (Lambda arm64 + DynamoDB). (4) <em>Simulation:</em> Interactive 3D Earth digital twin models wind-driven fire propagation. (5) <em>Alerts:</em> Automated targeted dispatch."
+      },
+      {
+        id: 3,
+        title: "Slide 03 · Multichannel Warning Delivery Matrix",
+        notes: "<strong>Tiered Alert Delivery According to Connectivity:</strong> Communities in high-risk zones face varied infrastructure conditions. (1) <em>SMS Channel:</em> Ultra-concise 160-character alerts delivering critical coordinates and immediate action cues over low-bandwidth cellular networks with zero data connection. (2) <em>Telegram Bot:</em> Rich push notifications with precise H3 sector coordinates, wind velocity, and risk levels. (3) <em>SES Email:</em> Full meteorological and situational briefings for fire coordinators and civil defense chiefs."
+      }
+    ];
+
+    let currentIndex = 0;
+    const slideItems = document.querySelectorAll('.slide-item');
+    const thumbBtns = document.querySelectorAll('.thumb-btn');
+    const slideNum = document.getElementById('slide-num');
+    const notesDrawer = document.getElementById('notes-drawer');
+    const notesLabel = document.getElementById('notes-label');
+    const notesBody = document.getElementById('notes-body');
+
+    function showSlide(index) {
+      if (index < 0) index = 0;
+      if (index >= slides.length) index = slides.length - 1;
+      currentIndex = index;
+
+      slideItems.forEach((item, i) => {
+        item.classList.toggle('active', i === currentIndex);
+      });
+
+      thumbBtns.forEach((btn, i) => {
+        btn.classList.toggle('active', i === currentIndex);
+      });
+
+      slideNum.textContent = String(currentIndex + 1).padStart(2, '0');
+      notesLabel.textContent = slides[currentIndex].title;
+      notesBody.innerHTML = slides[currentIndex].notes;
+    }
+
+    function toggleNotes() {
+      notesDrawer.classList.toggle('open');
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error(`Fullscreen request error: ${err.message}`);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    // Event Listeners
+    document.getElementById('prev-btn').addEventListener('click', () => showSlide(currentIndex - 1));
+    document.getElementById('next-btn').addEventListener('click', () => showSlide(currentIndex + 1));
+    document.getElementById('notes-toggle-btn').addEventListener('click', toggleNotes);
+    document.getElementById('notes-close').addEventListener('click', () => notesDrawer.classList.remove('open'));
+    document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
+
+    thumbBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = parseInt(btn.dataset.target, 10) - 1;
+        showSlide(target);
+      });
+    });
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        showSlide(currentIndex + 1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        showSlide(currentIndex - 1);
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        toggleNotes();
+      } else if (e.key === 'Escape') {
+        notesDrawer.classList.remove('open');
+      } else if (e.key === '1') {
+        showSlide(0);
+      } else if (e.key === '2') {
+        showSlide(1);
+      } else if (e.key === '3') {
+        showSlide(2);
+      }
+    });
+
+    // Initialize first slide
+    showSlide(0);
+
+    // HyperFrames Hook Registration
+    window.__timelines = window.__timelines || {};
+    window.__timelines["visual-deck"] = {
+      duration: 15,
+      seek: function(timeSec) {
+        const targetSlide = Math.min(2, Math.floor(timeSec / 5));
+        showSlide(targetSlide);
+      }
+    };
+  </script>
+</body>
+</html>
