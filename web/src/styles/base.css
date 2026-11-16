@@ -57,6 +57,61 @@ button {
   margin-top: var(--space-3);
 }
 
+/* Corner plate on a figure or a section. Quiet, but readable in a screenshot. */
+.si-mark {
+  position: absolute;
+  z-index: 4;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.si-mark--dark {
+  border-color: rgb(255 255 255 / 0.28);
+  background: rgb(0 0 0 / 0.46);
+  color: rgb(255 255 255 / 0.9);
+}
+
+.si-mark--record,
+.si-mark--section {
+  top: 16px;
+  right: 16px;
+}
+
+/* On the planet, under the nav and clear of the title in the lower left. */
+.si-mark--hero {
+  right: 20px;
+  bottom: 20px;
+}
+
+.si-mark--record {
+  z-index: 2;
+  right: var(--gutter);
+}
+
+/* Under the map's own buttons, in the part of the figure that is on screen. */
+.si-mark--map {
+  top: 56px;
+  right: 12px;
+}
+
+/* Stays in the visible corner of the heatmap while the years scroll. */
+.si-mark--figure {
+  position: sticky;
+  bottom: 8px;
+  z-index: 5;
+  width: max-content;
+  margin: 8px 8px 8px auto;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

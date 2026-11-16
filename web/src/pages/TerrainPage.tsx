@@ -5,6 +5,7 @@ import { AnnualChart } from "../components/AnnualChart";
 import { CalendarHeatmap, countScaleMax, type CalendarView } from "../components/CalendarHeatmap";
 import { Legend } from "../components/Legend";
 import { TerrainFacts } from "../components/TerrainFacts";
+import { SiMark } from "../components/SiMark";
 import { MonthTimeline } from "../components/MonthTimeline";
 import { SectorOverview } from "../components/SectorOverview";
 import type { MapFocus } from "../components/HexMap";
@@ -277,6 +278,7 @@ export function TerrainPage({ region, unit, onUnitChange, earlyWarning, alertDec
             describe={describe}
           />
         </Suspense>
+        <SiMark place="map" dark />
 
         <div className="terrain__toolbar">
           <fieldset className="segmented" aria-label={t.explorer.hotspots}>

@@ -114,10 +114,12 @@
 }
 
 .explorer__calendar {
+  position: relative;
   grid-area: calendar;
 }
 
 .panel {
+  position: relative;
   display: grid;
   align-content: start;
   gap: var(--space-3);
