@@ -109,6 +109,8 @@ flowchart LR
 | `infra/aws/` | AWS CDK app (TypeScript) and Lambda handlers (Python) |
 | `infra/mcp/` | MCP server on Cloudflare Workers + D1: shared status, tasks, decisions, conventions and the log of steering prompts for every assistant on the team |
 | `prompts/` | The prompts that steered the product, each with its situation, the decision and its impact, and the full brief of the landing hero |
+| `slides/` | Standalone interactive pitch deck and 1080p visual presentation |
+| `docs/` | System architecture documentation and visual storytelling assets |
 | `.github/workflows/` | Verification: lint, types, tests, build, `cdk synth` |
 
 **AWS runs inside the Free plan.**
