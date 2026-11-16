@@ -6,6 +6,7 @@ import { CalendarHeatmap, countScaleMax, type CalendarView } from "../components
 import { CriticalPeriodNote } from "../components/CriticalPeriodNote";
 import { DateRange } from "../components/DateRange";
 import { Legend } from "../components/Legend";
+import { SiMark } from "../components/SiMark";
 import { MonthDetail } from "../components/MonthDetail";
 import { useCalendar } from "../hooks/useCalendar";
 import type { AreaSelection } from "../hooks/useAreaSelection";
@@ -118,6 +119,7 @@ export function ExplorerPage({ region, theme, unit, onUnitChange, selection: cho
             reducedMotion={reducedMotion}
           />
         </Suspense>
+        <SiMark place="map" />
         <div className="map__legend">
           <span>
             {t.explorer.mapLegend(

@@ -3,6 +3,7 @@ import type { EarlyWarning } from "../api/types";
 import { AlertPreview } from "../components/AlertPreview";
 import { AlertSignup } from "../components/AlertSignup";
 import { DataCredits } from "../components/DataCredits";
+import { SiMark } from "../components/SiMark";
 import { useInView } from "../hooks/useInView";
 import { usePrefersReducedMotion } from "../hooks/useMediaQuery";
 import type { Loadable } from "../hooks/useOutlook";
@@ -132,6 +133,7 @@ export function LandingPage({ region, warning, onEnter }: Props) {
             </div>
           </Suspense>
           <div className="hero__veil" />
+          <SiMark place="hero" dark />
           <div className="hero__copy">
             <h1 id="hero-title" className="hero__title">
               <span className="hero__name wf" style={wf("name")}>
@@ -188,6 +190,7 @@ export function LandingPage({ region, warning, onEnter }: Props) {
               </Suspense>
             )}
           </div>
+          <SiMark place="record" dark />
           <div className="record__copy">
             <h2 id="record-title" className="landing__heading">
               {t.landing.recordHeading(RECORD_YEARS)}
@@ -205,6 +208,7 @@ export function LandingPage({ region, warning, onEnter }: Props) {
         </section>
 
         <section className="warn" aria-labelledby="warn-title">
+          <SiMark place="section" />
           <div className="warn__copy">
             <h2 id="warn-title" className="landing__heading">
               {t.landing.warnHeading}
@@ -226,6 +230,7 @@ export function LandingPage({ region, warning, onEnter }: Props) {
         </section>
 
         <section id="alerts" className="alerts" aria-labelledby="alerts-title">
+          <SiMark place="section" />
           <div className="warn__copy">
             <h2 id="alerts-title" className="landing__heading">
               {t.landing.alertsHeading}
@@ -238,6 +243,7 @@ export function LandingPage({ region, warning, onEnter }: Props) {
         </section>
 
         <section className="landing__end" aria-labelledby="end-title">
+          <SiMark place="section" />
           <h2 id="end-title" className="landing__heading">
             {t.landing.endHeading}
           </h2>

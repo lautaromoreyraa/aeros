@@ -301,6 +301,7 @@
 }
 
 .outlook__table {
+  position: relative;
   grid-area: table;
 }
 
