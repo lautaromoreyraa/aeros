@@ -2,7 +2,7 @@
 
 Satellite fire early warning, built on 26 years of MODIS and VIIRS hotspots brought onto one scale. NASA FIRMS has recorded fire since 2000, but with sensors that see differently, so the count jumps when the fleet changes and not when the fire does. aeros removes that jump, shows what is normal for any area and month, and warns the people near a possible fire. It runs today on its first study region, in South America; the harmonization never uses location as a model feature, so it is not tied to that region.
 
-- Live: https://d1l9qps910fke.cloudfront.net
+- Live: https://aer-os.health
 - Challenge: NASA Space Apps Challenge 2026, **Harmonization of MODIS and VIIRS Hot Spots**
 - Team: Lautaro and David
 - Plan, results and status: [`plan.md`](plan.md)
